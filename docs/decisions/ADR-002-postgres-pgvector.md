@@ -27,7 +27,7 @@ The v0.1.0 data volume is small: a few synthetic courses with tens of documents,
 Use **PostgreSQL as the single system of record**, with:
 
 - **Domain objects as tables** (see [`docs/architecture/data-contract.md`](../architecture/data-contract.md)).
-- **Graph relationships as explicit edge rows**. For example, `DependencyEdge(from_ref, relation, to_ref, evidence)` and `MaterialMapping(requirement_id, resource/span, score, verification_status)` are typed, constrained and joinable like any other row. Traversal uses SQL joins or recursive CTEs, or loads a small subgraph into memory (for example with NetworkX) when that's clearer.
+- **Graph relationships as explicit edge rows**. For example, `DependencyEdge(from_ref, relation, to_ref)` (evidence attached through `EvidenceLink`) and `MaterialMapping(requirement_id, resource/span, score, verification_status)` are typed, constrained and joinable like any other row. Traversal uses SQL joins or recursive CTEs, or loads a small subgraph into memory (for example with NetworkX) when that's clearer.
 - **pgvector** for chunk embeddings, stored next to their provenance (`ResourceVersion`, `SourceSpan`) so similarity search can be filtered by course, resource type and version in the same query.
 - **PostgreSQL full-text search** (`tsvector`) as the lexical half of hybrid retrieval when that P1 work is scheduled.
 - **SQLAlchemy 2.x + Alembic** for schema changes through migrations only.

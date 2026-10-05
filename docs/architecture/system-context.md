@@ -52,7 +52,7 @@ This document describes CourseFlow's boundaries, its external actors and systems
 | Actor / system | Relationship to CourseFlow | Trust level |
 |---|---|---|
 | **Student** | Uses the web UI to import courses, inspect evidence, track study state and follow the study plan. | Authenticated user. The backend owns all authorisation decisions. |
-| **LMS / course sources** | Provide course pages, assessments, announcements and documents. v0.1.0 uses a synthetic demo institution through a demo/upload connector. Real Moodle is deferred (see [SCOPE](../SCOPE.md)). | **Untrusted content.** Text inside documents is data, never instructions. |
+| **LMS / course sources** | Provide course pages, assessments, announcements and documents. v0.1.0 uses a synthetic demo institution through a demo/upload connector. A real Moodle connector is planned after v0.1.0. | **Untrusted content.** Text inside documents is data, never instructions. |
 | **Nebius Token Factory** | Hosts NVIDIA Nemotron models through an OpenAI-compatible API. Used at runtime for extraction, verification, dependency and conflict reasoning, and planning. | External dependency. Responses are validated against typed schemas before use. |
 
 ## 3. Internal parts
@@ -63,7 +63,7 @@ This document describes CourseFlow's boundaries, its external actors and systems
 | **API** | Versioned HTTP endpoints, request validation, job creation. | Typed request/response schemas. |
 | **connectors** | `LMSConnector` implementations that return normalised CourseFlow source objects. | The intelligence layer never sees vendor-specific payloads. |
 | **ingestion** | Parse PDF, DOCX, PPTX and HTML into `ResourceVersion` + `SourceSpan` with page, slide or section provenance and content hashes. | Provenance is preserved from the first step. |
-| **retrieval** | Chunk embeddings (pgvector), lexical search, candidate generation for requirement → material mapping. | Retrieval quality is measured separately from LLM verification. |
+| **retrieval** | Chunk embeddings (pgvector), lexical search for hybrid retrieval (P1), candidate generation for requirement → material mapping. | Retrieval quality is measured separately from LLM verification. |
 | **AI workflow** | Stateful, multi-step pipeline: extract → validate → retrieve → verify mappings → infer dependencies → detect conflicts → plan → evidence gate → persist. | Structured outputs only; bounded retries; allowlisted typed tools; no shell, no raw SQL, no open internet. |
 | **planning** | Cross-course study plan with deterministic priority features and a "why now?" explanation. | Every task traces back to evidence. |
 | **changes** | Detect new `ResourceVersion`s by hash, emit `ChangeEvent`s, invalidate affected claims, recompute affected downstream state only. | Recompute narrowly; widen only when lineage is unclear. |

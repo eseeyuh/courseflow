@@ -1,6 +1,6 @@
 # Data Contract — CourseFlow v0.1.0 (initial)
 
-This document defines CourseFlow's **canonical domain vocabulary** and the **provenance chain** that every consequential claim must satisfy. Field lists are the minimum. Exact columns, types and constraints are fixed in the SQLAlchemy models and Alembic migrations, and any change there must stay consistent with this contract.
+This document defines CourseFlow's **canonical domain vocabulary** and the **provenance chain** that every consequential claim must satisfy. Field lists are the minimum. Exact columns, types and constraints will be fixed in the SQLAlchemy models and Alembic migrations once implemented, and must stay consistent with this contract.
 
 CourseFlow persists **typed domain objects and relationships**, not model responses. An LLM is one way of producing these objects; the objects, their evidence and their lineage are the product.
 

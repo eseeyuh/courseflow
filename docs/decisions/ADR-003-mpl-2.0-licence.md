@@ -24,7 +24,7 @@ How MPL-2.0 works, in short:
 - **File-level copyleft.** Anyone who distributes a modified version of an MPL-licensed file must make that file's source available under MPL-2.0.
 - **Larger Works are allowed.** MPL-covered files can be combined with separate files under other licences, including proprietary ones. Those other files aren't pulled under MPL.
 - **Patent grant.** Contributors grant a licence to their patent claims that read on their contributions.
-- **GPL-compatible by default.** The licence text includes Exhibit B ("Incompatible With Secondary Licenses") for files that should opt out. CourseFlow does **not** use Exhibit B, so it stays compatible with the GPL family.
+- **GPL-compatible by default.** The licence text includes Exhibit B ("Incompatible With Secondary Licenses") for files that should opt out. CourseFlow does **not** use Exhibit B, so it stays combinable with the "Secondary Licenses" defined in MPL-2.0 §1.12: GPL 2.0, LGPL 2.1, AGPL 3.0, or any later versions of those licences.
 
 ### Boundary with possible future proprietary components
 
@@ -34,9 +34,9 @@ How MPL-2.0 works, in short:
 
 ### Notices
 
-MPL-2.0 Exhibit A asks for a short licence notice in each Source Code Form file. Only where that isn't possible or practical may the notice live elsewhere, such as a `LICENSE` file. Therefore:
+MPL-2.0 Exhibit A asks for a short licence notice in each Source Code Form file. Only "if it is not possible or desirable" to put the notice in a particular file may it live elsewhere, such as a `LICENSE` file. Therefore:
 
-- From Day 2, new **source files** (Python, TypeScript) start with the standard Exhibit A header:
+- From the first source file onward, new **source files** (Python, TypeScript) start with the standard Exhibit A header:
   ```text
   This Source Code Form is subject to the terms of the Mozilla Public
   License, v. 2.0. If a copy of the MPL was not distributed with this
