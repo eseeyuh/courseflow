@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.engine import make_url
 
 from app import __version__
@@ -54,6 +55,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="CourseFlow API", version=__version__, lifespan=lifespan)
     app.state.settings = settings
+    # CORS lets the listed browser origins (the web frontend) READ responses.
+    # It is not authentication: non-browser clients ignore it entirely.
+    # Read-only API today: GET only, no cookies/credentials.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins,
+        allow_methods=["GET"],
+        allow_credentials=False,
+    )
     app.include_router(health.router)
     app.include_router(api_router)
     return app

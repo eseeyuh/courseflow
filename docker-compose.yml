@@ -22,6 +22,8 @@ x-backend: &backend
     LOG_LEVEL: ${LOG_LEVEL:-INFO}
     # Inside the Compose network the database host is the service name `db`.
     DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-courseflow}:${POSTGRES_PASSWORD:-courseflow-dev-only}@db:5432/${POSTGRES_DB:-courseflow}
+    # Browser origin of the frontend dev server (runs on the host).
+    CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
 
 services:
   db:
