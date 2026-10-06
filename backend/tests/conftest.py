@@ -5,16 +5,15 @@
 """Test fixtures.
 
 Database-backed tests run against a dedicated PostgreSQL database
-(``courseflow_test`` by default) on the same server as development, created
-on demand. Start the server first: ``docker compose up -d db``.
+(``courseflow_test`` by default) on the same server as development. It is
+created on demand and migrated to ``head`` with Alembic once per session,
+exactly as production databases are. Start the server first:
+``docker compose up -d db``.
 
-Each test builds its own app and runs the real lifespan, so every test gets
-its own engine bound to its own event loop.
+Each test builds its own app/engine, bound to that test's own event loop.
 """
 
-import asyncio
 import os
-import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -22,17 +21,17 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from pydantic import ValidationError
-from sqlalchemy import URL, text
+from sqlalchemy import URL
 from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.core.config import Settings
 from app.main import create_app
+from tests.db_utils import create_database_if_missing, migrate, require_test_database_name
 
 TEST_DATABASE_NAME = "courseflow_test"
-# Nothing listens on port 1: a real, fast-failing "database is down".
+# Nothing listens on port 1: a real "database is down".
 UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://courseflow:unused@127.0.0.1:1/courseflow"
-_SAFE_DB_NAME = re.compile(r"^[a-z_][a-z0-9_]*_test$")
 
 
 def _settings(**overrides: object) -> Settings:
@@ -53,40 +52,26 @@ def _resolve_test_database_url() -> URL:
                 f"or set TEST_DATABASE_URL.\n{exc}"
             )
         url = make_url(configured.database_url.get_secret_value()).set(database=TEST_DATABASE_NAME)
-    # Guard: tests wipe data, so never point them at a non-test database.
-    if not url.database or not _SAFE_DB_NAME.match(url.database):
-        pytest.fail(
-            f"Test database name must match {_SAFE_DB_NAME.pattern!r}, got {url.database!r}"
-        )
+    try:
+        require_test_database_name(url)
+    except ValueError as exc:
+        pytest.fail(str(exc))
     return url
 
 
-async def _ensure_database_exists(url: URL) -> None:
-    admin = create_async_engine(url.set(database="postgres"), isolation_level="AUTOCOMMIT")
-    try:
-        async with admin.connect() as conn:
-            exists = await conn.scalar(
-                text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": url.database}
-            )
-            if not exists:
-                # Identifier cannot be a bind parameter; it was validated above.
-                await conn.execute(text(f'CREATE DATABASE "{url.database}"'))
-    finally:
-        await admin.dispose()
-
-
 @pytest.fixture(scope="session")
-def test_database_url() -> str:
-    """Dedicated test database URL; the database is created if missing."""
+def test_database_url() -> URL:
+    """Dedicated test database: created if missing and migrated to head."""
     url = _resolve_test_database_url()
     try:
-        asyncio.run(_ensure_database_exists(url))
+        create_database_if_missing(url)
     except OSError as exc:
         pytest.fail(
             f"PostgreSQL not reachable at {url.render_as_string(hide_password=True)} "
             f"({exc}). Start it with: docker compose up -d db"
         )
-    return url.render_as_string(hide_password=False)
+    migrate(url)
+    return url
 
 
 @pytest.fixture
@@ -95,8 +80,8 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture
-def settings(test_database_url: str) -> Settings:
-    return _settings(database_url=test_database_url)
+def settings(test_database_url: URL) -> Settings:
+    return _settings(database_url=test_database_url.render_as_string(hide_password=False))
 
 
 @pytest.fixture
@@ -137,3 +122,25 @@ async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
 async def client_db_down(app_db_down: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
     async with _serve(app_db_down) as client:
         yield client
+
+
+@pytest.fixture
+async def db_session(test_database_url: URL) -> AsyncIterator[AsyncSession]:
+    """A session inside an outer transaction that is always rolled back,
+    so schema tests leave no rows behind. Commits become savepoints."""
+    engine = create_async_engine(test_database_url)
+    try:
+        async with engine.connect() as connection:
+            outer = await connection.begin()
+            session = AsyncSession(
+                bind=connection,
+                expire_on_commit=False,
+                join_transaction_mode="create_savepoint",
+            )
+            try:
+                yield session
+            finally:
+                await session.close()
+                await outer.rollback()
+    finally:
+        await engine.dispose()

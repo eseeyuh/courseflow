@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.20.0",
     "asyncpg>=0.31.0",
     "fastapi>=0.142.2",
     "pydantic-settings>=2.15.0",
@@ -23,6 +24,10 @@ package = false
 [tool.ruff]
 # Matches .editorconfig. Rule selection stays at Ruff defaults for now.
 line-length = 100
+
+[tool.ruff.lint.isort]
+# The local alembic/ migrations folder would otherwise make `alembic` look first-party.
+known-third-party = ["alembic"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
