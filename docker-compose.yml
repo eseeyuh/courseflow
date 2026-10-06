@@ -1,0 +1,43 @@
+# CourseFlow local stack: PostgreSQL + pgvector and the API.
+# The frontend runs on the host (`npm run dev` in frontend/) for fast reloads.
+#
+# Values come from the repository-root `.env` (copy `.env.example`). The
+# `:-` fallbacks are DEVELOPMENT-ONLY so a fresh clone starts with one
+# command; never reuse them anywhere reachable from a network.
+
+name: courseflow
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.6-pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-courseflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-courseflow-dev-only}
+      POSTGRES_DB: ${POSTGRES_DB:-courseflow}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # Loopback only: host-side tests and Alembic need it; the LAN does not.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  api:
+    build:
+      context: ./backend
+    image: courseflow-api:dev
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -1,0 +1,22 @@
+# Build context is backend/. Keep it small and free of secrets.
+
+# Local environments and caches
+.venv/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Secrets / local configuration (never baked into images)
+.env
+.env.*
+*.pem
+*.key
+
+# Not needed at runtime
+tests/
+Dockerfile
+.dockerignore
