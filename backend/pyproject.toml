@@ -1,0 +1,34 @@
+[project]
+name = "courseflow-backend"
+version = "0.1.0"
+description = "CourseFlow API: evidence-backed academic navigation backend."
+license = "MPL-2.0"
+authors = [
+    { name = "eseeyuh", email = "113909989+eseeyuh@users.noreply.github.com" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.142.2",
+    "pydantic-settings>=2.15.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[tool.uv]
+# Deployable application, not a library: dependencies are installed into the
+# environment but the project itself is not built or installed as a package.
+package = false
+
+[tool.ruff]
+# Matches .editorconfig. Rule selection stays at Ruff defaults for now.
+line-length = 100
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
