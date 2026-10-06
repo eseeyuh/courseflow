@@ -34,6 +34,7 @@ A modular monolith: Next.js frontend, FastAPI backend, PostgreSQL + pgvector, an
 | [ADR-001](docs/decisions/ADR-001-modular-monolith.md) | Modular monolith with separate frontend and explicit connector/provider interfaces |
 | [ADR-002](docs/decisions/ADR-002-postgres-pgvector.md) | Relational graph model in PostgreSQL + pgvector (no separate graph/vector DB) |
 | [ADR-003](docs/decisions/ADR-003-mpl-2.0-licence.md) | Mozilla Public License 2.0 |
+| [ADR-004](docs/decisions/ADR-004-async-sqlalchemy-asyncpg.md) | Async SQLAlchemy 2.x with the asyncpg driver for all database access |
 
 ## Evaluation
 
