@@ -11,22 +11,49 @@ from pydantic import ValidationError
 from app.core.config import Settings
 from app.core.logging import configure_logging
 
+VALID_URL = "postgresql+asyncpg://courseflow:s3cret-pw@127.0.0.1:5432/courseflow"
+
 
 def test_settings_read_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("LOG_LEVEL", "WARNING")
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
 
-    settings = Settings(_env_file=None)
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert settings.app_env == "production"
     assert settings.log_level == "WARNING"
+    assert settings.database_url.get_secret_value() == VALID_URL
 
 
 def test_invalid_setting_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
     monkeypatch.setenv("LOG_LEVEL", "LOUD")
 
-    with pytest.raises(ValidationError):
-        Settings(_env_file=None)
+    with pytest.raises(ValidationError, match="log_level"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_missing_database_url_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with pytest.raises(ValidationError, match="database_url"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_non_async_database_driver_rejected() -> None:
+    with pytest.raises(ValidationError, match="postgresql\\+asyncpg"):
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            database_url="postgresql+psycopg://courseflow:pw@127.0.0.1/courseflow",  # type: ignore[arg-type]
+        )
+
+
+def test_database_url_is_masked_in_repr() -> None:
+    settings = Settings(_env_file=None, database_url=VALID_URL)  # type: ignore[call-arg, arg-type]
+
+    assert "s3cret-pw" not in repr(settings)
+    assert "s3cret-pw" not in str(settings.model_dump())
 
 
 def test_logs_are_json_lines_with_extra_fields(capsys: pytest.CaptureFixture[str]) -> None:

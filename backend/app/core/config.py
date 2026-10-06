@@ -6,19 +6,22 @@
 
 Values come from process environment variables first (this is how Docker
 injects them) and fall back to the repository-root ``.env`` file for local
-development on the host. Invalid configuration fails at startup.
+development on the host. Invalid or missing configuration fails at startup.
 """
 
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/app/core/config.py -> repository root. Missing files are ignored,
 # so inside the container (where this path does not exist) only real
 # environment variables are used.
 _REPO_ROOT_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
+
+ASYNC_DATABASE_SCHEME = "postgresql+asyncpg"
 
 AppEnv = Literal["development", "test", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -34,8 +37,20 @@ class Settings(BaseSettings):
     app_env: AppEnv = "development"
     log_level: LogLevel = "INFO"
 
+    # Contains a password, so it is a secret: masked in repr() and logs.
+    database_url: SecretStr
+    db_connect_timeout_seconds: float = Field(default=5.0, gt=0)
+    db_health_timeout_seconds: float = Field(default=2.0, gt=0)
+
+    @field_validator("database_url")
+    @classmethod
+    def _require_async_driver(cls, value: SecretStr) -> SecretStr:
+        if not value.get_secret_value().startswith(f"{ASYNC_DATABASE_SCHEME}://"):
+            raise ValueError(f"DATABASE_URL must use the {ASYNC_DATABASE_SCHEME}:// scheme")
+        return value
+
 
 @lru_cache
 def get_settings() -> Settings:
-    """Process-wide settings, read once. Used as a FastAPI dependency."""
-    return Settings()
+    """Process-wide settings, read once at startup."""
+    return Settings()  # type: ignore[call-arg]  # required fields come from the environment
