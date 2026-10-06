@@ -1,11 +1,27 @@
-# CourseFlow local stack: PostgreSQL + pgvector and the API.
-# The frontend runs on the host (`npm run dev` in frontend/) for fast reloads.
+# CourseFlow local stack: PostgreSQL + pgvector, a one-shot migration job and
+# the API. The frontend runs on the host (`npm run dev` in frontend/) for fast
+# reloads.
+#
+# Startup order: db (healthy) -> migrate (alembic upgrade head, exits 0) -> api.
+# If the migration fails, the API is not started.
 #
 # Values come from the repository-root `.env` (copy `.env.example`). The
 # `:-` fallbacks are DEVELOPMENT-ONLY so a fresh clone starts with one
 # command; never reuse them anywhere reachable from a network.
 
 name: courseflow
+
+# Shared by `migrate` and `api`: one image, so migrations always ship with the
+# application code they belong to.
+x-backend: &backend
+  build:
+    context: ./backend
+  image: courseflow-api:dev
+  environment:
+    APP_ENV: ${APP_ENV:-development}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    # Inside the Compose network the database host is the service name `db`.
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-courseflow}:${POSTGRES_PASSWORD:-courseflow-dev-only}@db:5432/${POSTGRES_DB:-courseflow}
 
 services:
   db:
@@ -26,20 +42,26 @@ services:
       retries: 5
       start_period: 10s
 
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    # One-shot job: the image's HTTP healthcheck does not apply.
+    healthcheck:
+      disable: true
+    depends_on:
+      db:
+        condition: service_healthy
+
   api:
-    build:
-      context: ./backend
-    image: courseflow-api:dev
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      # Inside the Compose network the database host is the service name `db`.
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-courseflow}:${POSTGRES_PASSWORD:-courseflow-dev-only}@db:5432/${POSTGRES_DB:-courseflow}
+    <<: *backend
     ports:
       - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:

@@ -21,11 +21,13 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from pydantic import ValidationError
-from sqlalchemy import URL
+from sqlalchemy import URL, text
 from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
 from app.core.config import Settings
+from app.db import models  # noqa: F401  (registers every table on Base.metadata)
+from app.db.base import Base
 from app.main import create_app
 from tests.db_utils import create_database_if_missing, migrate, require_test_database_name
 
@@ -122,6 +124,28 @@ async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
 async def client_db_down(app_db_down: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
     async with _serve(app_db_down) as client:
         yield client
+
+
+async def _truncate_all_tables(engine: AsyncEngine, url: URL) -> None:
+    require_test_database_name(url)  # never wipe a non-test database
+    tables = ", ".join(f'"{table.name}"' for table in Base.metadata.sorted_tables)
+    async with engine.begin() as connection:
+        await connection.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+
+
+@pytest.fixture
+async def committed_session(test_database_url: URL) -> AsyncIterator[AsyncSession]:
+    """A session whose commits are real, so data is visible to the app's own
+    per-request sessions (HTTP round-trip tests). All tables are truncated
+    before and after the test, so it starts empty and leaves nothing behind."""
+    engine = create_async_engine(test_database_url)
+    try:
+        await _truncate_all_tables(engine, test_database_url)
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            yield session
+    finally:
+        await _truncate_all_tables(engine, test_database_url)
+        await engine.dispose()
 
 
 @pytest.fixture
