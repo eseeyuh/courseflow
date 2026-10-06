@@ -46,6 +46,9 @@ class Settings(BaseSettings):
         env_file=_REPO_ROOT_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
+        # Validation errors must never echo raw values: DATABASE_URL contains a
+        # password, and startup errors end up in container and CI logs.
+        hide_input_in_errors=True,
     )
 
     app_env: AppEnv = "development"

@@ -20,11 +20,12 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
 # Tests create, wipe and drop databases: refuse any name not ending in _test.
-SAFE_TEST_DB_NAME = re.compile(r"^[a-z_][a-z0-9_]*_test$")
+SAFE_TEST_DB_NAME = re.compile(r"[a-z_][a-z0-9_]*_test")
 
 
 def require_test_database_name(url: URL) -> str:
-    if not url.database or not SAFE_TEST_DB_NAME.match(url.database):
+    # fullmatch: `$` in match() would also accept a trailing newline.
+    if not url.database or not SAFE_TEST_DB_NAME.fullmatch(url.database):
         raise ValueError(
             f"Test database name must match {SAFE_TEST_DB_NAME.pattern!r}, got {url.database!r}"
         )

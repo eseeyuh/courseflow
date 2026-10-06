@@ -77,9 +77,11 @@ On Windows PowerShell, use `Copy-Item` instead of `cp`. The defaults work for lo
 
 ### 2. Install dependencies
 
+From the repository root:
+
 ```bash
-cd backend && uv sync --locked     # Python 3.12 + exact versions from uv.lock into backend/.venv
-cd frontend && npm ci              # exact versions from package-lock.json
+(cd backend && uv sync --locked)   # Python 3.12 + exact versions from uv.lock into backend/.venv
+(cd frontend && npm ci)            # exact versions from package-lock.json
 ```
 
 ### 3. Start the stack
@@ -94,7 +96,8 @@ Startup order: `db` becomes healthy → `migrate` runs `alembic upgrade head` an
 ### 4. Start the frontend
 
 ```bash
-cd frontend && npm run dev
+cd frontend
+npm run dev
 ```
 
 ### Service URLs

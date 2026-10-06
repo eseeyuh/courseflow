@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import NoReturn
 
+import anyio
 import httpx
 import pytest
 from fastapi import FastAPI
@@ -82,23 +83,33 @@ async def test_api_health_503_when_database_unavailable(
 class _HangingEngine:
     """Stands in for an AsyncEngine whose database accepts TCP but never answers."""
 
+    def __init__(self) -> None:
+        self.entered = False
+
     @asynccontextmanager
     async def connect(self) -> AsyncIterator[NoReturn]:
+        self.entered = True
         await asyncio.sleep(3600)
         raise AssertionError("unreachable")
         yield  # pragma: no cover
 
 
 async def test_readiness_503_promptly_when_database_hangs(
-    app_db_down: FastAPI, client_db_down: httpx.AsyncClient
+    app: FastAPI, client: httpx.AsyncClient
 ) -> None:
+    # Start from a HEALTHY app: if the override were not applied, this would be 200.
+    app.state.settings = app.state.settings.model_copy(update={"db_health_timeout_seconds": 1.0})
+    hanging = _HangingEngine()
     # dependency_overrides: every route depending on get_engine (directly or
     # through get_readiness) now receives the hanging fake.
-    app_db_down.dependency_overrides[get_engine] = lambda: _HangingEngine()
+    app.dependency_overrides[get_engine] = lambda: hanging
 
     started = time.perf_counter()
-    response = await client_db_down.get("/health/ready")
+    # Fail fast instead of hanging the suite if the timeout ever regresses.
+    with anyio.fail_after(5):
+        response = await client.get("/health/ready")
     elapsed = time.perf_counter() - started
 
+    assert hanging.entered
     assert response.status_code == 503
     assert 0.9 < elapsed < 2.5  # bounded by db_health_timeout_seconds=1.0

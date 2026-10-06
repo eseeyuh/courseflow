@@ -6,8 +6,8 @@
 
 Database-backed tests run against a dedicated PostgreSQL database
 (``courseflow_test`` by default) on the same server as development. It is
-created on demand and migrated to ``head`` with Alembic once per session,
-exactly as production databases are. Start the server first:
+dropped, recreated from zero and migrated to ``head`` with Alembic once per
+session, exactly as production databases are migrated. Start the server first:
 ``docker compose up -d db``.
 
 Each test builds its own app/engine, bound to that test's own event loop.
@@ -23,13 +23,14 @@ from fastapi import FastAPI
 from pydantic import ValidationError
 from sqlalchemy import URL, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
 from app.core.config import Settings
 from app.db import models  # noqa: F401  (registers every table on Base.metadata)
 from app.db.base import Base
 from app.main import create_app
-from tests.db_utils import create_database_if_missing, migrate, require_test_database_name
+from tests.db_utils import migrate, recreate_database, require_test_database_name
 
 TEST_DATABASE_NAME = "courseflow_test"
 # Nothing listens on port 1: a real "database is down".
@@ -63,16 +64,26 @@ def _resolve_test_database_url() -> URL:
 
 @pytest.fixture(scope="session")
 def test_database_url() -> URL:
-    """Dedicated test database: created if missing and migrated to head."""
+    """Dedicated test database, dropped and recreated from zero, then migrated to head
+    once per session: schema tests always run against the CURRENT migrations."""
     url = _resolve_test_database_url()
+    where = url.render_as_string(hide_password=True)
     try:
-        create_database_if_missing(url)
+        recreate_database(url)
     except OSError as exc:
         pytest.fail(
-            f"PostgreSQL not reachable at {url.render_as_string(hide_password=True)} "
-            f"({exc}). Start it with: docker compose up -d db"
+            f"PostgreSQL not reachable at {where} ({exc}). Start it with: docker compose up -d db"
         )
-    migrate(url)
+    except DBAPIError as exc:
+        pytest.fail(
+            f"PostgreSQL at {where} rejected the connection ({exc.orig!r}). If the password "
+            "is wrong: POSTGRES_* values only apply when the data volume is first created "
+            "(see README, Troubleshooting)."
+        )
+    try:
+        migrate(url)
+    except Exception as exc:  # noqa: BLE001 - re-raised as a clear test-setup failure
+        pytest.fail(f"Migrating the test database {where} to head failed: {exc!r}")
     return url
 
 

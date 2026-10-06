@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.core.logging import configure_logging
+from app.main import create_app
 
 VALID_URL = "postgresql+asyncpg://courseflow:s3cret-pw@127.0.0.1:5432/courseflow"
 
@@ -49,11 +50,35 @@ def test_non_async_database_driver_rejected() -> None:
         )
 
 
+def test_invalid_database_url_error_does_not_leak_password() -> None:
+    with pytest.raises(ValidationError) as excinfo:
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            database_url="postgresql://courseflow:s3cret-pw@db/courseflow",  # type: ignore[arg-type]
+        )
+
+    assert "database_url" in str(excinfo.value)
+    assert "s3cret-pw" not in str(excinfo.value)
+
+
 def test_database_url_is_masked_in_repr() -> None:
     settings = Settings(_env_file=None, database_url=VALID_URL)  # type: ignore[call-arg, arg-type]
 
     assert "s3cret-pw" not in repr(settings)
     assert "s3cret-pw" not in str(settings.model_dump())
+
+
+@pytest.mark.anyio
+async def test_startup_log_masks_database_password(capsys: pytest.CaptureFixture[str]) -> None:
+    app = create_app(Settings(_env_file=None, database_url=VALID_URL))  # type: ignore[call-arg, arg-type]
+
+    async with app.router.lifespan_context(app):  # engine creation opens no connection
+        pass
+
+    out = capsys.readouterr().out
+    assert '"event": "app.startup"' in out
+    assert "courseflow:***@127.0.0.1" in out
+    assert "s3cret-pw" not in out
 
 
 def test_logs_are_json_lines_with_extra_fields(capsys: pytest.CaptureFixture[str]) -> None:

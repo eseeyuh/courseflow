@@ -19,9 +19,16 @@ export function HealthStatus() {
 
   useEffect(() => {
     const controller = new AbortController();
-    checkHealth(controller.signal).then((outcome) => {
-      if (!controller.signal.aborted) setResult(outcome);
-    });
+    checkHealth(controller.signal)
+      // checkHealth is designed never to reject; this is a safety net so a
+      // future bug can never leave the widget stuck on "Checking…".
+      .catch((error: unknown): HealthCheck => {
+        console.error("[health] unexpected failure", error);
+        return { state: "unreachable", reason: "Unexpected error while checking the API." };
+      })
+      .then((outcome) => {
+        if (!controller.signal.aborted) setResult(outcome);
+      });
     // Cancel the in-flight request on unmount or before a re-check.
     return () => controller.abort();
   }, [attempt]);
@@ -73,18 +80,22 @@ function describe(result: HealthCheck | null): { label: string; detail?: string;
         dot: "bg-green-600",
       };
     case "degraded": {
-      const failing = result.health
-        ? Object.entries(result.health.checks)
-            .filter(([, status]) => status !== "ok")
-            .map(([name]) => name)
-            .join(", ")
-        : "";
+      const failing = Object.entries(result.health.checks)
+        .filter(([, status]) => status !== "ok")
+        .map(([name]) => name)
+        .join(", ");
       return {
         label: `API reachable but not ready (HTTP ${result.httpStatus})`,
         detail: failing ? `Unavailable: ${failing}` : undefined,
         dot: "bg-amber-500",
       };
     }
+    case "unexpected":
+      return {
+        label: `Unexpected response (HTTP ${result.httpStatus})`,
+        detail: result.reason,
+        dot: "bg-red-600",
+      };
     case "unreachable":
       return { label: "API unreachable", detail: result.reason, dot: "bg-red-600" };
     case "misconfigured":

@@ -6,8 +6,9 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.api.deps import SessionDep
+from app.api.deps import EngineDep, SessionDep
 
 pytestmark = pytest.mark.anyio
 
@@ -32,10 +33,34 @@ async def test_session_per_request_returns_connection_to_pool(
     assert app.state.engine.pool.checkedout() == 0
 
 
-async def test_engine_is_shared_across_requests(app: FastAPI, client: httpx.AsyncClient) -> None:
-    engine = app.state.engine
+async def test_session_is_released_when_the_handler_raises(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    @app.get("/_test/session-error")
+    async def failing(session: SessionDep) -> None:
+        await session.execute(text("SELECT 1"))  # holds a pooled connection
+        raise RuntimeError("handler failure")
 
-    await client.get("/health/ready")
-    await client.get("/health/ready")
+    # The in-process transport re-raises app exceptions (a real server would
+    # answer 500); what matters is that the session's cleanup still ran.
+    with pytest.raises(RuntimeError, match="handler failure"):
+        await client.get("/_test/session-error")
 
-    assert app.state.engine is engine
+    assert app.state.engine.pool.checkedout() == 0
+
+
+async def test_every_request_receives_the_lifespan_engine(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    seen: list[AsyncEngine] = []
+
+    @app.get("/_test/engine-probe")
+    async def probe(engine: EngineDep) -> None:
+        seen.append(engine)
+
+    await client.get("/_test/engine-probe")
+    await client.get("/_test/engine-probe")
+
+    # One process-wide pool, never a new engine per request.
+    assert len(seen) == 2
+    assert seen[0] is seen[1] is app.state.engine

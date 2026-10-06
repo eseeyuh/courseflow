@@ -56,12 +56,13 @@ def _span(version: ResourceVersion, **fields: Any) -> SourceSpan:
     "fields",
     [
         {"page_number": 3, "start_offset": 120, "end_offset": 162},
+        {"page_number": 1, "start_offset": 0, "end_offset": 1},
         {"slide_number": 7},
         {"section_path": "2 > 2.3 Marking criteria"},
         {"timestamp_seconds": Decimal("754.250")},
         {"page_number": 2, "section_path": "Assessment"},
     ],
-    ids=["page+offsets", "slide", "section", "timestamp", "page+section"],
+    ids=["page+offsets", "offset-zero", "slide", "section", "timestamp", "page+section"],
 )
 async def test_valid_source_spans_are_accepted(
     db_session: AsyncSession, fields: dict[str, Any]

@@ -7,9 +7,13 @@
 import asyncio
 from dataclasses import dataclass
 
+from alembic.autogenerate import compare_metadata
+from alembic.migration import MigrationContext
 from sqlalchemy import URL, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from app.db import models  # noqa: F401  (registers every table on Base.metadata)
+from app.db.base import Base
 from tests.db_utils import downgrade, drop_database, migrate, recreate_database
 
 MIGRATIONS_DATABASE = "courseflow_migrations_test"
@@ -83,6 +87,25 @@ async def _inspect(url: URL) -> SchemaState:
 
 def _state(url: URL) -> SchemaState:
     return asyncio.run(_inspect(url))
+
+
+async def _schema_drift(url: URL) -> list[object]:
+    engine = create_async_engine(url)
+    try:
+        async with engine.connect() as conn:
+            return await conn.run_sync(
+                lambda sync_conn: compare_metadata(
+                    MigrationContext.configure(sync_conn), Base.metadata
+                )
+            )
+    finally:
+        await engine.dispose()
+
+
+def test_models_match_migrated_schema(test_database_url: URL) -> None:
+    """A model change without a matching migration fails here. (Alembic does not
+    compare CHECK constraints; their names are asserted in the test below.)"""
+    assert asyncio.run(_schema_drift(test_database_url)) == []
 
 
 def test_upgrade_downgrade_upgrade_from_empty_database(test_database_url: URL) -> None:
