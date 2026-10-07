@@ -4,7 +4,7 @@
 
 CourseFlow is an academic navigation system. It turns fragmented LMS content (course pages, assignment briefs, handbooks, announcements, slides) into an **evidence-backed academic execution graph**. It tells a student what to learn, where exactly to learn it, what to do, when it is due, and **how the system knows**.
 
-> **Status:** early development (v0.1.0 in progress) for the Nebius × NVIDIA Global AI Hackathon, *Best Apps & Agents* track. The repository currently holds the engineering foundation: scope, architecture and decisions. Application code, the demo and evaluation results will be added as they are built. No feature below should be read as finished until it appears in a release.
+> **Status:** early development (v0.1.0 in progress) for the Nebius × NVIDIA Global AI Hackathon, *Best Apps & Agents* track. The repository currently holds the engineering foundation: scope, architecture, decisions, and a runnable skeleton (API with health checks and the initial provenance schema, database migrations, and a minimal web shell). Course import, the AI workflow, the demo and evaluation results will be added as they are built. No feature below should be read as finished until it appears in a release.
 
 ---
 
@@ -34,6 +34,7 @@ A modular monolith: Next.js frontend, FastAPI backend, PostgreSQL + pgvector, an
 | [ADR-001](docs/decisions/ADR-001-modular-monolith.md) | Modular monolith with separate frontend and explicit connector/provider interfaces |
 | [ADR-002](docs/decisions/ADR-002-postgres-pgvector.md) | Relational graph model in PostgreSQL + pgvector (no separate graph/vector DB) |
 | [ADR-003](docs/decisions/ADR-003-mpl-2.0-licence.md) | Mozilla Public License 2.0 |
+| [ADR-004](docs/decisions/ADR-004-async-sqlalchemy-asyncpg.md) | Async SQLAlchemy 2.x with the asyncpg driver for all database access |
 
 ## Evaluation
 
@@ -41,9 +42,127 @@ CourseFlow will be evaluated against a reproducible synthetic golden dataset (de
 
 **No results yet.** Numbers will appear here only from saved benchmark runs.
 
-## Quickstart
+## Development
 
-_Not available yet._ Docker-based setup instructions will be added with the first runnable backend. Configuration placeholders are in [.env.example](.env.example).
+The local stack is PostgreSQL + pgvector, a one-shot migration job and the API, all in Docker Compose. The web frontend runs on the host for fast reloads.
+
+```text
+browser ──► Next.js (host, :3000) ──► FastAPI (Docker, :8000) ──► PostgreSQL + pgvector (Docker, :5432)
+```
+
+| Path | Contents |
+|---|---|
+| `backend/` | FastAPI app (`app/`), Alembic migrations (`alembic/`), tests (`tests/`) |
+| `frontend/` | Next.js App Router web app |
+| `docker-compose.yml` | `db` → `migrate` → `api` |
+
+### Prerequisites
+
+- **Docker** with Compose v2 (Docker Desktop or Docker Engine)
+- **[uv](https://docs.astral.sh/uv/)**. It installs the pinned Python 3.12 (`backend/.python-version`) automatically.
+- **Node.js ≥ 20.9** with npm
+
+All ports are published on `127.0.0.1` only.
+
+### 1. Configure
+
+```bash
+cp .env.example .env                              # API, database, CORS
+cp frontend/.env.example frontend/.env.local      # browser-visible API URL
+```
+
+On Windows PowerShell, use `Copy-Item` instead of `cp`. The defaults work for local development as-is. The database password in `.env.example` is a **development-only** value; use real secrets anywhere reachable from a network.
+
+`NEXT_PUBLIC_*` values are compiled into the JavaScript sent to browsers, so they are public. Never put a secret in one.
+
+### 2. Install dependencies
+
+From the repository root:
+
+```bash
+(cd backend && uv sync --locked)   # Python 3.12 + exact versions from uv.lock into backend/.venv
+(cd frontend && npm ci)            # exact versions from package-lock.json
+```
+
+### 3. Start the stack
+
+```bash
+docker compose up -d --build --wait
+docker compose ps -a               # db healthy, migrate "Exited (0)", api healthy
+```
+
+Startup order: `db` becomes healthy → `migrate` runs `alembic upgrade head` and exits → `api` starts. If the migration fails, the API does not start (`docker compose logs migrate` shows why).
+
+### 4. Start the frontend
+
+```bash
+cd frontend
+npm run dev
+```
+
+### Service URLs
+
+| Service | URL |
+|---|---|
+| Web frontend | http://localhost:3000 |
+| API | http://127.0.0.1:8000 |
+| Interactive API docs | http://127.0.0.1:8000/docs |
+| Liveness (process up, no dependency checks) | http://127.0.0.1:8000/health/live |
+| Readiness (database reachable, else 503) | http://127.0.0.1:8000/health/ready |
+| Versioned status for clients | http://127.0.0.1:8000/api/v1/health |
+| Courses (temporary listing) | http://127.0.0.1:8000/api/v1/courses |
+| PostgreSQL | `127.0.0.1:5432`, database `courseflow` |
+
+### Database migrations
+
+Compose applies migrations automatically. From `backend/` you can also run them against the database in `.env`:
+
+```bash
+uv run alembic upgrade head        # apply all migrations
+uv run alembic current             # show the applied revision
+uv run alembic check               # fail if the ORM models and the database schema differ
+uv run alembic revision --autogenerate -m "describe change"   # draft only: always review by hand
+```
+
+Schema changes go through migrations only. Autogenerate does not handle extensions, CHECK constraints or cyclic foreign keys correctly, so every generated revision must be reviewed.
+
+### Tests and checks
+
+Backend (from `backend/`, with the database running: `docker compose up -d db`):
+
+```bash
+uv run pytest                      # unit, API, schema and migration tests
+uv run ruff check .                # lint
+uv run ruff format --check .       # formatting (use `ruff format .` to apply)
+```
+
+Tests use a separate database, `courseflow_test`, on the same server. It is created and migrated automatically. Tests refuse any database whose name does not end in `_test`. Set `TEST_DATABASE_URL` to use a different one.
+
+Frontend (from `frontend/`):
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```
+
+### Running the API on the host (optional)
+
+For auto-reload while working on the backend:
+
+```bash
+docker compose stop api            # frees port 8000; db stays up
+cd backend
+uv run alembic upgrade head
+uv run uvicorn app.main:create_app --factory --reload --port 8000
+```
+
+### Troubleshooting
+
+- **Database password changes have no effect / "password authentication failed".** PostgreSQL applies `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` **only when its data volume is first created**. Changing them later leaves the old credentials in place, so the API and `migrate` can no longer log in. Either restore the original values in `.env`, or recreate the volume with `docker compose down -v`. **This deletes all local database data.**
+- **Frontend shows "API unreachable".** Check that the API is running (`docker compose ps`) and that `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local` points to it. Also check that `CORS_ALLOWED_ORIGINS` in `.env` matches the address in your browser exactly: `http://localhost:3000` and `http://127.0.0.1:3000` are different origins. Restart `npm run dev` after editing `.env.local`, and `docker compose up -d` after editing `.env`.
+- **Frontend shows "API reachable but not ready (HTTP 503)".** The API is up but cannot reach PostgreSQL: `docker compose ps db`, `docker compose logs db`.
+- **Port already in use.** Change `POSTGRES_HOST_PORT` / `API_HOST_PORT` in `.env` and update `DATABASE_URL`, `NEXT_PUBLIC_API_BASE_URL` and `CORS_ALLOWED_ORIGINS` to match.
 
 ## Demo data
 

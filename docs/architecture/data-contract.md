@@ -59,7 +59,7 @@ Consequential claim / domain object
 | `Topic` | A reconstructed learning topic grouping original materials (Course Map). | id, course_id, title, ordinal |
 | `Resource` | An original item: lecture, lab, reading, workshop, handbook, brief, announcement, page. | id, course_id, type, title, source_uri, current_version_id |
 | `ResourceVersion` | An immutable snapshot of a resource's content. Enables change detection and audit. | id, resource_id, content_hash, created_at, raw_text_ref |
-| `SourceSpan` | An atomic, addressable piece of a specific version. | id, resource_version_id, location (page / slide / section path), start_offset, end_offset, excerpt |
+| `SourceSpan` | An atomic, addressable piece of a specific version. | id, resource_version_id, location (page_number / slide_number / section_path / timestamp_seconds, at least one required), start_offset + end_offset (both or neither, `0 <= start < end`, positions in the extracted text), excerpt (required, non-empty) |
 
 ### Academic layer
 

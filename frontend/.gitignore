@@ -1,0 +1,32 @@
+# dependencies
+/node_modules
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+
+# env files: local values stay local; the documented template is committed
+.env*
+!.env.example
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Agent instruction files `next dev` can generate for coding agents
+# (disabled via `agentRules: false` in next.config.ts; ignored as a backstop)
+/AGENTS.md
+/CLAUDE.md
