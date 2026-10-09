@@ -16,6 +16,7 @@ These names are canonical across code, API, database and docs. Do not introduce 
 | `DependencyEdge` | `Dependency` | It is a directed, typed edge in the academic graph, with evidence. |
 | `EvidenceLink` | `EvidenceClaim` | It *links* a claim to supporting spans; the claim itself is the domain object (deadline, obligation, mapping, ...). |
 | `WorkflowRun` | `AgentRun`, `AIRun` | A run includes deterministic parsing, retrieval, validation and persistence as well as LLM inference, not only "AI" activity. |
+| `ModelCall` | `AIRun`, `LLMCall` | One model invocation (a step inside a run, or standalone); not a run. |
 | `Topic` | — | Needed for the Course Map. |
 | `MaterialMapping` | — | Needed for requirement → teaching-material mapping. |
 
@@ -91,8 +92,9 @@ Consequential claim / domain object
 | Entity | Meaning | Minimum fields |
 |---|---|---|
 | `WorkflowRun` | One execution of an import/analysis/change workflow, including deterministic and LLM steps. | id, workflow_version, course_id, input resource_version_ids, status, started_at, finished_at |
+| `ModelCall` | One logical model call: its final outcome after retries and repair turns. | id, workflow_run_id (nullable: standalone calls such as evaluations), provider, model, model_role, prompt_version, output_schema, status, error_category, attempts, repair_rounds, token counts, latency_ms, started_at, finished_at |
 
-Per-step and per-model-call records (step name, model, prompt version, tokens, latency, retries, error class) belong to a `WorkflowRun`. Their exact shape is defined when the provider integration and observability are implemented.
+A `ModelCall` belongs to a `WorkflowRun` when made inside one. Per-attempt detail (each HTTP request, its latency and error) is in structured logs, not separate rows. A `ModelCall` never stores secrets or prompts; its output summary is the *validated* output only. See [ADR-005](../decisions/ADR-005-ai-provider-boundary.md). Per-step records (step name, node) are defined when workflow orchestration is implemented.
 
 ---
 
@@ -100,6 +102,7 @@ Per-step and per-model-call records (step name, model, prompt version, tokens, l
 
 | Enum | Values | Notes |
 |---|---|---|
+| `ModelCall.status` / `error_category` | `succeeded`, `failed` / `timeout`, `connection`, `rate_limited`, `server_error`, `authentication`, `invalid_request`, `truncated`, `refused`, `invalid_output`, `unexpected` | The first four categories are transient and retried; the rest fail fast. |
 | `verification_status` | `verified`, `needs_review`, `rejected` | Only `verified` claims are presented as fact. |
 | `StudyState.state` | `NOT_STARTED`, `STUDYING`, `STUDIED` | Opening a document never changes state automatically. |
 | `DependencyEdge.relation` | `BEFORE`, `REQUIRED_FOR`, `SUPPORTED_BY` | Extended only via a documented contract change. |
