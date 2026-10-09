@@ -12,9 +12,9 @@ development on the host. Invalid or missing configuration fails at startup.
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import BeforeValidator, Field, SecretStr, field_validator
+from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # backend/app/core/config.py -> repository root. Missing files are ignored,
@@ -26,6 +26,10 @@ ASYNC_DATABASE_SCHEME = "postgresql+asyncpg"
 
 AppEnv = Literal["development", "test", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+# Values copied unchanged from .env.example are configuration mistakes.
+_PLACEHOLDER_PREFIXES = ("replace-with", "https://replace-with")
+_BASE_URL = re.compile(r"^https?://[^/\s]+(/\S*)?$")
 
 # A browser Origin: scheme://host[:port], with no path and no trailing slash.
 _ORIGIN = re.compile(r"^https?://[A-Za-z0-9.\-\[\]:]+$")
@@ -62,6 +66,57 @@ class Settings(BaseSettings):
     # Browser origins allowed to read API responses (CORS). Empty by default:
     # no cross-origin access unless explicitly configured.
     cors_allowed_origins: CommaSeparated = []
+
+    # Nebius Token Factory (OpenAI-compatible). Optional so the API can start
+    # without AI configured; building a provider fails fast if they are missing.
+    nebius_api_key: SecretStr | None = None
+    nebius_base_url: str | None = None
+    # Model roles, not model names, are what code asks for. IDs must be
+    # verified against the live catalog (docs/experiments/model-catalog.md).
+    model_fast: str | None = None
+    model_strong: str | None = None
+    embedding_model: str | None = None
+
+    # Reliability bounds for every model call (see ADR-005).
+    ai_request_timeout_seconds: float = Field(default=60.0, gt=0)
+    ai_max_attempts: int = Field(default=3, ge=1, le=10)
+    ai_backoff_base_seconds: float = Field(default=1.0, gt=0)
+    ai_backoff_max_seconds: float = Field(default=20.0, gt=0)
+    ai_max_repair_attempts: int = Field(default=1, ge=0, le=3)
+    # Reasoning shares this budget, so it is far above the visible answer size.
+    ai_max_output_tokens: int = Field(default=4096, ge=256)
+
+    @field_validator(
+        "nebius_api_key",
+        "nebius_base_url",
+        "model_fast",
+        "model_strong",
+        "embedding_model",
+        mode="before",
+    )
+    @classmethod
+    def _blank_is_unset_placeholder_is_error(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return None  # `KEY=` in .env means "not configured"
+            if value.startswith(_PLACEHOLDER_PREFIXES):
+                raise ValueError("still a placeholder value; set a verified value or leave empty")
+        return value
+
+    @field_validator("nebius_base_url")
+    @classmethod
+    def _require_http_url(cls, value: str | None) -> str | None:
+        # A malformed URL would otherwise surface as a retried "connection" error.
+        if value is not None and not _BASE_URL.match(value):
+            raise ValueError("NEBIUS_BASE_URL must be an http(s):// URL with a host")
+        return value
+
+    @model_validator(mode="after")
+    def _backoff_bounds_ordered(self) -> Self:
+        if self.ai_backoff_max_seconds < self.ai_backoff_base_seconds:
+            raise ValueError("AI_BACKOFF_MAX_SECONDS must be >= AI_BACKOFF_BASE_SECONDS")
+        return self
 
     @field_validator("cors_allowed_origins")
     @classmethod

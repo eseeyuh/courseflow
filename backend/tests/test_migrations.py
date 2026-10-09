@@ -27,6 +27,7 @@ EXPECTED_TABLES = {
     "source_spans",
     "workflow_runs",
     "workflow_run_inputs",
+    "model_calls",
 }
 
 EXPECTED_SOURCE_SPAN_CHECKS = {
@@ -120,7 +121,7 @@ def test_upgrade_downgrade_upgrade_from_empty_database(test_database_url: URL) -
         assert "vector" in state.extensions
         assert state.source_span_checks == EXPECTED_SOURCE_SPAN_CHECKS
         assert "fk_resources_current_version" in state.foreign_keys
-        assert state.version == "0001"
+        assert state.version == "0002"
 
         downgrade(url, "base")
         state = _state(url)
@@ -133,6 +134,6 @@ def test_upgrade_downgrade_upgrade_from_empty_database(test_database_url: URL) -
         state = _state(url)
         assert state.tables == EXPECTED_TABLES
         assert "vector" in state.extensions
-        assert state.version == "0001"
+        assert state.version == "0002"
     finally:
         drop_database(url)
