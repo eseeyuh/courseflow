@@ -29,14 +29,14 @@ from pptx.table import Table
 from app.domain.enums import BlockKind
 from app.ingestion.errors import IngestionError
 from app.ingestion.guards import IngestionLimits
-from app.ingestion.parsers.common import Parser, make_block, parser_version
+from app.ingestion.parsers.common import Parser, ParserOutput, make_block, parser_version
 from app.ingestion.schemas import ParsedBlock
 
 _CELL_SEPARATOR = " | "
 _OPEN_ERRORS = (PackageNotFoundError, KeyError, zipfile.BadZipFile, XMLSyntaxError, ValueError)
 
 
-def parse_pptx(content: bytes, limits: IngestionLimits) -> list[ParsedBlock]:
+def parse_pptx(content: bytes, limits: IngestionLimits) -> ParserOutput:
     try:
         presentation = Presentation(io.BytesIO(content))
     except _OPEN_ERRORS:
@@ -51,7 +51,7 @@ def parse_pptx(content: bytes, limits: IngestionLimits) -> list[ParsedBlock]:
         notes = make_block(BlockKind.SLIDE_NOTES, _notes_text(slide), slide_number=number)
         if notes is not None:
             blocks.append(notes)
-    return blocks
+    return ParserOutput(blocks)
 
 
 def _shape_texts(shapes: Iterable[BaseShape]) -> Iterator[str]:

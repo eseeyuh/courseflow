@@ -28,7 +28,13 @@ from app.domain.enums import BlockKind
 from app.ingestion.errors import IngestionError
 from app.ingestion.guards import IngestionLimits
 from app.ingestion.normalize import normalize_text
-from app.ingestion.parsers.common import HeadingTrail, Parser, make_block, parser_version
+from app.ingestion.parsers.common import (
+    HeadingTrail,
+    Parser,
+    ParserOutput,
+    make_block,
+    parser_version,
+)
 from app.ingestion.schemas import ParsedBlock
 
 # Named explicitly: parsers differ on malformed markup, so the choice is part
@@ -50,12 +56,12 @@ _CELL_SEPARATOR = " | "
 _HTML_WHITESPACE = re.compile(r"[ \t\n\r\f]+")
 
 
-def parse_html(content: bytes, limits: IngestionLimits) -> list[ParsedBlock]:
+def parse_html(content: bytes, limits: IngestionLimits) -> ParserOutput:
     soup = BeautifulSoup(_decode(content), _TREE_BUILDER)
     walker = _BlockWalker()
     walker.walk(soup)
     walker.flush()
-    return walker.blocks
+    return ParserOutput(walker.blocks)
 
 
 def _decode(content: bytes) -> str:

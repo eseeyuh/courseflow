@@ -7,11 +7,18 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from importlib.metadata import version
+from typing import NamedTuple
 
 from app.domain.enums import BlockKind
 from app.ingestion.guards import IngestionLimits
 from app.ingestion.normalize import normalize_text
 from app.ingestion.schemas import ParsedBlock, SpanLocator, section_path
+
+
+class ParserOutput(NamedTuple):
+    blocks: list[ParsedBlock]
+    # Physical pages in the source (PDF only); used for observability, not stored.
+    page_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +31,7 @@ class Parser:
 
     name: str
     version: str
-    parse: Callable[[bytes, IngestionLimits], list[ParsedBlock]]
+    parse: Callable[[bytes, IngestionLimits], ParserOutput]
     # Detail for `empty_text` when parsing succeeds but yields no blocks.
     empty_reason: str
 

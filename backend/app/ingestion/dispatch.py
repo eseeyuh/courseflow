@@ -35,14 +35,14 @@ def parse_source(source: RawSource, limits: IngestionLimits) -> ParsedDocument:
     media_type = check_before_parse(source, limits)
     parser = PARSERS[media_type]
     try:
-        blocks = parser.parse(source.content, limits)
+        output = parser.parse(source.content, limits)
     except IngestionError:
         raise
     except Exception as exc:  # noqa: BLE001 - every other failure is a parser_failure
         # Not chained: the original message may quote document text or a path.
         raise IngestionError.parser_failure(exc) from None
 
-    if not blocks:
+    if not output.blocks:
         raise IngestionError.empty_text(parser.empty_reason)
 
     document = ParsedDocument(
@@ -51,7 +51,8 @@ def parse_source(source: RawSource, limits: IngestionLimits) -> ParsedDocument:
         byte_size=len(source.content),
         parser_name=parser.name,
         parser_version=parser.version,
-        blocks=tuple(blocks),
+        blocks=tuple(output.blocks),
+        page_count=output.page_count,
     )
     check_extracted_chars(len(document.extracted_text), limits)
     return document

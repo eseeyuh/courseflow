@@ -27,7 +27,13 @@ from app.domain.enums import BlockKind
 from app.ingestion.errors import IngestionError
 from app.ingestion.guards import IngestionLimits
 from app.ingestion.normalize import normalize_text
-from app.ingestion.parsers.common import HeadingTrail, Parser, make_block, parser_version
+from app.ingestion.parsers.common import (
+    HeadingTrail,
+    Parser,
+    ParserOutput,
+    make_block,
+    parser_version,
+)
 from app.ingestion.schemas import ParsedBlock
 
 _HEADING_STYLE = re.compile(r"^Heading ([1-9])$")
@@ -35,12 +41,12 @@ _CELL_SEPARATOR = " | "
 _OPEN_ERRORS = (PackageNotFoundError, KeyError, zipfile.BadZipFile, XMLSyntaxError, ValueError)
 
 
-def parse_docx(content: bytes, limits: IngestionLimits) -> list[ParsedBlock]:
+def parse_docx(content: bytes, limits: IngestionLimits) -> ParserOutput:
     try:
         document = Document(io.BytesIO(content))
     except _OPEN_ERRORS:
         raise IngestionError.corrupt_file("not a readable DOCX document") from None
-    return _body_blocks(document)
+    return ParserOutput(_body_blocks(document))
 
 
 def _body_blocks(document: DocxDocument) -> list[ParsedBlock]:

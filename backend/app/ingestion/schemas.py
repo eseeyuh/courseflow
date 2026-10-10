@@ -161,6 +161,25 @@ class ParsedDocument(_Frozen):
     parser_version: str = Field(min_length=1)
     # Source order. Empty documents are an ingestion error, not a ParsedDocument.
     blocks: tuple[ParsedBlock, ...] = Field(min_length=1)
+    # Physical pages in the source (PDF only). Observability, not persisted:
+    # it makes pages without a text layer visible.
+    page_count: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _pages_within_page_count(self) -> Self:
+        if self.page_count is not None and any(
+            (block.locator.page_number or 0) > self.page_count for block in self.blocks
+        ):
+            raise ValueError("a block's page number exceeds page_count")
+        return self
+
+    @property
+    def empty_page_count(self) -> int | None:
+        """Pages that yielded no text block (e.g. scanned pages), or None if unknown."""
+        if self.page_count is None:
+            return None
+        pages_with_text = {b.locator.page_number for b in self.blocks if b.kind is BlockKind.PAGE}
+        return self.page_count - len(pages_with_text)
 
     @property
     def extracted_text(self) -> str:

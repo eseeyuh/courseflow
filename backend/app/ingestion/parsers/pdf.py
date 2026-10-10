@@ -16,7 +16,7 @@ import pypdfium2.raw as pdfium_raw
 from app.domain.enums import BlockKind
 from app.ingestion.errors import IngestionError
 from app.ingestion.guards import IngestionLimits, check_pdf_pages
-from app.ingestion.parsers.common import Parser, make_block, parser_version
+from app.ingestion.parsers.common import Parser, ParserOutput, make_block, parser_version
 from app.ingestion.schemas import ParsedBlock
 
 # PDFium is not thread-safe: one document is processed at a time per process.
@@ -24,7 +24,7 @@ _PDFIUM_LOCK = threading.Lock()
 _ENCRYPTED = {pdfium_raw.FPDF_ERR_PASSWORD, pdfium_raw.FPDF_ERR_SECURITY}
 
 
-def parse_pdf(content: bytes, limits: IngestionLimits) -> list[ParsedBlock]:
+def parse_pdf(content: bytes, limits: IngestionLimits) -> ParserOutput:
     with _PDFIUM_LOCK:
         try:
             document = pdfium.PdfDocument(content)
@@ -43,7 +43,7 @@ def parse_pdf(content: bytes, limits: IngestionLimits) -> list[ParsedBlock]:
                 )
                 if block is not None:
                     blocks.append(block)
-            return blocks
+            return ParserOutput(blocks, page_count=page_count)
         finally:
             document.close()
 

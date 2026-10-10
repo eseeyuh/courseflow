@@ -25,7 +25,7 @@ from app.ingestion.dispatch import parse_source
 from app.ingestion.errors import IngestionError
 from app.ingestion.guards import IngestionLimits
 from app.ingestion.hashing import sha256_hex
-from app.ingestion.parsers.common import Parser
+from app.ingestion.parsers.common import Parser, ParserOutput
 from app.ingestion.schemas import PREAMBLE, ParsedDocument, RawSource
 from tests.fixtures.ingestion.make_fixtures import FIXTURE_DIR, MODULE_PAGE_HTML
 
@@ -430,7 +430,7 @@ def test_extracted_character_limit_is_enforced() -> None:
 def test_unexpected_parser_exception_is_a_sanitised_parser_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def explode(content: bytes, limits: IngestionLimits) -> list:  # type: ignore[type-arg]
+    def explode(content: bytes, limits: IngestionLimits) -> ParserOutput:
         raise ValueError("token 'Student 12345' at C:\\Users\\someone\\brief.html")
 
     broken = Parser(name="broken", version="0", parse=explode, empty_reason="-")
