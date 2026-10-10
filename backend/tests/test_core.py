@@ -102,6 +102,70 @@ def test_env_example_parses_with_ai_unconfigured() -> None:
 
     assert settings.nebius_api_key is None
     assert settings.model_fast and settings.model_strong and settings.nebius_base_url
+    assert settings.raw_storage_dir is None
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_blank_raw_storage_dir_means_not_configured(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+    monkeypatch.setenv("RAW_STORAGE_DIR", value)
+
+    assert Settings(_env_file=None).raw_storage_dir is None  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("value", ["storage/raw", "./raw", "raw"])
+def test_relative_raw_storage_dir_fails_fast(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    # A relative path would resolve against each process's working directory,
+    # silently creating one store per process behind the same sha256: refs.
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+    monkeypatch.setenv("RAW_STORAGE_DIR", value)
+
+    with pytest.raises(ValidationError, match="RAW_STORAGE_DIR must be an absolute path"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_absolute_raw_storage_dir_is_accepted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+    monkeypatch.setenv("RAW_STORAGE_DIR", str(tmp_path))
+
+    assert Settings(_env_file=None).raw_storage_dir == tmp_path  # type: ignore[call-arg]
+
+
+def test_ingestion_limit_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.ingest_max_bytes == 25 * 1024 * 1024
+    assert settings.ingest_max_pdf_pages == 500
+    assert settings.ingest_max_extracted_chars == 2_000_000
+    assert settings.ingest_max_zip_members == 2_000
+    assert settings.ingest_max_zip_uncompressed_bytes == 200 * 1024 * 1024
+    assert settings.ingest_max_zip_compression_ratio == 100.0
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("INGEST_MAX_BYTES", "0"),
+        ("INGEST_MAX_PDF_PAGES", "0"),
+        ("INGEST_MAX_EXTRACTED_CHARS", "0"),
+        ("INGEST_MAX_ZIP_MEMBERS", "0"),
+        ("INGEST_MAX_ZIP_UNCOMPRESSED_BYTES", "0"),
+        ("INGEST_MAX_ZIP_COMPRESSION_RATIO", "1"),
+    ],
+)
+def test_ingestion_limits_are_bounded(
+    monkeypatch: pytest.MonkeyPatch, field: str, value: str
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+    monkeypatch.setenv(field, value)
+
+    with pytest.raises(ValidationError, match=field.lower()):
+        Settings(_env_file=None)  # type: ignore[call-arg]
 
 
 def test_ai_settings_are_stripped(monkeypatch: pytest.MonkeyPatch) -> None:

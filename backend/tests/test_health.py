@@ -14,6 +14,7 @@ import pytest
 from fastapi import FastAPI
 
 from app.api.deps import get_engine
+from app.core.config import Settings
 
 pytestmark = pytest.mark.anyio
 
@@ -37,6 +38,16 @@ async def test_api_health_200_when_database_available(client: httpx.AsyncClient)
     assert body["environment"] == "test"
     assert body["checks"] == {"database": "ok"}
     assert body["version"]
+
+
+async def test_api_starts_without_raw_storage_configured(
+    settings: Settings, client: httpx.AsyncClient
+) -> None:
+    # Raw storage is needed only by ingestion; the rest of the API must not depend on it.
+    assert settings.raw_storage_dir is None
+
+    assert (await client.get("/health/live")).status_code == 200
+    assert (await client.get("/api/v1/health")).status_code == 200
 
 
 async def test_liveness_200(client: httpx.AsyncClient) -> None:
