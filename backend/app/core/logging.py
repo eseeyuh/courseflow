@@ -13,7 +13,7 @@ import json
 import logging
 import sys
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TextIO
 
 # Attributes every LogRecord has; anything else was passed via ``extra``.
 # ``color_message`` is uvicorn's ANSI-coloured duplicate of the message.
@@ -42,9 +42,9 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
-def configure_logging(level: str) -> None:
-    """Send all application and uvicorn logs to stdout as JSON lines."""
-    handler = logging.StreamHandler(sys.stdout)
+def configure_logging(level: str, stream: TextIO | None = None) -> None:
+    """Send all application and uvicorn logs to ``stream`` (default stdout) as JSON lines."""
+    handler = logging.StreamHandler(stream or sys.stdout)
     handler.setFormatter(JsonFormatter())
 
     root = logging.getLogger()

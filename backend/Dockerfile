@@ -23,8 +23,12 @@ FROM python:3.12.15-slim-trixie AS runtime
 ENV PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH"
 
+# The raw-source store's mount point, owned by the service user. Docker copies
+# this ownership into a new named volume mounted here, so the non-root
+# process can write to it without chmod 777 or running as root.
 RUN groupadd --system --gid 10001 courseflow \
- && useradd --system --gid 10001 --uid 10001 --no-create-home courseflow
+ && useradd --system --gid 10001 --uid 10001 --no-create-home courseflow \
+ && install -d -o courseflow -g courseflow -m 0750 /var/lib/courseflow/raw
 
 WORKDIR /app
 COPY --from=builder --chown=courseflow:courseflow /app /app
