@@ -95,6 +95,8 @@ class BlockKind(StrEnum):
 class IngestionErrorCategory(StrEnum):
     """Why one file could not be ingested. Stable: used in logs and evaluation."""
 
+    # An unsupported file format, container variant or intentionally unsupported
+    # subtype (e.g. macro-enabled, encrypted or legacy Office), not only an extension.
     UNSUPPORTED_TYPE = "unsupported_type"
     CORRUPT_FILE = "corrupt_file"
     EMPTY_TEXT = "empty_text"

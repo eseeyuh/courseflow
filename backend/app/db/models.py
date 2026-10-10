@@ -123,7 +123,8 @@ class Resource(UUIDPrimaryKey, Timestamps, Base):
 class ResourceVersion(UUIDPrimaryKey, CreatedAt, Base):
     """Immutable content snapshot of a Resource.
 
-    Identified by the SHA-256 of the original bytes (``content_hash``); the
+    ``content_hash`` (SHA-256 of the original bytes) identifies the content, not
+    the row: a revert (A -> B -> A) repeats a hash in a later version. The
     bytes themselves live in the raw object store under ``raw_object_ref``.
     ``extracted_text`` is the normalised text that SourceSpan offsets index.
     """

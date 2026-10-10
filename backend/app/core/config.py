@@ -92,7 +92,8 @@ class Settings(BaseSettings):
     raw_storage_dir: Path | None = None
 
     # Safety limits for document ingestion. Inputs beyond them are rejected
-    # as `limit_exceeded`, never parsed.
+    # as `limit_exceeded`: size and ZIP limits before parsing, PDF pages once
+    # the document is open, extracted characters after parsing.
     ingest_max_bytes: int = Field(default=25 * 1024 * 1024, ge=1)
     ingest_max_pdf_pages: int = Field(default=500, ge=1)
     ingest_max_extracted_chars: int = Field(default=2_000_000, ge=1)

@@ -5,8 +5,11 @@
 """Persist one source as Resource -> ResourceVersion -> SourceSpans.
 
 The caller owns the database transaction and decides to commit or roll
-back. Each file's rows are written inside one SAVEPOINT, so a failed file
-leaves no rows behind and other files in the same import are unaffected.
+back. A rejected file (an input problem) is detected before anything is
+written. Each file's rows are written inside one SAVEPOINT, so an error
+while writing leaves no partial rows for that file. In a batch, rejected
+files are recorded and the batch continues; any other error stops the batch
+and the caller rolls back the whole transaction.
 
 Guarantees:
 - A failed import leaves no partial database rows.
@@ -84,13 +87,23 @@ class IngestResult:
     byte_size: int
     span_count: int
     spans_by_kind: dict[BlockKind, int]
+    # The resource's stored type: set on first import, never changed by a re-import.
+    resource_type: ResourceType
+    # PDF only, and only when the file was parsed: pages in the file, and
+    # pages that produced no text (e.g. scanned pages).
+    total_page_count: int | None = None
+    empty_page_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class IngestFailure:
-    """One file rejected for an input problem; it wrote no rows."""
+    """One file rejected for an input problem; it wrote no rows.
+
+    ``content_hash`` matches the ``ingestion.rejected`` log entry.
+    """
 
     source_uri: str
+    content_hash: str
     category: IngestionErrorCategory
     detail: str
 
@@ -137,6 +150,7 @@ async def ingest_file(
         logger.warning(
             "ingestion.rejected",
             extra={
+                "course_id": str(course_id),
                 "category": exc.category.value,
                 "detail": exc.detail,
                 "content_hash": content_hash,
@@ -180,6 +194,9 @@ async def ingest_file(
         byte_size=document.byte_size,
         span_count=len(span_rows),
         spans_by_kind=dict(Counter(row["block_kind"] for row in span_rows)),
+        resource_type=resource.type,
+        total_page_count=document.page_count,
+        empty_page_count=document.empty_page_count,
     )
     _log_created(result, document, duration_ms=round((time.monotonic() - started) * 1000))
     return result
@@ -198,24 +215,29 @@ async def ingest_files(
     An input problem with one file is recorded as ``IngestFailure`` and the
     batch continues. Any other error stops the batch and propagates; the
     caller then rolls back its transaction.
+
+    Files are processed in ``source_uri`` order, so concurrent batches take
+    resource row locks in the same order and cannot deadlock each other.
+    Outcomes are returned in input order.
     """
-    outcomes: list[IngestResult | IngestFailure] = []
-    for item in items:
+    outcomes: dict[int, IngestResult | IngestFailure] = {}
+    for index in sorted(range(len(items)), key=lambda i: items[i].source.source_uri):
+        item = items[index]
         try:
-            outcomes.append(
-                await ingest_file(
-                    session,
-                    store,
-                    course_id=course_id,
-                    resource_type=item.resource_type,
-                    source=item.source,
-                    limits=limits,
-                    title=item.title,
-                )
+            outcomes[index] = await ingest_file(
+                session,
+                store,
+                course_id=course_id,
+                resource_type=item.resource_type,
+                source=item.source,
+                limits=limits,
+                title=item.title,
             )
         except IngestionError as exc:
-            outcomes.append(IngestFailure(item.source.source_uri, exc.category, exc.detail))
-    return outcomes
+            outcomes[index] = IngestFailure(
+                item.source.source_uri, sha256_hex(item.source.content), exc.category, exc.detail
+            )
+    return [outcomes[index] for index in range(len(items))]
 
 
 def build_span_rows(document: ParsedDocument) -> list[dict[str, Any]]:
@@ -267,9 +289,16 @@ async def _ensure_raw_object(
     store: RawObjectStore, content: bytes, current: ResourceVersion
 ) -> None:
     """Verify (and restore or repair) the stored original of an unchanged file."""
+    was_missing = not await asyncio.to_thread(store.exists, current.raw_object_ref)
     ref = await asyncio.to_thread(store.put, content)
     if ref != current.raw_object_ref:
         raise RawObjectIntegrityError("stored reference does not match the current version")
+    if was_missing:
+        # A committed version's original had disappeared: worth an alert.
+        logger.warning(
+            "raw_store.object_restored",
+            extra={"content_hash": current.content_hash, "version_id": str(current.id)},
+        )
 
 
 async def _lock_or_create_resource(
@@ -382,6 +411,7 @@ async def _unchanged(
         byte_size=current.byte_size,
         span_count=sum(spans_by_kind.values()),
         spans_by_kind=spans_by_kind,
+        resource_type=resource.type,
     )
 
 

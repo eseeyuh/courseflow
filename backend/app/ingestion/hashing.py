@@ -4,8 +4,9 @@
 
 """Content identity.
 
-``content_hash`` (raw bytes) identifies a ResourceVersion: the bytes are the
-source of truth, and a parser upgrade must not look like a source change.
+``content_hash`` (raw bytes) identifies content and decides whether an import
+needs a new version: the bytes are the source of truth, and a parser upgrade
+must not look like a source change.
 ``text_hash`` (extracted text) lets change analysis tell a re-saved file
 from changed content.
 """

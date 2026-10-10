@@ -25,6 +25,7 @@ from app.core.config import Settings
 from app.db.models import Course, Institution, Resource, ResourceVersion, SourceSpan
 from app.domain.enums import BlockKind, IngestionErrorCategory, LmsType, MediaType, ResourceType
 from app.ingestion import service
+from app.ingestion.dispatch import parse_source
 from app.ingestion.errors import IngestionError
 from app.ingestion.guards import IngestionLimits
 from app.ingestion.hashing import sha256_hex
@@ -226,6 +227,7 @@ async def test_unchanged_import_restores_a_damaged_raw_object(
     course_id: uuid.UUID,
     request: pytest.FixtureRequest,
     damage: str,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     first = await _import(committed_session, store, course_id, _source(BRIEF))
     path = _object_path(raw_root, BRIEF)
@@ -235,11 +237,15 @@ async def test_unchanged_import_restores_a_damaged_raw_object(
         path.write_bytes(b"corrupted")
     request.getfixturevalue("no_parsing")
 
-    again = await _import(committed_session, store, course_id, _source(BRIEF))
+    with caplog.at_level(logging.WARNING):
+        again = await _import(committed_session, store, course_id, _source(BRIEF))
 
     assert not again.created and again.version_id == first.version_id
     assert store.open(first.raw_object_ref) == BRIEF  # restored / repaired
     await _assert_one_version(committed_session, first.span_count)
+    # A vanished or damaged original of a committed version is never silent.
+    expected = "raw_store.object_restored" if damage == "deleted" else "raw_store.object_repaired"
+    assert expected in [r.getMessage() for r in caplog.records]
 
 
 class _FailingStore:
@@ -493,6 +499,7 @@ async def test_batch_continues_past_a_bad_file(
     failure = outcomes[1]
     assert isinstance(failure, IngestFailure)
     assert (failure.source_uri, failure.category) == ("upload:b", "corrupt_file")
+    assert failure.content_hash == sha256_hex(b"not a pdf")  # matches the rejected log
     uris = await committed_session.scalars(select(Resource.source_uri).order_by("source_uri"))
     assert list(uris) == ["upload:a", "upload:c"]
 
@@ -694,7 +701,11 @@ async def test_unchanged_reports_the_version_it_observed_even_if_a_newer_one_com
             limits=LIMITS,
         )
     )
+    deadline = asyncio.get_running_loop().time() + 10
     while not gated.entered.is_set():  # A has read v1 and is inside store.put
+        if import_a.done() or asyncio.get_running_loop().time() > deadline:
+            gated.release.set()
+            raise AssertionError("import A never reached store.put")
         await asyncio.sleep(0.01)
 
     v2 = await _import(second_session, store, course_id, _source(PAGE, "brief.html"))
@@ -769,3 +780,201 @@ async def test_rejected_import_is_logged_with_its_category(
 
     rejected = next(r for r in caplog.records if r.getMessage() == "ingestion.rejected")
     assert _record_fields(rejected)["category"] == "corrupt_file"
+
+
+# --- review regressions -------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("content", "name"),
+    [
+        (BRIEF, "brief.docx"),
+        (LECTURE, "lecture.pptx"),
+        (HANDBOOK, "handbook.pdf"),
+        (PAGE, "module-page.html"),
+    ],
+    ids=["docx", "pptx", "pdf", "html"],
+)
+async def test_persisted_locators_and_excerpts_equal_the_parser_output(
+    committed_session: AsyncSession,
+    store: LocalRawObjectStore,
+    course_id: uuid.UUID,
+    content: bytes,
+    name: str,
+) -> None:
+    """Exact page, slide and section labels survive persistence, in order."""
+    await _import(committed_session, store, course_id, _source(content, name))
+    parsed = parse_source(_source(content, name), LIMITS)
+    committed_session.expire_all()
+    spans = list(await committed_session.scalars(select(SourceSpan).order_by(SourceSpan.ordinal)))
+
+    stored = [
+        (s.block_kind, s.page_number, s.slide_number, s.section_path, s.excerpt) for s in spans
+    ]
+    expected = [
+        (
+            b.kind,
+            b.locator.page_number,
+            b.locator.slide_number,
+            b.locator.section_path,
+            b.text,
+        )
+        for b in parsed.blocks
+    ]
+    assert stored == expected
+
+
+async def test_concurrent_identical_new_bytes_for_an_existing_resource_make_one_version(
+    committed_session: AsyncSession,
+    second_session: AsyncSession,
+    store: LocalRawObjectStore,
+    course_id: uuid.UUID,
+    test_database_url: URL,
+) -> None:
+    """Both importers have the resource (current = v1) loaded before the race;
+    the loser must re-read it under the lock, not trust its stale copy."""
+    await _import(committed_session, store, course_id, _source(BRIEF))  # v1
+
+    def ingest(session: AsyncSession) -> Any:
+        return ingest_file(
+            session,
+            store,
+            course_id=course_id,
+            resource_type=ResourceType.BRIEF,
+            source=_source(PAGE, "brief.html"),
+            limits=LIMITS,
+        )
+
+    first = await ingest(committed_session)  # v2 written, not committed
+    second_task = asyncio.create_task(ingest(second_session))
+    await _wait_for_lock_waiter(test_database_url)
+    await committed_session.commit()
+    second = await second_task
+    await second_session.commit()
+
+    assert first.created and first.version_number == 2
+    assert not second.created and second.version_id == first.version_id
+    assert [v.version_number for v in await _versions(committed_session)] == [1, 2]
+
+
+async def test_unchanged_shortcut_is_scoped_to_the_course(
+    committed_session: AsyncSession, store: LocalRawObjectStore, course_id: uuid.UUID
+) -> None:
+    other = Course(
+        institution=Institution(name="Other University", lms_type=LmsType.UPLOAD), title="Other"
+    )
+    committed_session.add(other)
+    await committed_session.commit()
+
+    a = await _import(committed_session, store, course_id, _source(BRIEF))
+    b = await _import(committed_session, store, other.id, _source(BRIEF))  # same URI and bytes
+
+    assert a.created and b.created and b.resource_created
+    assert a.resource_id != b.resource_id
+    assert len(await _versions(committed_session)) == 2
+
+
+async def test_failed_second_version_leaves_the_first_one_current(
+    committed_session: AsyncSession,
+    store: LocalRawObjectStore,
+    course_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    v1 = await _import(committed_session, store, course_id, _source(BRIEF))
+    original = service._create_version
+
+    async def create_then_fail(*args: Any, **kwargs: Any) -> ResourceVersion:
+        await original(*args, **kwargs)  # v2 and its spans flushed, current moved
+        raise RuntimeError("database failure while writing v2")
+
+    monkeypatch.setattr(service, "_create_version", create_then_fail)
+    with pytest.raises(RuntimeError):
+        await ingest_file(
+            committed_session,
+            store,
+            course_id=course_id,
+            resource_type=ResourceType.BRIEF,
+            source=_source(PAGE, "brief.html"),
+            limits=LIMITS,
+        )
+    await committed_session.commit()
+
+    committed_session.expire_all()
+    resource = await committed_session.scalar(select(Resource))
+    assert resource is not None and resource.current_version_id == v1.version_id
+    assert [v.version_number for v in await _versions(committed_session)] == [1]
+    assert await _count(committed_session, SourceSpan) == v1.span_count
+
+
+async def test_batch_with_the_same_file_twice_creates_one_version(
+    committed_session: AsyncSession, store: LocalRawObjectStore, course_id: uuid.UUID
+) -> None:
+    outcomes = await ingest_files(
+        committed_session,
+        store,
+        course_id=course_id,
+        items=_items(_source(BRIEF, uri="upload:a"), _source(BRIEF, uri="upload:a")),
+        limits=LIMITS,
+    )
+    await committed_session.commit()
+
+    first, second = outcomes
+    assert isinstance(first, IngestResult) and isinstance(second, IngestResult)
+    assert first.created and not second.created
+    assert second.version_id == first.version_id
+
+
+async def test_batch_returns_outcomes_in_input_order_while_locking_in_uri_order(
+    committed_session: AsyncSession,
+    store: LocalRawObjectStore,
+    course_id: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processed: list[str] = []
+    real = service.ingest_file
+
+    async def recording(*args: Any, **kwargs: Any) -> IngestResult:
+        processed.append(kwargs["source"].source_uri)
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(service, "ingest_file", recording)
+    outcomes = await ingest_files(
+        committed_session,
+        store,
+        course_id=course_id,
+        items=_items(
+            _source(PAGE, "c.html", "upload:c"),
+            _source(b"not a pdf", "b.pdf", "upload:b"),
+            _source(BRIEF, "a.docx", "upload:a"),
+        ),
+        limits=LIMITS,
+    )
+
+    assert processed == ["upload:a", "upload:b", "upload:c"]  # canonical lock order
+    assert [getattr(o, "source_uri", None) for o in outcomes] == [None, "upload:b", None]
+    assert [o.media_type for o in outcomes if isinstance(o, IngestResult)] == [
+        MediaType.HTML,
+        MediaType.DOCX,
+    ]
+
+
+async def test_result_reports_stored_type_and_pdf_page_counts(
+    committed_session: AsyncSession, store: LocalRawObjectStore, course_id: uuid.UUID
+) -> None:
+    pdf = await _import(
+        committed_session,
+        store,
+        course_id,
+        _source(HANDBOOK, "h.pdf", "upload:h"),
+        ResourceType.HANDBOOK,
+    )
+    assert (pdf.resource_type, pdf.total_page_count, pdf.empty_page_count) == (
+        ResourceType.HANDBOOK,
+        4,
+        1,
+    )
+
+    docx = await _import(committed_session, store, course_id, _source(BRIEF))
+    assert (docx.total_page_count, docx.empty_page_count) == (None, None)
+    again = await _import(committed_session, store, course_id, _source(BRIEF), ResourceType.LECTURE)
+    assert again.resource_type is ResourceType.BRIEF  # the stored type, not the request

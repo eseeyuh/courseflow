@@ -9,6 +9,7 @@ Order matters and is part of the contract:
 1. byte size                      -> limit_exceeded
 2. extension allowlist            -> unsupported_type
 3. DOCX/PPTX package, inspected from the ZIP directory only:
+   OLE file (legacy or encrypted) -> unsupported_type
    not a ZIP                      -> corrupt_file
    macro project present          -> unsupported_type
    members / uncompressed size /
@@ -16,8 +17,10 @@ Order matters and is part of the contract:
    macro-enabled or wrong content
    type (read only after limits)  -> unsupported_type / corrupt_file
 
-PDF page count and extracted-character limits are checked by the parsers
-through the helpers below.
+The PDF page count is checked by the PDF parser after PDFium opens the file,
+and the extracted-character limit by dispatch.parse_source after parsing,
+both through the helpers below. Damaged package members are found by the
+parsers (corrupt_file).
 
 These are bounded defensive checks against the expected zip-bomb and
 resource-exhaustion cases, not a guarantee against every malformed input.
@@ -47,6 +50,8 @@ _MEDIA_TYPE_BY_EXTENSION: dict[str, MediaType] = {
 _SUPPORTED_EXTENSIONS = ", ".join(sorted(_MEDIA_TYPE_BY_EXTENSION))
 
 _OOXML_CONTENT_TYPES = "[Content_Types].xml"
+# Signature of an OLE compound file: legacy Office binaries and encrypted OOXML.
+_OLE_COMPOUND_FILE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 # The package's main part content type, as listed in [Content_Types].xml.
 _OOXML_MAIN_CONTENT_TYPE: dict[MediaType, bytes] = {
     MediaType.DOCX: (
@@ -122,12 +127,19 @@ def check_ooxml_package(content: bytes, media_type: MediaType, limits: Ingestion
     """Defensive checks on a DOCX/PPTX package before any parser opens it.
 
     Limits member count, declared uncompressed size and compression ratio,
-    and checks the archive can be read. Sizes come from the ZIP central
-    directory; in our tests CPython's zipfile stopped at a member's declared
-    size (and then failed its CRC check) when that size understated the
-    real data.
+    and reads only the central directory and ``[Content_Types].xml``. Sizes
+    come from the central directory and can understate the real data;
+    CPython's zipfile stops at a member's declared size and then fails its CRC
+    check, so such a member is rejected as corrupt_file when the parser reads
+    it (test_understated_member_size_is_rejected).
     """
     label = "DOCX" if media_type is MediaType.DOCX else "PPTX"
+    if content.startswith(_OLE_COMPOUND_FILE):
+        # Legacy .doc/.ppt, or an encrypted Office file: not an OOXML package.
+        raise IngestionError.unsupported_type(
+            f"encrypted or legacy Office container is unsupported; save it as an unprotected "
+            f".{label.lower()}"
+        )
     try:
         archive = zipfile.ZipFile(io.BytesIO(content))
     except _ZIP_READ_ERRORS:

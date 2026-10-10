@@ -32,7 +32,7 @@ empty (nullable).
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import context, op
 
 # revision identifiers, used by Alembic.
 revision: str = "0003"
@@ -87,6 +87,12 @@ class MigrationPreconditionError(RuntimeError):
 
 
 def _check_preconditions() -> None:
+    if context.is_offline_mode():
+        # --sql renders a script without a connection, so the data checks
+        # cannot run; refuse rather than emit DDL that skips them.
+        raise MigrationPreconditionError(
+            "0003: preconditions need a live database; run without --sql"
+        )
     bind = op.get_bind()
 
     def count(sql: str) -> int:

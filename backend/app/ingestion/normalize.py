@@ -5,7 +5,8 @@
 """Conservative text normalisation, applied to one block at a time.
 
 Changes only representation, never wording: line endings, invisible control
-characters, Unicode composition (NFC) and runs of spaces/tabs. NFKC is
+characters, Unicode composition (NFC), runs of spaces/tabs, spaces at line
+edges and runs of blank lines (at most one is kept). NFKC is
 deliberately not used: it rewrites visible characters (ligatures, full-width
 forms, superscripts), so excerpts would stop matching the source. Because it
 runs per block, it can never merge text across a page, slide or block

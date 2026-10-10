@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 import pytest
+from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import URL, text
@@ -16,7 +17,13 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db import models  # noqa: F401  (registers every table on Base.metadata)
 from app.db.base import Base
-from tests.db_utils import downgrade, drop_database, migrate, recreate_database
+from tests.db_utils import (
+    alembic_config,
+    downgrade,
+    drop_database,
+    migrate,
+    recreate_database,
+)
 
 MIGRATIONS_DATABASE = "courseflow_migrations_test"
 
@@ -369,3 +376,10 @@ def _scalar(url: URL, statement: str) -> object:
             await engine.dispose()
 
     return asyncio.run(run())
+
+
+def test_0003_refuses_offline_sql_mode(test_database_url: URL) -> None:
+    """--sql renders without a connection, so the data checks cannot run."""
+    url = test_database_url.set(database=MIGRATIONS_DATABASE)
+    with pytest.raises(RuntimeError, match="preconditions need a live database"):
+        command.upgrade(alembic_config(url), "0002:0003", sql=True)

@@ -13,7 +13,10 @@ BACKEND = Path(__file__).resolve().parents[1]
 INGESTION = BACKEND / "app" / "ingestion"
 
 # Module prefixes that ingestion code must never import.
-FORBIDDEN = ("app.ai", "openai", "httpx", "httpx2", "requests", "urllib.request", "socket")
+FORBIDDEN = (
+    "app.ai", "openai", "anthropic", "httpx", "httpx2", "requests", "aiohttp", "urllib3",
+    "urllib.request", "http.client", "socket",
+)  # fmt: skip
 
 
 def _imports(path: Path) -> set[str]:

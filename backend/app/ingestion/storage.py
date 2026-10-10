@@ -22,6 +22,7 @@ That is harmless (same content, same name) and is left for a later cleanup.
 """
 
 import contextlib
+import errno
 import hashlib
 import logging
 import os
@@ -38,6 +39,8 @@ logger = logging.getLogger(__name__)
 _REF = re.compile(r"sha256:([0-9a-f]{64})")
 _REF_PREFIX = "sha256:"
 _READ_CHUNK = 1024 * 1024
+# Fixed content for LocalRawObjectStore.self_check; never real source material.
+PROBE_CONTENT = b"CourseFlow raw store probe v1\n"
 
 
 class RawStoreError(Exception):
@@ -105,7 +108,13 @@ class LocalRawObjectStore:
         # Never created here: a mistyped path must fail, not become a second store.
         if not root.is_absolute():
             raise RawStoreNotConfiguredError("raw storage root must be an absolute path")
-        if not root.is_dir():
+        try:
+            is_dir = root.is_dir()
+        except OSError as exc:
+            raise RawStoreUnavailableError(
+                f"raw storage root could not be inspected ({errno_name(exc)})"
+            ) from None
+        if not is_dir:
             raise RawStoreUnavailableError("raw storage root does not exist or is not a directory")
         self._root = root
 
@@ -134,9 +143,9 @@ class LocalRawObjectStore:
         existing = _existing_digest(path)
         if existing == digest:
             return object_ref(digest)
-        if existing is not None:
-            logger.warning("raw_store.object_repaired", extra={"content_hash": digest})
         self._write_atomically(path, content)
+        if existing is not None:  # logged only once the repair has succeeded
+            logger.warning("raw_store.object_repaired", extra={"content_hash": digest})
         return object_ref(digest)
 
     def open(self, ref: str) -> bytes:
@@ -146,14 +155,55 @@ class LocalRawObjectStore:
             content = path.read_bytes()
         except FileNotFoundError:
             raise RawObjectNotFoundError(f"raw object {ref} is missing") from None
-        except OSError:
-            raise RawStoreUnavailableError(f"raw object {ref} could not be read") from None
+        except OSError as exc:
+            raise RawStoreUnavailableError(
+                f"raw object {ref} could not be read ({errno_name(exc)})"
+            ) from None
         if sha256_hex(content) != digest:
             raise RawObjectIntegrityError(f"raw object {ref} does not match its hash")
         return content
 
     def exists(self, ref: str) -> bool:
-        return self._path(parse_object_ref(ref)).is_file()
+        try:
+            return self._path(parse_object_ref(ref)).is_file()
+        except OSError as exc:
+            raise RawStoreUnavailableError(
+                f"raw object {ref} could not be inspected ({errno_name(exc)})"
+            ) from None
+
+    def self_check(self) -> dict[str, object]:
+        """Prove this process can use the store the way ingestion does.
+
+        Uses one fixed probe object (never real content): removes it, creates
+        it (temp file + atomic rename), reads it back, overwrites it with junk
+        and lets ``put`` repair it (atomic replace of an existing object), then
+        reads it again. Raises ``RawStoreError`` on any failure.
+        """
+        ref = object_ref(sha256_hex(PROBE_CONTENT))
+        path = self._path(parse_object_ref(ref))
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            raise RawStoreUnavailableError(
+                f"self-check: probe object could not be removed ({errno_name(exc)})"
+            ) from None
+
+        self.put(PROBE_CONTENT)
+        if self.open(ref) != PROBE_CONTENT:
+            raise RawStoreError("self-check: created probe object reads back differently")
+        try:
+            path.write_bytes(b"not the probe")
+        except OSError as exc:
+            raise RawStoreWriteError(
+                f"self-check: probe object could not be overwritten ({errno_name(exc)})"
+            ) from None
+        self.put(PROBE_CONTENT)  # repairs via os.replace over the existing file
+        if self.open(ref) != PROBE_CONTENT:
+            raise RawStoreError("self-check: replaced probe object reads back differently")
+        leftovers = len(list(path.parent.glob(".tmp-*")))
+        if leftovers:
+            raise RawStoreError(f"self-check: {leftovers} temporary file(s) left behind")
+        return {"probe_ref": ref, "created": True, "replaced": True, "temp_files": 0}
 
     def _path(self, digest: str) -> Path:
         return self._root / "sha256" / digest[:2] / digest[2:4] / digest
@@ -170,13 +220,21 @@ class LocalRawObjectStore:
                 os.fsync(temp.fileno())
             os.replace(temp_name, path)
             temp_name = None
-            _fsync_directory(path.parent)
-        except OSError:
-            raise RawStoreWriteError("raw object could not be written") from None
+        except OSError as exc:
+            raise RawStoreWriteError(
+                f"raw object could not be written ({errno_name(exc)})"
+            ) from None
         finally:
             if temp_name is not None:
                 with contextlib.suppress(OSError):
                     os.unlink(temp_name)
+        try:
+            _fsync_directory(path.parent)
+        except OSError as exc:
+            # The object is complete and visible; only its durability is uncertain.
+            raise RawStoreWriteError(
+                f"raw object was written but its directory could not be synced ({errno_name(exc)})"
+            ) from None
 
 
 def _existing_digest(path: Path) -> str | None:
@@ -191,9 +249,16 @@ def _existing_digest(path: Path) -> str | None:
                 digest.update(chunk)
     except FileNotFoundError:
         return None
-    except OSError:
-        raise RawStoreUnavailableError("existing raw object could not be read") from None
+    except OSError as exc:
+        raise RawStoreUnavailableError(
+            f"existing raw object could not be read ({errno_name(exc)})"
+        ) from None
     return digest.hexdigest()
+
+
+def errno_name(exc: OSError) -> str:
+    """e.g. "ENOSPC": tells disk-full from permission problems without a path."""
+    return errno.errorcode.get(exc.errno or 0, "unknown error")
 
 
 def _fsync_directory(directory: Path) -> None:

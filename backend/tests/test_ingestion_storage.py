@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+import errno
 import logging
 import os
 from pathlib import Path
@@ -15,6 +16,7 @@ from app.ingestion.storage import (
     LocalRawObjectStore,
     RawObjectIntegrityError,
     RawObjectNotFoundError,
+    RawStoreError,
     RawStoreNotConfiguredError,
     RawStoreUnavailableError,
     RawStoreWriteError,
@@ -221,3 +223,61 @@ def test_empty_content_is_storable(tmp_path: Path) -> None:
     store = LocalRawObjectStore(tmp_path)
     ref = store.put(b"")
     assert store.open(ref) == b""
+
+
+def test_failed_repair_is_not_logged_as_repaired(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    store = LocalRawObjectStore(tmp_path)
+    store.put(CONTENT)
+    _object_path(tmp_path).write_bytes(b"tampered")
+
+    def no_space(src: str, dst: str) -> None:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(os, "replace", no_space)
+    with caplog.at_level(logging.WARNING), pytest.raises(RawStoreWriteError) as excinfo:
+        store.put(CONTENT)
+
+    assert "raw_store.object_repaired" not in [r.getMessage() for r in caplog.records]
+    # The cause is named (disk full), and no path appears in the message.
+    assert str(excinfo.value) == "raw object could not be written (ENOSPC)"
+
+
+def test_directory_sync_failure_says_the_object_was_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.ingestion import storage
+
+    def sync_fails(directory: Path) -> None:
+        raise OSError(errno.EIO, "I/O error")
+
+    monkeypatch.setattr(storage, "_fsync_directory", sync_fails)
+    with pytest.raises(RawStoreWriteError, match="written but its directory could not be synced"):
+        LocalRawObjectStore(tmp_path).put(CONTENT)
+    assert _object_path(tmp_path).read_bytes() == CONTENT
+
+
+def test_exists_on_an_uninspectable_object_is_a_store_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = LocalRawObjectStore(tmp_path)
+
+    def denied(self: Path) -> bool:
+        raise PermissionError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr(Path, "is_file", denied)
+    with pytest.raises(RawStoreUnavailableError, match="EACCES"):
+        store.exists(REF)
+
+
+def test_self_check_names_leftover_temporary_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = LocalRawObjectStore(tmp_path)
+    probe = store.self_check()["probe_ref"]
+    digest = parse_object_ref(str(probe))
+    (_object_path(tmp_path, digest).parent / ".tmp-stale").write_bytes(b"")
+
+    with pytest.raises(RawStoreError, match="1 temporary file"):
+        store.self_check()
