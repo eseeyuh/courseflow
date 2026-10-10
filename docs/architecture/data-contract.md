@@ -58,9 +58,19 @@ Consequential claim / domain object
 | `Institution` | A university and its LMS connection. | id, name, lms_type |
 | `Course` | One module/course, independent of LMS payload formats. | id, institution_id, title, external_id, status |
 | `Topic` | A reconstructed learning topic grouping original materials (Course Map). | id, course_id, title, ordinal |
-| `Resource` | An original item: lecture, lab, reading, workshop, handbook, brief, announcement, page. | id, course_id, type, title, source_uri, current_version_id |
-| `ResourceVersion` | An immutable snapshot of a resource's content. Enables change detection and audit. | id, resource_id, content_hash, created_at, raw_text_ref |
-| `SourceSpan` | An atomic, addressable piece of a specific version. | id, resource_version_id, location (page_number / slide_number / section_path / timestamp_seconds, at least one required), start_offset + end_offset (both or neither, `0 <= start < end`, positions in the extracted text), excerpt (required, non-empty) |
+| `Resource` | An original item: lecture, lab, reading, workshop, handbook, brief, announcement, page. | id, course_id, type, title, source_uri (required, unique per course), current_version_id |
+| `ResourceVersion` | An immutable snapshot of a resource's content. Enables change detection and audit. | id, resource_id, version_number, content_hash, raw_object_ref, media_type, byte_size, display_name, parser_name, parser_version, extracted_text, text_hash, created_at |
+| `SourceSpan` | A structural block of a specific version, created by ingestion (a page, heading, paragraph, table, slide text or speaker notes). | id, resource_version_id, ordinal (0-based, unique per version), block_kind, location (page_number / slide_number / section_path / timestamp_seconds, at least one required, including the canonical locator of its block_kind), start_offset + end_offset (both or neither, `0 <= start < end`, `end - start = length(excerpt)`), excerpt (required, non-empty) |
+
+### Source identity, versions and spans
+
+- **`Resource.source_uri`** is the resource's logical identity inside its course, for example `upload:brief.pdf` or `demo://northbridge/ds101/brief`. It is never a local file system path. Importing the same `source_uri` again adds a version to the same resource.
+- **`content_hash`** is the SHA-256 (lowercase hex) of the original bytes. The bytes are the source of truth: a parser upgrade must not look like a source change. Importing bytes identical to the current version creates nothing, even if the file name changed; `display_name` is recorded per version for display only and never creates a version by itself. Changed bytes create the next version; content that reverts to an earlier state (A → B → A) is a new version.
+- **`raw_object_ref`** is always `sha256:` + `content_hash`. It names the bytes, not where they are stored, so a storage backend can change without changing references.
+- **`extracted_text`** is the normalised text of the whole version: the span excerpts in `ordinal` order, joined by one blank line (`"\n\n"`). **`text_hash`** is the SHA-256 of its UTF-8 bytes; the database verifies it. It lets change analysis tell a re-saved file (new `content_hash`, same `text_hash`) from changed content.
+- **Offsets** are Unicode code-point positions in `extracted_text`; for every ingestion span, `extracted_text[start_offset:end_offset] == excerpt`. Clients that use UTF-16 (JavaScript) must convert.
+- **Locators:** `page_number` is the physical 1-based page; `slide_number` the 1-based position in the presentation (hidden slides included); `section_path` is the heading chain joined with ` > `, or `(preamble)` for text before the first heading. Each block kind requires its canonical locator: `page` requires `page_number`; `heading`, `paragraph` and `table` require `section_path`; `slide_text` and `slide_notes` require `slide_number`. Additional locator fields are permitted by the provenance contract, though the v0.1 parsers normally emit only the locator relevant to the format. `timestamp_seconds` is reserved for media sources, which v0.1 does not ingest.
+- **Evidence finer than a span** references a `SourceSpan` plus sub-offsets in the evidence layer. It does not create a different kind of `SourceSpan`.
 
 ### Academic layer
 
@@ -103,6 +113,9 @@ A `ModelCall` belongs to a `WorkflowRun` when made inside one. Per-attempt detai
 | Enum | Values | Notes |
 |---|---|---|
 | `ModelCall.status` / `error_category` | `succeeded`, `failed` / `timeout`, `connection`, `rate_limited`, `server_error`, `authentication`, `invalid_request`, `truncated`, `refused`, `invalid_output`, `unexpected` | The first four categories are transient and retried; the rest fail fast. |
+| `ResourceVersion.media_type` | `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, `application/vnd.openxmlformats-officedocument.presentationml.presentation`, `text/html` | The format of this version; a resource may change format between versions. |
+| `SourceSpan.block_kind` | `page`, `heading`, `paragraph`, `table`, `slide_text`, `slide_notes` | Structural role; determines the canonical (required) locator. |
+| Ingestion error category | `unsupported_type`, `corrupt_file`, `empty_text`, `limit_exceeded`, `parser_failure` | Why one file was not ingested. A failed file creates no rows. |
 | `verification_status` | `verified`, `needs_review`, `rejected` | Only `verified` claims are presented as fact. |
 | `StudyState.state` | `NOT_STARTED`, `STUDYING`, `STUDIED` | Opening a document never changes state automatically. |
 | `DependencyEdge.relation` | `BEFORE`, `REQUIRED_FOR`, `SUPPORTED_BY` | Extended only via a documented contract change. |

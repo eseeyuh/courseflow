@@ -29,14 +29,14 @@ class Base(DeclarativeBase):
     type_annotation_map: ClassVar[dict[Any, Any]] = {datetime: DateTime(timezone=True)}
 
 
-def str_enum(enum_cls: type[StrEnum], name: str) -> Enum:
+def str_enum(enum_cls: type[StrEnum], name: str, *, length: int = 32) -> Enum:
     """VARCHAR + CHECK constraint storing the enum *values* (e.g. "active")."""
     return Enum(
         enum_cls,
         name=name,
         native_enum=False,
         create_constraint=True,
-        length=32,
+        length=length,
         validate_strings=True,
         values_callable=lambda members: [member.value for member in members],
     )

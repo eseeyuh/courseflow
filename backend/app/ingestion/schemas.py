@@ -110,7 +110,10 @@ class SpanLocator(_Frozen):
         return self
 
 
-# The locator each kind of block must carry.
+# Each block kind requires its canonical locator. Additional locator fields
+# are permitted by the provenance contract, though the v0.1 parsers normally
+# emit only the locator relevant to the format. Same rule as the database
+# CHECK ck_source_spans_locator_fits_kind.
 _REQUIRED_LOCATOR: dict[BlockKind, str] = {
     BlockKind.PAGE: "page_number",
     BlockKind.HEADING: "section_path",
