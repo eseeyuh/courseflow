@@ -35,6 +35,7 @@ A modular monolith: Next.js frontend, FastAPI backend, PostgreSQL + pgvector, an
 | [ADR-002](docs/decisions/ADR-002-postgres-pgvector.md) | Relational graph model in PostgreSQL + pgvector (no separate graph/vector DB) |
 | [ADR-003](docs/decisions/ADR-003-mpl-2.0-licence.md) | Mozilla Public License 2.0 |
 | [ADR-004](docs/decisions/ADR-004-async-sqlalchemy-asyncpg.md) | Async SQLAlchemy 2.x with the asyncpg driver for all database access |
+| [ADR-005](docs/decisions/ADR-005-ai-provider-boundary.md) | AI provider boundary, structured-output policy and retry semantics |
 
 ## Evaluation
 
@@ -74,6 +75,8 @@ cp frontend/.env.example frontend/.env.local      # browser-visible API URL
 On Windows PowerShell, use `Copy-Item` instead of `cp`. The defaults work for local development as-is. The database password in `.env.example` is a **development-only** value; use real secrets anywhere reachable from a network.
 
 `NEXT_PUBLIC_*` values are compiled into the JavaScript sent to browsers, so they are public. Never put a secret in one.
+
+AI features need a Nebius Token Factory API key: set `NEBIUS_API_KEY` in your local `.env` only. Everything else runs without it. The model IDs in `.env.example` were verified on the date recorded in [docs/experiments/model-catalog.md](docs/experiments/model-catalog.md).
 
 ### 2. Install dependencies
 
@@ -134,6 +137,12 @@ Backend (from `backend/`, with the database running: `docker compose up -d db`):
 uv run pytest                      # unit, API, schema and migration tests
 uv run ruff check .                # lint
 uv run ruff format --check .       # formatting (use `ruff format .` to apply)
+```
+
+The tests never call a real model: provider tests run the real `openai` SDK against a scripted transport. To make one real, recorded model call (needs `NEBIUS_API_KEY`; writes a row to `model_calls`):
+
+```bash
+uv run python -m app.ai.smoke_test --role fast    # or --role strong; --fail records a failure
 ```
 
 Tests use a separate database, `courseflow_test`, on the same server. It is created and migrated automatically. Tests refuse any database whose name does not end in `_test`. Set `TEST_DATABASE_URL` to use a different one.

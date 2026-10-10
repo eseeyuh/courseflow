@@ -4,6 +4,7 @@
 
 import json
 import logging
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -59,6 +60,105 @@ def test_invalid_database_url_error_does_not_leak_password() -> None:
 
     assert "database_url" in str(excinfo.value)
     assert "s3cret-pw" not in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "field", ["NEBIUS_API_KEY", "NEBIUS_BASE_URL", "MODEL_FAST", "MODEL_STRONG", "EMBEDDING_MODEL"]
+)
+def test_blank_ai_setting_means_not_configured(monkeypatch: pytest.MonkeyPatch, field: str) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+    monkeypatch.setenv(field, "  ")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert getattr(settings, field.lower()) is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("NEBIUS_API_KEY", "replace-with-your-key"),
+        ("NEBIUS_BASE_URL", "https://replace-with-token-factory-base-url/v1"),
+        ("MODEL_FAST", "replace-with-verified-nemotron-model-id"),
+        ("MODEL_STRONG", "replace-with-verified-nemotron-model-id"),
+        ("EMBEDDING_MODEL", "replace-with-verified-embedding-model-id"),
+    ],
+)
+def test_example_placeholders_fail_fast(
+    monkeypatch: pytest.MonkeyPatch, field: str, value: str
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+    monkeypatch.setenv(field, value)
+
+    with pytest.raises(ValidationError, match=field.lower()):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_env_example_parses_with_ai_unconfigured() -> None:
+    """A fresh `cp .env.example .env` must start: no placeholder may fail fast."""
+    example = Path(__file__).resolve().parents[2] / ".env.example"
+
+    settings = Settings(_env_file=example)  # type: ignore[call-arg]
+
+    assert settings.nebius_api_key is None
+    assert settings.model_fast and settings.model_strong and settings.nebius_base_url
+
+
+def test_ai_settings_are_stripped(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+    monkeypatch.setenv("MODEL_FAST", "  vendor/model  ")
+
+    assert Settings(_env_file=None).model_fast == "vendor/model"  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("url", ["api.example.com/v1", "ftp://example.com/v1", "https://"])
+def test_malformed_base_url_fails_fast(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+    monkeypatch.setenv("NEBIUS_BASE_URL", url)
+
+    with pytest.raises(ValidationError, match="nebius_base_url"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("AI_MAX_ATTEMPTS", "0"),
+        ("AI_MAX_ATTEMPTS", "11"),
+        ("AI_MAX_REPAIR_ATTEMPTS", "4"),
+        ("AI_MAX_OUTPUT_TOKENS", "100"),
+        ("AI_REQUEST_TIMEOUT_SECONDS", "0"),
+    ],
+)
+def test_ai_reliability_bounds_are_enforced(
+    monkeypatch: pytest.MonkeyPatch, field: str, value: str
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+    monkeypatch.setenv(field, value)
+
+    with pytest.raises(ValidationError, match=field.lower()):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_backoff_max_below_base_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+    monkeypatch.setenv("AI_BACKOFF_BASE_SECONDS", "5")
+    monkeypatch.setenv("AI_BACKOFF_MAX_SECONDS", "2")
+
+    with pytest.raises(ValidationError, match="AI_BACKOFF_MAX_SECONDS"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_nebius_api_key_is_masked_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+    monkeypatch.setenv("NEBIUS_API_KEY", "nb-very-secret-key")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.nebius_api_key is not None
+    assert settings.nebius_api_key.get_secret_value() == "nb-very-secret-key"
+    assert "nb-very-secret-key" not in repr(settings)
+    assert "nb-very-secret-key" not in str(settings.model_dump())
 
 
 def test_database_url_is_masked_in_repr() -> None:

@@ -6,7 +6,8 @@
 
 Provenance chain (docs/architecture/data-contract.md):
     Institution -> Course -> Resource -> ResourceVersion -> SourceSpan
-WorkflowRun records which ResourceVersions a run consumed.
+WorkflowRun records which ResourceVersions a run consumed. ModelCall records
+each logical model call, inside a run or standalone.
 
 All relationships use lazy="raise": async code must load related objects
 explicitly (e.g. selectinload) instead of triggering hidden I/O.
@@ -32,7 +33,15 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, CreatedAt, Timestamps, UUIDPrimaryKey, str_enum
-from app.domain.enums import CourseStatus, LmsType, ResourceType, WorkflowRunStatus
+from app.domain.enums import (
+    CourseStatus,
+    LmsType,
+    ModelCallErrorCategory,
+    ModelCallStatus,
+    ModelRole,
+    ResourceType,
+    WorkflowRunStatus,
+)
 
 
 class Institution(UUIDPrimaryKey, Timestamps, Base):
@@ -217,3 +226,64 @@ class WorkflowRun(UUIDPrimaryKey, Timestamps, Base):
     input_versions: Mapped[list[ResourceVersion]] = relationship(
         secondary=workflow_run_inputs, lazy="raise"
     )
+
+
+class ModelCall(UUIDPrimaryKey, CreatedAt, Base):
+    """One logical model call: the final outcome after retries and repairs.
+
+    Per-attempt detail (each HTTP request, its latency and error) lives in
+    the logs; this row is the auditable summary. Never stores secrets or
+    prompts; the output summary is the *validated* output only.
+
+    Token counts are those reported in responses received. Attempts that
+    failed in flight may have consumed unreported tokens: a lower bound.
+    """
+
+    __tablename__ = "model_calls"
+    __table_args__ = (
+        CheckConstraint("finished_at >= started_at", name="finished_after_started"),
+        CheckConstraint("attempts >= 1", name="attempts_positive"),
+        CheckConstraint(
+            "repair_rounds >= 0 AND repair_rounds < attempts", name="repair_rounds_bounded"
+        ),
+        CheckConstraint("latency_ms >= 0", name="latency_nonnegative"),
+        CheckConstraint(
+            "prompt_tokens >= 0 AND completion_tokens >= 0 AND reasoning_tokens >= 0",
+            name="tokens_nonnegative",
+        ),
+        # A success has an output and no error; a failure has an error category.
+        CheckConstraint(
+            "(status = 'succeeded' AND error_category IS NULL AND output_summary IS NOT NULL)"
+            " OR (status = 'failed' AND error_category IS NOT NULL)",
+            name="outcome_consistent",
+        ),
+    )
+
+    # Nullable: smoke tests and evaluations call models outside any workflow.
+    workflow_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflow_runs.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    model_role: Mapped[ModelRole | None] = mapped_column(str_enum(ModelRole, "model_role"))
+    prompt_version: Mapped[str] = mapped_column(Text)
+    output_schema: Mapped[str] = mapped_column(Text)
+    status: Mapped[ModelCallStatus] = mapped_column(str_enum(ModelCallStatus, "model_call_status"))
+    error_category: Mapped[ModelCallErrorCategory | None] = mapped_column(
+        str_enum(ModelCallErrorCategory, "model_call_error_category")
+    )
+    error_detail: Mapped[str | None] = mapped_column(Text)
+    # HTTP requests made, including transport retries and repair turns.
+    attempts: Mapped[int]
+    # Repair turns after invalid output (schema-violation recovery metric).
+    repair_rounds: Mapped[int] = mapped_column(default=0, server_default="0")
+    prompt_tokens: Mapped[int | None]
+    completion_tokens: Mapped[int | None]
+    reasoning_tokens: Mapped[int | None]
+    latency_ms: Mapped[int]
+    provider_request_id: Mapped[str | None] = mapped_column(Text)
+    output_summary: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime]
+    finished_at: Mapped[datetime]
+
+    workflow_run: Mapped[WorkflowRun | None] = relationship(lazy="raise")
