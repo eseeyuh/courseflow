@@ -86,6 +86,35 @@ class Settings(BaseSettings):
     # Reasoning shares this budget, so it is far above the visible answer size.
     ai_max_output_tokens: int = Field(default=4096, ge=256)
 
+    # Canonical store for original source bytes. No default: a relative or
+    # implicit location would silently give each process (host CLI, API
+    # container) its own store behind the same sha256: references.
+    raw_storage_dir: Path | None = None
+
+    # Safety limits for document ingestion. Inputs beyond them are rejected
+    # as `limit_exceeded`: size and ZIP limits before parsing, PDF pages once
+    # the document is open, extracted characters after parsing.
+    ingest_max_bytes: int = Field(default=25 * 1024 * 1024, ge=1)
+    ingest_max_pdf_pages: int = Field(default=500, ge=1)
+    ingest_max_extracted_chars: int = Field(default=2_000_000, ge=1)
+    ingest_max_zip_members: int = Field(default=2_000, ge=1)
+    ingest_max_zip_uncompressed_bytes: int = Field(default=200 * 1024 * 1024, ge=1)
+    ingest_max_zip_compression_ratio: float = Field(default=100.0, gt=1)
+
+    @field_validator("raw_storage_dir", mode="before")
+    @classmethod
+    def _blank_storage_dir_is_unset(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("raw_storage_dir")
+    @classmethod
+    def _require_absolute_storage_dir(cls, value: Path | None) -> Path | None:
+        if value is not None and not value.is_absolute():
+            raise ValueError("RAW_STORAGE_DIR must be an absolute path")
+        return value
+
     @field_validator(
         "nebius_api_key",
         "nebius_base_url",

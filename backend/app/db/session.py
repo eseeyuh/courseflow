@@ -28,6 +28,9 @@ def create_db_engine(settings: Settings) -> AsyncEngine:
         pool_pre_ping=True,
         # asyncpg's connect timeout: bounds how long a new connection may take.
         connect_args={"timeout": settings.db_connect_timeout_seconds},
+        # Database errors never include statement parameters: they can hold
+        # document text, file names or source URIs, and errors reach logs.
+        hide_parameters=True,
     )
 
 

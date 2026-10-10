@@ -9,6 +9,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.api.deps import EngineDep, SessionDep
+from app.core.config import Settings
+from app.db.session import create_db_engine
 
 pytestmark = pytest.mark.anyio
 
@@ -64,3 +66,8 @@ async def test_every_request_receives_the_lifespan_engine(
     # One process-wide pool, never a new engine per request.
     assert len(seen) == 2
     assert seen[0] is seen[1] is app.state.engine
+
+
+def test_engine_never_puts_statement_parameters_in_errors(settings: Settings) -> None:
+    """Parameters can hold document text, file names or source URIs."""
+    assert create_db_engine(settings).sync_engine.hide_parameters is True

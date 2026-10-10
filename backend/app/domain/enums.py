@@ -66,3 +66,39 @@ class ModelCallErrorCategory(StrEnum):
     REFUSED = "refused"
     INVALID_OUTPUT = "invalid_output"
     UNEXPECTED = "unexpected"
+
+
+class MediaType(StrEnum):
+    """Source formats ingestion accepts (IANA media types).
+
+    A property of each ResourceVersion, not of the Resource: a brief may be
+    re-issued as a PDF after starting life as a DOCX.
+    """
+
+    PDF = "application/pdf"
+    DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    HTML = "text/html"
+
+
+class BlockKind(StrEnum):
+    """Structural role of a SourceSpan created by ingestion."""
+
+    PAGE = "page"
+    HEADING = "heading"
+    PARAGRAPH = "paragraph"
+    TABLE = "table"
+    SLIDE_TEXT = "slide_text"
+    SLIDE_NOTES = "slide_notes"
+
+
+class IngestionErrorCategory(StrEnum):
+    """Why one file could not be ingested. Stable: used in logs and evaluation."""
+
+    # An unsupported file format, container variant or intentionally unsupported
+    # subtype (e.g. macro-enabled, encrypted or legacy Office), not only an extension.
+    UNSUPPORTED_TYPE = "unsupported_type"
+    CORRUPT_FILE = "corrupt_file"
+    EMPTY_TEXT = "empty_text"
+    LIMIT_EXCEEDED = "limit_exceeded"
+    PARSER_FAILURE = "parser_failure"
