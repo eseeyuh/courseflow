@@ -125,7 +125,7 @@ Rules:
 
 | Entity | Meaning | Minimum fields |
 |---|---|---|
-| `WorkflowRun` | One execution of an import/analysis/change workflow, including deterministic and LLM steps. | id, workflow_version, course_id, input resource_version_ids, status, started_at, finished_at |
+| `WorkflowRun` | One execution of an import/analysis/change workflow, including deterministic and LLM steps. | id, workflow_version (`<kind>/v<N>`, e.g. `index/v1`), course_id, input resource_version_ids, status, started_at, finished_at, summary (a JSON object of final counts whose shape is fixed by workflow_version; never document text) |
 | `ModelCall` | One logical model call: its final outcome after retries and repair turns. | id, workflow_run_id (nullable: standalone calls such as evaluations and search queries), call_kind (`chat_structured`, `embedding`), provider, model, model_role, prompt_version, output_schema, status, error_category, attempts, repair_rounds, token counts, latency_ms, started_at, finished_at |
 
 `call_kind` says what operation happened; `model_role` says why a generative model was chosen (`fast` or `strong`). Embedding calls have `call_kind = embedding`, no `model_role` and no repair rounds. Their `prompt_version` is the input format (`document/v1`, `query/v1`) and their `output_schema` is `vector[<dimensions>]`.

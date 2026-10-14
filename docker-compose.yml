@@ -67,6 +67,14 @@ services:
       # empty, so host-side ingestion fails fast instead of creating a second
       # store behind the same sha256: references.
       RAW_STORAGE_DIR: /var/lib/courseflow/raw
+      # Embeddings for `python -m app.retrieval.cli` (this service only: the
+      # migration job never needs model access). A blank key means "not
+      # configured". The space fallbacks equal the application defaults.
+      NEBIUS_API_KEY: ${NEBIUS_API_KEY:-}
+      NEBIUS_BASE_URL: ${NEBIUS_BASE_URL:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-4096}
+      EMBEDDING_SPACE_VERSION: ${EMBEDDING_SPACE_VERSION:-v1}
     volumes:
       - rawdata:/var/lib/courseflow/raw
     ports:

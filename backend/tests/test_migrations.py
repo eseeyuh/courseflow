@@ -44,7 +44,7 @@ EXPECTED_TABLES = {
     "embeddings",
     "chunk_embeddings",
 }
-HEAD = "0004"
+HEAD = "0005"
 
 EXPECTED_SOURCE_SPAN_CHECKS = {
     "ck_source_spans_locator_present",
@@ -577,3 +577,77 @@ def test_0004_downgrade_refuses_offline_sql_mode(test_database_url: URL) -> None
     url = test_database_url.set(database=MIGRATIONS_DATABASE)
     with pytest.raises(RuntimeError, match="preconditions need a live database"):
         command.downgrade(alembic_config(url), "0004:0003", sql=True)
+
+
+# --- 0005: workflow_runs.summary ------------------------------------------------------
+
+RUN = "00000000-0000-0000-0000-0000000000d1"
+A_RUN = (
+    "INSERT INTO workflow_runs (id, workflow_version, course_id, status) "
+    f"VALUES ('{RUN}', 'import/v1', '{COURSE_1}', 'succeeded')"
+)
+
+
+@pytest.fixture
+def db_at_0004(test_database_url: URL) -> Iterator[URL]:
+    """A fresh database at 0004 holding pre-existing ingestion data and one workflow run."""
+    url = test_database_url.set(database=MIGRATIONS_DATABASE)
+    recreate_database(url)
+    migrate(url, "0003")
+    _execute(url, EXISTING_ROWS)
+    migrate(url, "0004")
+    _execute(url, [A_RUN])
+    try:
+        yield url
+    finally:
+        drop_database(url)
+
+
+def _summary_column(url: URL) -> bool:
+    return bool(
+        _scalar(
+            url,
+            "SELECT count(*) FROM information_schema.columns "
+            "WHERE table_name = 'workflow_runs' AND column_name = 'summary'",
+        )
+    )
+
+
+def _assert_at_0004_with_run(url: URL) -> None:
+    state = _state(url)
+    assert state.version == "0004"
+    assert not _summary_column(url)
+    assert "ck_workflow_runs_summary_is_object" not in state.checks
+    assert _scalar(url, "SELECT count(*) FROM workflow_runs") == 1
+    _assert_existing_data_intact(url)
+
+
+def _assert_at_0005_with_run(url: URL) -> None:
+    state = _state(url)
+    assert state.version == "0005"
+    assert _summary_column(url)
+    assert "ck_workflow_runs_summary_is_object" in state.checks
+    assert _scalar(url, "SELECT summary IS NULL FROM workflow_runs") is True  # left NULL
+    _assert_existing_data_intact(url)
+
+
+def test_0005_upgrade_downgrade_upgrade_keeps_existing_runs(db_at_0004: URL) -> None:
+    _assert_at_0004_with_run(db_at_0004)
+
+    migrate(db_at_0004, "0005")
+    _assert_at_0005_with_run(db_at_0004)
+
+    downgrade(db_at_0004, "0004")
+    _assert_at_0004_with_run(db_at_0004)
+
+    migrate(db_at_0004, "0005")
+    _assert_at_0005_with_run(db_at_0004)
+
+
+@pytest.mark.parametrize("summary", ["'[]'", "'3'", "'\"text\"'", "'null'"])
+def test_0005_summary_must_be_a_json_object(db_at_0004: URL, summary: str) -> None:
+    migrate(db_at_0004, "0005")
+    _execute(db_at_0004, [f"UPDATE workflow_runs SET summary = '{{}}' WHERE id = '{RUN}'"])
+
+    with pytest.raises(IntegrityError, match="ck_workflow_runs_summary_is_object"):
+        _execute(db_at_0004, [f"UPDATE workflow_runs SET summary = {summary}::jsonb"])

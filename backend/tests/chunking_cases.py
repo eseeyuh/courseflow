@@ -111,9 +111,9 @@ def _text(rng: random.Random, chars: int, *, heading: bool = False) -> str:
         size += len(parts[-1])
     text = "".join(parts)
     if rng.random() < 0.05:
-        text = " " + text  # NBSP survives normalisation
+        text = "\u00a0" + text  # NBSP survives normalisation
     if rng.random() < 0.05:
-        text += " "
+        text += "\u00a0"
     return text
 
 
@@ -134,7 +134,7 @@ def random_layout(rng: random.Random, max_estimated_tokens: int) -> tuple[str, l
         )
         chars = tokens * 4
         if rng.random() < 0.03:
-            blocks.append((P if style != "pptx" else BlockKind.SLIDE_TEXT, " ", slide))
+            blocks.append((P if style != "pptx" else BlockKind.SLIDE_TEXT, "\u00a0", slide))
             continue
         if style == "pdf":
             blocks.append((BlockKind.PAGE, _text(rng, chars), None))
@@ -150,6 +150,6 @@ def random_layout(rng: random.Random, max_estimated_tokens: int) -> tuple[str, l
                 slide = max(1, slide - 2)  # a slide number seen before, not contiguous
             kind = BlockKind.SLIDE_NOTES if rng.random() < 0.3 else BlockKind.SLIDE_TEXT
             blocks.append((kind, _text(rng, chars), slide))
-    if all(excerpt == " " for _, excerpt, _ in blocks):
+    if all(excerpt == "\u00a0" for _, excerpt, _ in blocks):
         blocks.append((BlockKind.PAGE, "visible", None))
     return layout(blocks)

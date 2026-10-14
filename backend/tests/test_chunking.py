@@ -433,7 +433,9 @@ def test_offsets_are_code_points_through_emoji_and_combining_characters() -> Non
 
 
 def test_chunks_never_start_or_end_with_nbsp_and_blank_spans_need_no_chunk() -> None:
-    text, spans = layout([(P, " ", None), (P, " Hello there. ", None), (P, " ", None)])
+    text, spans = layout(
+        [(P, "\u00a0", None), (P, "\u00a0Hello there.\u00a0", None), (P, "\u00a0", None)]
+    )
 
     (chunk,) = chunk_version(text, spans, SMALL)
 
@@ -461,7 +463,7 @@ def test_invalid_spans_are_refused(spans: list[ChunkSpan], message: str) -> None
 
 def test_a_version_with_only_blank_spans_is_an_error_not_zero_chunks() -> None:
     with pytest.raises(ChunkingError, match="no span has visible text"):
-        chunk_version(*layout([(P, " ", None)]), SMALL)
+        chunk_version(*layout([(P, "\u00a0", None)]), SMALL)
 
 
 def test_spans_without_offsets_cannot_be_chunked() -> None:

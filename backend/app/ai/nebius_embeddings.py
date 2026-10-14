@@ -50,6 +50,23 @@ from app.domain.enums import ModelCallErrorCategory as Category
 logger = logging.getLogger(__name__)
 
 
+def embedding_space_from_settings(settings: Settings) -> EmbeddingSpace:
+    """The configured embedding space, without credentials or a client.
+
+    Read-only work (index status, and search filtering) needs only this
+    identity; ``NebiusEmbeddingProvider.from_settings`` derives its own space
+    here too, so the two can never disagree.
+    """
+    if settings.embedding_model is None:
+        raise missing_settings(EMBEDDING_MODEL=None)
+    return EmbeddingSpace(
+        PROVIDER_NAME,
+        settings.embedding_model,
+        settings.embedding_dimensions,
+        settings.embedding_space_version,
+    )
+
+
 class NebiusEmbeddingProvider:
     def __init__(
         self,
@@ -93,12 +110,13 @@ class NebiusEmbeddingProvider:
             raise missing_settings(
                 NEBIUS_API_KEY=key, NEBIUS_BASE_URL=base_url, EMBEDDING_MODEL=model
             )
+        space = embedding_space_from_settings(settings)
         kwargs: dict[str, Any] = {
             "api_key": key,
             "base_url": base_url,
-            "model": model,
-            "dimensions": settings.embedding_dimensions,
-            "space_version": settings.embedding_space_version,
+            "model": space.model,
+            "dimensions": space.dimensions,
+            "space_version": space.space_version,
             "timeout_seconds": settings.ai_request_timeout_seconds,
             "retry_policy": retry_policy_from(settings),
             "max_batch_items": settings.embedding_batch_max_items,

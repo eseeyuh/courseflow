@@ -11,7 +11,7 @@ test double, not a model: it says nothing about real retrieval quality.
 
 import hashlib
 import re
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 
 from app.ai.embeddings import EmbeddingInput, EmbeddingResult, EmbeddingSpace, check_batch
 from app.ai.errors import AIProviderError
@@ -35,7 +35,11 @@ def hashed_bag_of_words(text: str, dimensions: int) -> tuple[float, ...]:
 
 class FakeEmbeddingProvider:
     """Records every batch it is asked to embed; ``failures`` are raised, in
-    order, by the next calls (after recording them)."""
+    order, by the next calls (after recording them). ``before_embed`` is
+    awaited inside every call, before it returns: tests use it to pause a call
+    (concurrency) or to change the database mid-run. ``space`` replaces the
+    fake identity (e.g. to match a space derived from settings);
+    ``truncate_results`` drops the last vector, as a broken provider might."""
 
     def __init__(
         self,
@@ -44,10 +48,15 @@ class FakeEmbeddingProvider:
         space_version: str = "v1",
         max_batch_items: int = 64,
         failures: Sequence[AIProviderError] = (),
+        before_embed: Callable[[Sequence[EmbeddingInput]], Awaitable[None]] | None = None,
+        space: EmbeddingSpace | None = None,
+        truncate_results: bool = False,
     ) -> None:
-        self._space = EmbeddingSpace(FAKE_PROVIDER, FAKE_MODEL, dimensions, space_version)
+        self._space = space or EmbeddingSpace(FAKE_PROVIDER, FAKE_MODEL, dimensions, space_version)
+        self.truncate_results = truncate_results
         self._max_batch_items = max_batch_items
         self.failures = list(failures)
+        self.before_embed = before_embed
         self.calls: list[list[EmbeddingInput]] = []
 
     @property
@@ -64,11 +73,14 @@ class FakeEmbeddingProvider:
     async def embed(self, inputs: Sequence[EmbeddingInput]) -> EmbeddingResult:
         check_batch(inputs, self._max_batch_items)
         self.calls.append(list(inputs))
+        if self.before_embed is not None:
+            await self.before_embed(inputs)
         if self.failures:
             raise self.failures.pop(0)
         return EmbeddingResult(
             vectors=tuple(
-                hashed_bag_of_words(item.text, self._space.dimensions) for item in inputs
+                hashed_bag_of_words(item.text, self._space.dimensions)
+                for item in (inputs[:-1] if self.truncate_results else inputs)
             ),
             space=self._space,
             served_model=FAKE_MODEL,

@@ -25,6 +25,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from pgvector.sqlalchemy import VECTOR
 from sqlalchemy import (
@@ -39,6 +40,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, CreatedAt, Timestamps, UUIDPrimaryKey, str_enum
@@ -276,8 +278,12 @@ class WorkflowRun(UUIDPrimaryKey, Timestamps, Base):
             "finished_at IS NULL OR (started_at IS NOT NULL AND finished_at >= started_at)",
             name="finished_after_started",
         ),
+        CheckConstraint(
+            "summary IS NULL OR jsonb_typeof(summary) = 'object'", name="summary_is_object"
+        ),
     )
 
+    # "<kind>/v<N>", e.g. "index/v1". It also fixes the shape of ``summary``.
     workflow_version: Mapped[str] = mapped_column(Text)
     course_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("courses.id"), index=True)
     status: Mapped[WorkflowRunStatus] = mapped_column(
@@ -287,6 +293,9 @@ class WorkflowRun(UUIDPrimaryKey, Timestamps, Base):
     )
     started_at: Mapped[datetime | None]
     finished_at: Mapped[datetime | None]
+    # Final counts, written once when the run finishes. Counts and IDs only,
+    # never document text; the shape is defined by workflow_version.
+    summary: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
     course: Mapped[Course] = relationship(lazy="raise")
     input_versions: Mapped[list[ResourceVersion]] = relationship(

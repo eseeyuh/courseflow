@@ -51,3 +51,56 @@ Measured on a development workstation (one multi-row insert per version, synthet
 2,000,000 characters is the ingestion limit, a defensive upper bound rather than an expected document size; normal course documents are far smaller. Storing the text uncompressed did not help materially (~10.1 s at the extreme), because counting UTF-8 characters still scans from the start.
 
 **Revisit when** indexing large documents becomes a measured bottleneck: a statement-level validator that reads each version once and checks its chunks in offset order, or a different representation of the text, would keep the same guarantee at linear cost.
+
+## Indexing
+
+`python -m app.retrieval.cli index --course-id <id>` (in the API container) indexes a course and needs the provider's credentials. `status --course-id <id>` re-derives each current version's index state offline: it needs only the embedding space's identity (model, dimensions, space version), never an API key, a provider client or the network, and it writes nothing.
+
+An unknown course fails clearly (CLI exit code 3) and creates no run. A course with no current versions is a successful no-op run: zero inputs, no provider calls, no rows other than the run itself. Code: `app/retrieval/indexing.py` (service), `store.py` (SQL), `batching.py`, `cli.py`.
+
+A run indexes the course's **current versions as of its start**: that snapshot is recorded as the run's inputs. For each version, in a stable order:
+
+1. Load the version and its spans; run the chunker. Existing chunks for that chunker version must be exactly the chunker's output, or the version fails (`chunk_state`); existing links in the active embedding space must be absent or complete and correct, or it fails (`link_state`). Inconsistent state is reported, never silently repaired or deleted.
+2. Build each chunk's `document/v1` input; its cache key is (space, input format, SHA-256 of the exact input). Keys already resolved in this run, or cached in the database, are reused; only the rest are sent to the provider, in batches bounded by both CourseFlow budgets (items and estimated tokens).
+3. Publish the version in one transaction: lock the version row (`FOR NO KEY UPDATE`), insert the chunk set if absent, insert the link set if absent, verify, commit. A version is therefore never partly searchable.
+
+"Indexed" is derived, never stored: the stored chunks are exactly the deterministic set for the chunker version, and every chunk has exactly one correct link in the space and document format. Links in an earlier embedding space are kept; switching spaces adds new vectors and links without re-chunking.
+
+### Transactions and paid vectors
+
+No database transaction is open during a provider call. Each successful provider request is recorded as one `ModelCall` (`call_kind = embedding`, no model role, `prompt_version` = input format, `output_schema = vector[<dimensions>]`) **in the same transaction as the vectors it produced**. That transaction is separate from the version's publication, so vectors already paid for survive a later failure as reusable cache rows (possibly unreferenced, like an unreferenced raw object).
+
+If storing the vectors fails, CourseFlow makes a best-effort, independent attempt to persist the successful `ModelCall` alone, then stops the run (`store_vectors`). If the database refuses that too (for example, it is unavailable), the call's telemetry cannot be persisted; only safe structured log fields (counts, IDs, error types) are emitted. A pure cache hit makes no request and creates no `ModelCall`.
+
+### Concurrency (v0.1)
+
+- Database persistence is strongly idempotent: unique constraints guarantee one canonical `Embedding` row per cache key, one chunk set per (version, chunker version) and one link per (chunk, space, input format).
+- Concurrent cache misses may make duplicate external provider calls. Every real provider call gets its own `ModelCall` when telemetry persistence succeeds; a call whose vectors lost the insert race keeps its `ModelCall`, and the canonical row keeps its original producer.
+- The version row lock serialises publication of one version's chunk and link state.
+- No lock is held across a network call.
+
+### Failures
+
+| Failure | Effect |
+|---|---|
+| Version cannot be chunked; inconsistent existing chunks or links; integrity failure while publishing that version | That version fails; the run continues with the others |
+| Provider failure after retries, authentication or configuration error, invalid provider output (`invalid_output`: wrong vector count, indices or dimensions, non-finite or zero vectors) | The run stops; remaining versions are not attempted. These are typed provider failures, not application bugs (`unexpected` is reserved for unclassified errors) |
+| Storing vectors fails; database connectivity; an unexpected error | The run stops |
+
+A run **succeeds** only if every input version ended indexed (newly or already). A version that was indexed but stopped being current during the run (ingestion added a newer one) still counts as a success; the summary reports it as superseded, and search excludes it because it is no longer current.
+
+### Run summary (`workflow_version = "index/v1"`)
+
+Stored once in `workflow_runs.summary`; a change to these meanings needs a new workflow version. Counts and IDs only: no text, text hashes, file names or source URIs.
+
+| Field | Meaning |
+|---|---|
+| `versions_considered / indexed / already_indexed / failed / not_attempted / superseded` | Snapshot inputs and their outcomes |
+| `chunks_created / reused` | `Chunk` rows |
+| `links_created / reused` | `ChunkEmbedding` rows |
+| `embeddings_created` | Unique cache keys whose `Embedding` row this run inserted |
+| `embeddings_reused` | Unique cache keys this run used whose row it did not insert |
+| `embedding_inputs_deduplicated` | Chunk inputs that needed no vector of their own because another chunk in the run needed the same key |
+| `provider_calls / failed_provider_calls` | Real external requests, and those that failed |
+| `prompt_tokens` | Sum over successful requests; empty if any did not report usage. The `ModelCall` rows remain the source of truth |
+| `failures` | Per failed version: its ID, the stage and an error category or type (never a message) |
