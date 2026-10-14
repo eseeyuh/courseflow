@@ -21,6 +21,7 @@ from app.db.models import Course, Institution, ModelCall, WorkflowRun
 from app.domain.enums import (
     LmsType,
     ModelCallErrorCategory,
+    ModelCallKind,
     ModelCallStatus,
     ModelRole,
 )
@@ -242,6 +243,7 @@ async def test_calls_link_to_their_workflow_run_and_are_deleted_with_it(
 def _row(**fields: Any) -> ModelCall:
     now = datetime.now(UTC)
     values: dict[str, Any] = {
+        "call_kind": ModelCallKind.CHAT_STRUCTURED,
         "provider": "p",
         "model": "m",
         "prompt_version": "v1",
@@ -438,8 +440,9 @@ async def test_unknown_error_category_is_rejected(db_session: AsyncSession) -> N
     with pytest.raises(IntegrityError, match="ck_model_calls_model_call_error_category"):
         await db_session.execute(
             text(
-                "INSERT INTO model_calls (provider, model, prompt_version, output_schema, "
-                "status, error_category, attempts, latency_ms, started_at, finished_at) "
-                "VALUES ('p', 'm', 'v', 's', 'failed', 'gremlins', 1, 1, now(), now())"
+                "INSERT INTO model_calls (call_kind, provider, model, prompt_version, "
+                "output_schema, status, error_category, attempts, latency_ms, started_at, "
+                "finished_at) VALUES ('chat_structured', 'p', 'm', 'v', 's', 'failed', "
+                "'gremlins', 1, 1, now(), now())"
             )
         )

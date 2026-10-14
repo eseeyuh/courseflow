@@ -27,6 +27,7 @@ A modular monolith: Next.js frontend, FastAPI backend, PostgreSQL + pgvector, an
 - [System context](docs/architecture/system-context.md): actors, boundaries, internal parts, data flows
 - [Data contract](docs/architecture/data-contract.md): canonical domain objects and the provenance chain
 - [Document ingestion](docs/architecture/ingestion.md): parsers, locators, versions, the raw store and the import CLI
+- [Retrieval](docs/architecture/retrieval.md): chunks, embeddings, vector search and the provenance checks
 
 ## Architecture decisions
 

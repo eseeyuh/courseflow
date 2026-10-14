@@ -5,6 +5,7 @@
 """The migration history works from an empty database, in both directions."""
 
 import asyncio
+import hashlib
 from collections.abc import Iterator
 from dataclasses import dataclass
 
@@ -13,6 +14,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import URL, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db import models  # noqa: F401  (registers every table on Base.metadata)
@@ -37,7 +39,12 @@ EXPECTED_TABLES = {
     "workflow_runs",
     "workflow_run_inputs",
     "model_calls",
+    "chunks",
+    "embedding_spaces",
+    "embeddings",
+    "chunk_embeddings",
 }
+HEAD = "0004"
 
 EXPECTED_SOURCE_SPAN_CHECKS = {
     "ck_source_spans_locator_present",
@@ -194,7 +201,7 @@ def test_upgrade_downgrade_upgrade_from_empty_database(test_database_url: URL) -
         assert "vector" in state.extensions
         assert state.source_span_checks == EXPECTED_SOURCE_SPAN_CHECKS
         assert "fk_resources_current_version" in state.foreign_keys
-        assert state.version == "0003"
+        assert state.version == HEAD
 
         downgrade(url, "base")
         state = _state(url)
@@ -207,7 +214,7 @@ def test_upgrade_downgrade_upgrade_from_empty_database(test_database_url: URL) -
         state = _state(url)
         assert state.tables == EXPECTED_TABLES
         assert "vector" in state.extensions
-        assert state.version == "0003"
+        assert state.version == HEAD
     finally:
         drop_database(url)
 
@@ -291,6 +298,7 @@ COURSE_1 = "00000000-0000-0000-0000-0000000000c1"
 COURSE_2 = "00000000-0000-0000-0000-0000000000c2"
 RESOURCE = "00000000-0000-0000-0000-0000000000a1"
 VERSION = "00000000-0000-0000-0000-0000000000b1"
+HASH_A = "a" * 64
 
 BASE_ROWS = [
     f"INSERT INTO institutions (id, name, lms_type) VALUES ('{INSTITUTION}', 'N', 'demo')",
@@ -383,3 +391,189 @@ def test_0003_refuses_offline_sql_mode(test_database_url: URL) -> None:
     url = test_database_url.set(database=MIGRATIONS_DATABASE)
     with pytest.raises(RuntimeError, match="preconditions need a live database"):
         command.upgrade(alembic_config(url), "0002:0003", sql=True)
+
+
+# --- 0004: retrieval layer and ModelCall.call_kind -----------------------------------
+
+RETRIEVAL_TABLES = {"chunks", "embedding_spaces", "embeddings", "chunk_embeddings"}
+EXPECTED_0004_CHECKS = {
+    "ck_model_calls_model_call_kind",
+    "ck_model_calls_embedding_has_no_role",
+    "ck_chunks_chunker_version_nonblank",
+    "ck_chunks_ordinal_nonnegative",
+    "ck_chunks_offsets_ordered",
+    "ck_chunks_span_range_ordered",
+    "ck_chunks_text_matches_offsets",
+    "ck_chunks_text_hash_matches_text",
+    "ck_chunks_estimated_tokens_positive",
+    "ck_embedding_spaces_provider_valid",
+    "ck_embedding_spaces_model_valid",
+    "ck_embedding_spaces_space_version_valid",
+    "ck_embedding_spaces_dimensions_in_range",
+    "ck_embeddings_input_format_versioned",
+    "ck_embeddings_input_hash_sha256_hex",
+    "ck_embeddings_vector_dims_match",
+    "ck_embeddings_vector_nonzero",
+    "ck_chunk_embeddings_document_format_only",
+}
+EXPECTED_0004_UNIQUES = {
+    "uq_chunks_version_chunker_ordinal",
+    "uq_embedding_spaces_identity",
+    "uq_embedding_spaces_id_dimensions",
+    "uq_embeddings_cache_key",
+    "uq_embeddings_id_space_format",
+    "uq_chunk_embeddings_chunk_space_format",
+}
+EXPECTED_0004_FKS = {
+    "fk_chunks_resource_version_id_resource_versions",
+    "fk_chunks_first_span",
+    "fk_chunks_last_span",
+    "fk_embeddings_space",
+    "fk_embeddings_model_call_id_model_calls",
+    "fk_chunk_embeddings_chunk_id_chunks",
+    "fk_chunk_embeddings_embedding",
+}
+
+# Pre-existing ingestion data written with the 0003 schema: a current version with two spans
+# and a recorded chat call (no call_kind column yet).
+EXISTING_TEXT = "Submit by Friday.\n\nWorth 40%."
+EXISTING_HASH = hashlib.sha256(EXISTING_TEXT.encode()).hexdigest()
+EXISTING_ROWS = [
+    *BASE_ROWS,
+    A_RESOURCE,
+    (
+        "INSERT INTO resource_versions (id, resource_id, version_number, content_hash, "
+        "raw_object_ref, media_type, byte_size, display_name, parser_name, parser_version, "
+        "extracted_text, text_hash) VALUES "
+        f"('{VERSION}', '{RESOURCE}', 1, '{HASH_A}', 'sha256:{HASH_A}', 'application/pdf', "
+        f"10, 'brief.pdf', 'pdf', '1', E'Submit by Friday.\\n\\nWorth 40%.', '{EXISTING_HASH}')"
+    ),
+    f"UPDATE resources SET current_version_id = '{VERSION}' WHERE id = '{RESOURCE}'",
+    (
+        "INSERT INTO source_spans (resource_version_id, ordinal, block_kind, page_number, "
+        f"start_offset, end_offset, excerpt) VALUES ('{VERSION}', 0, 'page', 1, 0, 17, "
+        f"'Submit by Friday.'), ('{VERSION}', 1, 'page', 2, 19, 29, 'Worth 40%.')"
+    ),
+    (
+        "INSERT INTO model_calls (provider, model, model_role, prompt_version, output_schema, "
+        "status, attempts, latency_ms, output_summary, started_at, finished_at) VALUES "
+        "('p', 'm', 'fast', 'v1', 'CourseFact', 'succeeded', 1, 5, '{}', now(), now())"
+    ),
+]
+EXISTING_COUNTS = {"resources": 1, "resource_versions": 1, "source_spans": 2, "model_calls": 1}
+
+
+@pytest.fixture
+def db_at_0003(test_database_url: URL) -> Iterator[URL]:
+    """A fresh database at 0003 holding pre-existing ingestion data."""
+    url = test_database_url.set(database=MIGRATIONS_DATABASE)
+    recreate_database(url)
+    migrate(url, "0003")
+    _execute(url, EXISTING_ROWS)
+    try:
+        yield url
+    finally:
+        drop_database(url)
+
+
+def _retrieval_objects(url: URL) -> set[str]:
+    """Which of the trigger, its function and model_calls.call_kind exist."""
+    found = _scalar(
+        url,
+        "SELECT array_remove(ARRAY["
+        "(SELECT 'trigger' FROM pg_trigger WHERE tgname = 'chunks_provenance'),"
+        "(SELECT 'function' FROM pg_proc WHERE proname = 'chunks_check_provenance'),"
+        "(SELECT 'call_kind' FROM information_schema.columns "
+        " WHERE table_name = 'model_calls' AND column_name = 'call_kind')"
+        "], NULL)",
+    )
+    return set(found)  # type: ignore[call-overload]
+
+
+def _assert_existing_data_intact(url: URL) -> None:
+    for table, expected in EXISTING_COUNTS.items():
+        assert _scalar(url, f"SELECT count(*) FROM {table}") == expected, table
+    assert _scalar(url, "SELECT extracted_text FROM resource_versions") == EXISTING_TEXT
+
+
+def _assert_at_0003_with_existing_data(url: URL) -> None:
+    state = _state(url)
+    assert state.version == "0003"
+    assert not RETRIEVAL_TABLES & state.tables
+    assert not EXPECTED_0004_CHECKS & state.checks
+    assert not EXPECTED_0004_FKS & state.foreign_keys
+    assert _retrieval_objects(url) == set()
+    _assert_existing_data_intact(url)
+
+
+def _assert_at_0004_with_existing_data(url: URL) -> None:
+    state = _state(url)
+    assert state.version == "0004"
+    assert RETRIEVAL_TABLES <= state.tables
+    assert EXPECTED_0004_CHECKS <= state.checks
+    assert EXPECTED_0004_UNIQUES <= state.uniques
+    assert EXPECTED_0004_FKS <= state.foreign_keys
+    assert {"ix_embeddings_model_call_id", "ix_chunk_embeddings_embedding_id"} <= state.indexes
+    assert _retrieval_objects(url) == {"trigger", "function", "call_kind"}
+    _assert_existing_data_intact(url)
+    # Backfilled, with no default left behind: new writers must state the kind.
+    assert _scalar(url, "SELECT string_agg(DISTINCT call_kind, ',') FROM model_calls") == (
+        "chat_structured"
+    )
+    default = _scalar(
+        url,
+        "SELECT column_default FROM information_schema.columns "
+        "WHERE table_name = 'model_calls' AND column_name = 'call_kind'",
+    )
+    assert default is None
+
+
+def test_0004_upgrade_downgrade_upgrade_keeps_existing_data(db_at_0003: URL) -> None:
+    _assert_at_0003_with_existing_data(db_at_0003)
+
+    migrate(db_at_0003, "0004")
+    _assert_at_0004_with_existing_data(db_at_0003)
+
+    downgrade(db_at_0003, "0003")
+    _assert_at_0003_with_existing_data(db_at_0003)
+
+    migrate(db_at_0003, "0004")
+    _assert_at_0004_with_existing_data(db_at_0003)
+
+
+CALL_WITHOUT_KIND = (
+    "INSERT INTO model_calls (provider, model, prompt_version, output_schema, "
+    "status, attempts, latency_ms, output_summary, started_at, finished_at) VALUES "
+    "('p', 'm', 'v1', 'S', 'succeeded', 1, 5, '{}', now(), now())"
+)
+EMBEDDING_CALL = (
+    "INSERT INTO model_calls (call_kind, provider, model, prompt_version, "
+    "output_schema, status, attempts, latency_ms, output_summary, started_at, "
+    "finished_at) VALUES ('embedding', 'p', 'e', 'document/v1', 'vector[8]', "
+    "'succeeded', 1, 5, '{}', now(), now())"
+)
+
+
+def test_0004_new_rows_must_state_call_kind(db_at_0003: URL) -> None:
+    migrate(db_at_0003, "0004")
+
+    with pytest.raises(IntegrityError, match="call_kind"):
+        _execute(db_at_0003, [CALL_WITHOUT_KIND])
+
+
+def test_0004_downgrade_refuses_while_embedding_calls_exist(db_at_0003: URL) -> None:
+    migrate(db_at_0003, "0004")
+    _execute(db_at_0003, [EMBEDDING_CALL])
+
+    with pytest.raises(RuntimeError, match=r"model_calls has 1 embedding call\(s\)"):
+        downgrade(db_at_0003, "0003")
+
+    # Refused before any DDL: still a complete 0004 schema.
+    assert _state(db_at_0003).version == "0004"
+    assert _retrieval_objects(db_at_0003) == {"trigger", "function", "call_kind"}
+
+
+def test_0004_downgrade_refuses_offline_sql_mode(test_database_url: URL) -> None:
+    url = test_database_url.set(database=MIGRATIONS_DATABASE)
+    with pytest.raises(RuntimeError, match="preconditions need a live database"):
+        command.downgrade(alembic_config(url), "0004:0003", sql=True)

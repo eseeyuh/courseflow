@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.ai.errors import AIProviderError
 from app.ai.provider import AIProvider, ChatMessage, StructuredResult, TokenUsage
 from app.db.models import ModelCall
-from app.domain.enums import ModelCallErrorCategory, ModelCallStatus, ModelRole
+from app.domain.enums import ModelCallErrorCategory, ModelCallKind, ModelCallStatus, ModelRole
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,7 @@ async def call_structured_recorded[T: BaseModel](
     started = time.perf_counter()
     row = ModelCall(
         workflow_run_id=workflow_run_id,
+        call_kind=ModelCallKind.CHAT_STRUCTURED,
         provider=provider.name,
         model=provider.model_for(role),
         model_role=role,
@@ -172,6 +173,7 @@ def _row_fields(row: ModelCall) -> dict[str, object]:
     """Everything the row holds except the output, for a log line."""
     return {
         "workflow_run_id": row.workflow_run_id,
+        "call_kind": row.call_kind,
         "provider": row.provider,
         "model": row.model,
         "model_role": row.model_role,
