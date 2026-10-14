@@ -90,7 +90,7 @@ SourceSpan (first..last ordinal) <- Chunk -> ChunkEmbedding -> Embedding -> Embe
 Rules:
 
 - **Chunk provenance:** `text == extracted_text[start_offset:end_offset]`; the start lies inside span `first_span_ordinal` and the end inside span `last_span_ordinal`, both spans of the chunk's own version, with `first_span_ordinal <= last_span_ordinal`. A chunk that splits one oversized span has `first_span_ordinal == last_span_ordinal`. The chunk's spans are those with ordinals between the two. These rules are checked by the application before writing and again, for every row, by the database.
-- **Coverage:** every span of an indexed version is covered by at least one chunk of that chunker version.
+- **Coverage:** for each indexed version and chunker version, every `SourceSpan` that contains visible (non-whitespace) text lies within at least one chunk's span range, and every non-whitespace character of `extracted_text` lies within at least one chunk. A whitespace-only span gets no retrieval unit of its own; any text not covered by a chunk is whitespace only.
 - **Vectors** are compared only within one `EmbeddingSpace`. The relevance score is `1 - cosine distance`; it ranks results and is never a confidence.
 - **Query embeddings** (`query/vN`) are never linked to chunks.
 - **Search** covers only the current version of each resource, and is scoped to a course through `Chunk -> ResourceVersion -> Resource -> Course`.
