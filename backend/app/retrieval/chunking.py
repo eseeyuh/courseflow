@@ -504,11 +504,15 @@ def has_visible_text(text: str, spans: Sequence[ChunkSpan]) -> bool:
 
 
 def check_spans(text: str, spans: Sequence[ChunkSpan]) -> None:
-    """Raise ChunkingError unless the spans are in source order and inside the text."""
+    """Raise ChunkingError unless the spans are numbered 0..n-1 in source order
+    and lie inside the text. Contiguous ordinals matter: a chunk's spans are
+    those numbered first..last, so a gap would leave evidence unresolvable."""
     if not spans:
         raise ChunkingError("a version without spans cannot be chunked")
     previous: ChunkSpan | None = None
-    for span in spans:
+    for position, span in enumerate(spans):
+        if span.ordinal != position:
+            raise ChunkingError(f"span {span.ordinal}: ordinals are not 0..n-1")
         if not 0 <= span.start_offset < span.end_offset <= len(text):
             raise ChunkingError(f"span {span.ordinal}: offsets outside the text")
         if previous is not None and not (

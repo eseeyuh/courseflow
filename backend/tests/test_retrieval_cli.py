@@ -108,6 +108,7 @@ async def test_index_then_status_reports_counts_and_no_text(
     assert status["versions"] == [
         {
             "resource_version_id": str(version),
+            "search_state": "searchable",
             "content": "chunkable",
             "chunk_state": "exact",
             "link_state": "complete",

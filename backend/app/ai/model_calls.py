@@ -212,18 +212,26 @@ class RecordedEmbeddings[S]:
 
 
 class VectorStorageError(Exception):
-    """The provider call succeeded, but storing its vectors failed.
+    """The provider call succeeded, but the transaction recording it (and storing
+    any vectors it produced) failed.
 
     The successful call was then recorded alone, best effort, in a fresh
-    transaction: ``model_call_id`` is that row, or ``None`` if the database
-    refused that too (``record_error`` says why). Either way the run must stop:
-    storage of shared vectors is failing.
+    transaction under the same ID (so an ambiguous first commit cannot leave
+    two rows): ``model_call_id`` is that row, or ``None`` if the database
+    refused that too (``record_error`` says why). ``usage`` is what the paid
+    request reported. Either way the caller must stop: storage is failing.
     """
 
-    def __init__(self, model_call_id: uuid.UUID | None, record_error: Exception | None) -> None:
-        super().__init__("embedding vectors could not be stored")
+    def __init__(
+        self,
+        model_call_id: uuid.UUID | None,
+        record_error: Exception | None,
+        usage: TokenUsage | None = None,
+    ) -> None:
+        super().__init__("the successful embedding call could not be stored")
         self.model_call_id = model_call_id
         self.record_error = record_error
+        self.usage = usage or TokenUsage()
 
 
 type StoreVectors[S] = Callable[[AsyncSession, EmbeddingResult, uuid.UUID], Awaitable[S]]
@@ -253,6 +261,7 @@ async def call_embeddings_recorded[S](
     started_at = datetime.now(UTC)
     started = time.perf_counter()
     row = ModelCall(
+        id=uuid.uuid4(),  # fixed now: the fallback row reuses it
         workflow_run_id=workflow_run_id,
         call_kind=ModelCallKind.EMBEDDING,
         provider=space.provider,
@@ -325,16 +334,15 @@ async def call_embeddings_recorded[S](
                 "ai.model_call_record_failed",
                 extra={**fields, "error_type": type(record_error).__name__},
             )
-            raise VectorStorageError(None, record_error) from storage_error
-        raise VectorStorageError(fallback.id, None) from storage_error
+            raise VectorStorageError(None, record_error, result.usage) from storage_error
+        raise VectorStorageError(fallback.id, None, result.usage) from storage_error
     return RecordedEmbeddings(result=result, model_call_id=row.id, stored=stored)
 
 
-# Every column except the generated id and created_at: enough to re-create
-# the row in a fresh transaction.
-_COPIED_COLUMNS = [
-    column for column in ModelCall.__table__.columns if column.key not in {"id", "created_at"}
-]
+# Every column except created_at, including the id: the fallback row is the
+# same call, so if the first commit did land, re-inserting it conflicts instead
+# of recording the paid call twice.
+_COPIED_COLUMNS = [column for column in ModelCall.__table__.columns if column.key != "created_at"]
 
 
 def _vector_shape_problem(result: EmbeddingResult, expected: int, dimensions: int) -> str | None:

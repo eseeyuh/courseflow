@@ -45,6 +45,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.ai.embeddings import EmbeddingProvider
 from app.ai.errors import AIConfigurationError
@@ -64,12 +65,15 @@ from app.retrieval.search import (
     IndexStateError,
     InvalidSearchRequest,
     ProvenanceError,
+    QueryCallNotRecordedError,
     SearchHit,
     SearchProviderError,
     SearchRequest,
     SearchResult,
     SearchService,
     SpanEvidence,
+    VersionSearchState,
+    classify,
 )
 from app.retrieval.stats import ChunkStats, CourseStats, StatsIntegrityError, course_stats
 
@@ -96,6 +100,18 @@ def _provider(settings: Settings) -> EmbeddingProvider:
     return NebiusEmbeddingProvider.from_settings(settings)
 
 
+async def _release(provider: EmbeddingProvider | None, engine: AsyncEngine) -> None:
+    """Close resources without letting a cleanup error replace the command's
+    result or its original error (it is logged by type instead)."""
+    for close in (provider.aclose if provider else None, engine.dispose):
+        if close is None:
+            continue
+        try:
+            await close()
+        except Exception as exc:  # noqa: BLE001 - logged; must not mask the outcome
+            logger.warning("cli.cleanup_failed", extra={"error_type": type(exc).__name__})
+
+
 # --- index and status -----------------------------------------------------------------------
 
 
@@ -111,8 +127,7 @@ async def _run_index(settings: Settings, course_id: uuid.UUID) -> int:
         )
         return await _index(service, course_id)
     finally:
-        await provider.aclose()
-        await engine.dispose()
+        await _release(provider, engine)
 
 
 async def _run_status(settings: Settings, course_id: uuid.UUID) -> int:
@@ -121,7 +136,7 @@ async def _run_status(settings: Settings, course_id: uuid.UUID) -> int:
     try:
         reports = await inspect_course(create_session_factory(engine), course_id, space)
     finally:
-        await engine.dispose()
+        await _release(None, engine)
     return _status(course_id, reports)
 
 
@@ -143,9 +158,15 @@ def _status(course_id: uuid.UUID, reports: Sequence[VersionIndexReport]) -> int:
             "status": "ok",
             "course_id": course_id,
             "indexed": sum(report.indexed for report in reports),
+            # The same classification search uses: corrupt makes search refuse.
+            "search_states": {
+                state.value: sum(classify(report) is state for report in reports)
+                for state in VersionSearchState
+            },
             "versions": [
                 {
                     "resource_version_id": report.resource_version_id,
+                    "search_state": classify(report).value,
                     "content": report.content.value,
                     "chunk_state": report.chunk_state and report.chunk_state.value,
                     "link_state": report.link_state and report.link_state.value,
@@ -167,7 +188,7 @@ async def _run_stats(settings: Settings, args: argparse.Namespace) -> int:
     try:
         report = await course_stats(create_session_factory(engine), args.course_id)
     finally:
-        await engine.dispose()
+        await _release(None, engine)
     if args.json:
         _emit({"status": "ok", **dataclasses.asdict(report)})
     else:
@@ -248,8 +269,7 @@ async def _run_search(settings: Settings, args: argparse.Namespace) -> int:
             request
         )
     finally:
-        await provider.aclose()
-        await engine.dispose()
+        await _release(provider, engine)
     if args.json:
         _emit(_result_payload(result))  # JSON is ASCII-escaped: safe on any console
     else:
@@ -445,6 +465,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     except ProvenanceError as exc:
         return fail(EXIT_INDEX_STATE, "provenance_inconsistent", chunk_id=exc.chunk_id)
+    except QueryCallNotRecordedError as exc:
+        return fail(EXIT_UNEXPECTED, "query_call_not_recorded", model_call_id=exc.model_call_id)
     except StatsIntegrityError as exc:
         return fail(
             EXIT_INDEX_STATE,

@@ -30,7 +30,7 @@ from app.db.models import (
     ResourceVersion,
     SourceSpan,
 )
-from app.retrieval.chunking import ChunkSpan, chunk_spans
+from app.retrieval.chunking import ChunkingError, ChunkSpan, chunk_spans
 from app.retrieval.provenance import ChunkDraft
 
 
@@ -53,7 +53,8 @@ class SpaceRef:
 class VersionSource:
     version_id: uuid.UUID
     extracted_text: str
-    spans: list[ChunkSpan]
+    # None when a span has no offsets: the chunker cannot anchor anything to it.
+    spans: list[ChunkSpan] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,7 +208,10 @@ async def load_version(session: AsyncSession, version_id: uuid.UUID) -> VersionS
         .where(SourceSpan.resource_version_id == version_id)
         .order_by(SourceSpan.ordinal)
     )
-    return VersionSource(version_id, text, chunk_spans(spans))
+    try:
+        return VersionSource(version_id, text, chunk_spans(spans))
+    except ChunkingError:
+        return VersionSource(version_id, text, None)
 
 
 async def lock_version(session: AsyncSession, version_id: uuid.UUID) -> None:

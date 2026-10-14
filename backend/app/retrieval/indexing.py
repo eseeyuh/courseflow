@@ -172,7 +172,7 @@ def derive_chunks(
 ) -> tuple[SourceContent, list[ChunkDraft]]:
     """The deterministic chunk set, or why there is none. Only a version with
     no visible text yields an empty set without being invalid."""
-    if source is None:
+    if source is None or source.spans is None:
         return SourceContent.INVALID, []
     try:
         check_spans(source.extracted_text, source.spans)
@@ -280,8 +280,10 @@ class IndexingService:
                 self._fail(run, version_id, aborted.stage, aborted.error)
                 run.add("versions_not_attempted", remaining)
                 break
-            except Exception as exc:
-                # A bug or a database outage: record what we can, then re-raise.
+            except BaseException as exc:
+                # A bug, a database outage, or cancellation (Ctrl+C, a stopped
+                # container): record what we can so the run is not left running,
+                # then re-raise.
                 self._fail(run, version_id, FailureStage.UNEXPECTED, type(exc).__name__)
                 run.add("versions_not_attempted", remaining)
                 await self._finish_best_effort(run)
@@ -485,14 +487,12 @@ class IndexingService:
             raise _RunAborted(FailureStage.EMBED, failed.error.category.value) from failed
         except VectorStorageError as failed:
             run.add("provider_calls")  # the paid request itself succeeded
+            _add_prompt_tokens(run, failed.usage.prompt_tokens)
             raise _RunAborted(FailureStage.STORE_VECTORS, type(failed.__cause__).__name__) from (
                 failed
             )
         run.add("provider_calls")
-        tokens = recorded.result.usage.prompt_tokens
-        run.prompt_tokens = (
-            None if tokens is None or run.prompt_tokens is None else (run.prompt_tokens + tokens)
-        )
+        _add_prompt_tokens(run, recorded.result.usage.prompt_tokens)
         stored = recorded.stored
         if stored is None:  # pragma: no cover - a store function was always given
             raise RuntimeError("embedding call returned without stored vectors")
@@ -623,6 +623,13 @@ async def _inspect_version(
         }
         links = await store.link_state(session, existing, expected)
     return VersionIndexReport(version_id, chunkable, state, links, len(existing))
+
+
+def _add_prompt_tokens(run: _RunState, tokens: int | None) -> None:
+    """Sum over successful requests; unknown as soon as one did not report usage."""
+    run.prompt_tokens = (
+        None if tokens is None or run.prompt_tokens is None else (run.prompt_tokens + tokens)
+    )
 
 
 def _key(space: SpaceRef, item: EmbeddingInput) -> CacheKey:

@@ -124,7 +124,7 @@ async def course_stats(
             source = await store.load_version(session, version_id)
             existing = await store.existing_chunks(session, version_id, params.version)
         content, drafts = derive_chunks(source, params)
-        if content is SourceContent.INVALID or source is None:
+        if content is SourceContent.INVALID or source is None or source.spans is None:
             failed.append(version_id)
             continue
         stats = chunk_stats(source.extracted_text, source.spans, drafts, params)

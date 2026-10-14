@@ -452,7 +452,9 @@ def test_chunks_never_start_or_end_with_nbsp_and_blank_spans_need_no_chunk() -> 
         ([], "without spans"),
         ([ChunkSpan(0, P, None, 0, 99)], "outside the text"),
         ([ChunkSpan(0, P, None, 5, 5)], "outside the text"),
-        ([ChunkSpan(1, P, None, 0, 4), ChunkSpan(0, P, None, 6, 9)], "source order"),
+        ([ChunkSpan(1, P, None, 0, 4), ChunkSpan(0, P, None, 6, 9)], "not 0..n-1"),
+        # A gap would leave a chunk's first..last span range unresolvable.
+        ([ChunkSpan(0, P, None, 0, 4), ChunkSpan(2, P, None, 6, 9)], "not 0..n-1"),
         ([ChunkSpan(0, P, None, 0, 6), ChunkSpan(1, P, None, 4, 9)], "source order"),
     ],
 )

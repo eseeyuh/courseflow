@@ -52,7 +52,7 @@ from app.ai.embeddings import (
     EmbeddingProvider,
     query_input,
 )
-from app.ai.model_calls import RecordedCallError, call_embeddings_recorded
+from app.ai.model_calls import RecordedCallError, VectorStorageError, call_embeddings_recorded
 from app.db.models import Chunk, ChunkEmbedding, Embedding, Resource, ResourceVersion, SourceSpan
 from app.domain.enums import BlockKind, ModelCallErrorCategory, ResourceType
 from app.retrieval import store
@@ -111,6 +111,16 @@ class SearchProviderError(RuntimeError):
     def __init__(self, category: ModelCallErrorCategory, model_call_id: uuid.UUID | None) -> None:
         super().__init__(f"query embedding failed: {category.value}")
         self.category = category
+        self.model_call_id = model_call_id
+
+
+class QueryCallNotRecordedError(RuntimeError):
+    """The query was embedded, but its ModelCall could not be stored, so the
+    search stops: storage is failing. ``model_call_id`` is the best-effort
+    fallback row, or None if that failed too."""
+
+    def __init__(self, model_call_id: uuid.UUID | None) -> None:
+        super().__init__("the query embedding call could not be recorded")
         self.model_call_id = model_call_id
 
 
@@ -319,6 +329,8 @@ class SearchService:
             recorded = await call_embeddings_recorded(self._provider, self._sessions, [query])
         except RecordedCallError as failed:
             raise SearchProviderError(failed.error.category, failed.model_call_id) from failed
+        except VectorStorageError as failed:
+            raise QueryCallNotRecordedError(failed.model_call_id) from failed
         vector = recorded.result.vectors[0]
         if len(vector) != space_ref.dimensions:  # pragma: no cover - the recorder rejects it
             raise RuntimeError("query vector does not match the space's dimensions")

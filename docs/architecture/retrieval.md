@@ -115,7 +115,7 @@ Stored once in `workflow_runs.summary`; a change to these meanings needs a new w
 |---|---|---|
 | searchable | chunks exactly the chunker's output, and every chunk has one correct link in the active space and `document/v1` | searched |
 | unindexed | no chunks; exact chunks with no links in this space; or valid spans with no visible text (for example an NBSP-only version: nothing to retrieve) | not searched; counted in `unindexed_versions` |
-| corrupt | anything else: partial links, a wrong vector, chunks that differ from the chunker's output, or spans the chunker cannot safely use (out of order, outside the text) | **the search fails** (`IndexStateError`, CLI exit 6) |
+| corrupt | anything else: partial links, a wrong vector, chunks that differ from the chunker's output, or spans the chunker cannot safely use (ordinals not exactly 0..n-1, out of order, outside the text, or without offsets) | **the search fails** (`IndexStateError`, CLI exit 6) |
 
 If corruption is found by the first verification, no provider call is made. If it appears during the provider call, the search still fails and the successful query `ModelCall` stays recorded as it was. A version that stopped being current during the call is never ranked; a version that became fully indexed during the call may be ranked, because it passed the second verification.
 
@@ -138,6 +138,6 @@ Search output (stdout, `--json`) deliberately shows retrieved course text and re
 
 ## Inspection, statistics and measurements
 
-- `status --course-id <id>` shows each current version's derived index state (source content, chunk state, link state); `stats --course-id <id>` reports chunk statistics: estimated-token distribution, chunks at the target and hard maximum, spans per chunk, split spans, the duplication factor caused by overlap, and visible-text coverage. Both are offline and read-only. Spans that cannot be chunked safely, or a chunkable version whose chunks do not cover all its visible text, are reported as integrity failures (exit code 6), never as ordinary statistics.
+- `status --course-id <id>` shows each current version's derived index state (source content, chunk state, link state) and the classification search applies to it (`searchable`, `unindexed`, `corrupt`), with counts; it reports and exits 0, while `search` refuses to run on corrupt state; `stats --course-id <id>` reports chunk statistics: estimated-token distribution, chunks at the target and hard maximum, spans per chunk, split spans, the duplication factor caused by overlap, and visible-text coverage. Both are offline and read-only. Spans that cannot be chunked safely, or a chunkable version whose chunks do not cover all its visible text, are reported as integrity failures (exit code 6), never as ordinary statistics.
 - `python -m app.retrieval.smoke_test` runs the whole path live (ingest, index, search) on invented courses with namespaced identities, and checks the guarantees above; reruns reuse every record and add only the new query calls.
 - `python -m app.retrieval.measure throughput | chunker` measures embedding throughput (synthetic inputs, a hard request budget, metric definitions in the module) and chunker speed. Results from one development environment are in [retrieval measurements](../experiments/retrieval-measurements.md).
