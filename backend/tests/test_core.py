@@ -256,3 +256,37 @@ def test_logs_are_json_lines_with_extra_fields(capsys: pytest.CaptureFixture[str
     assert record["level"] == "INFO"
     assert record["app_env"] == "test"
     assert "ts" in record
+
+
+def test_embedding_space_and_batch_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.embedding_dimensions == 4096
+    assert settings.embedding_space_version == "v1"
+    assert settings.embedding_batch_max_items == 64
+    assert settings.embedding_batch_max_estimated_tokens == 32_000
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("EMBEDDING_DIMENSIONS", "0"),
+        ("EMBEDDING_DIMENSIONS", "16001"),
+        ("EMBEDDING_SPACE_VERSION", ""),
+        ("EMBEDDING_SPACE_VERSION", "V1"),
+        ("EMBEDDING_SPACE_VERSION", "v 1"),
+        ("EMBEDDING_BATCH_MAX_ITEMS", "0"),
+        ("EMBEDDING_BATCH_MAX_ITEMS", "2049"),
+        ("EMBEDDING_BATCH_MAX_ESTIMATED_TOKENS", "0"),
+    ],
+)
+def test_invalid_embedding_settings_fail_fast(
+    monkeypatch: pytest.MonkeyPatch, field: str, value: str
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", VALID_URL)
+    monkeypatch.setenv(field, value)
+
+    with pytest.raises(ValidationError, match=field.lower()):
+        Settings(_env_file=None)  # type: ignore[call-arg]

@@ -38,6 +38,8 @@ Code: `backend/app/ingestion/`: `dispatch.py` (parse), `parsers/`, `guards.py`, 
 
 **Not extracted in v0.1:** DOCX headers and footers, footnotes, comments and text boxes; PPTX charts, SmartArt, images and alt text; HTML `<head>` and any `<title>`, scripts, styles, `noscript`, frames and embedded objects, SVG/MathML, comments, elements with the `hidden` attribute (including table rows, row groups and captions), and image alt text.
 
+**Known limitation (follow-up):** normalisation does not treat non-breaking spaces (U+00A0) as blank, so a block containing only NBSPs becomes a span, and spans can start or end with NBSP. Changing this alters parser output and needs a `parser_version` bump. Retrieval already handles it: chunks are trimmed to visible text, and a whitespace-only span gets no chunk of its own (see [Retrieval](retrieval.md)).
+
 ## Rejections
 
 A rejected file is detected before anything is written, so it writes nothing. Each rejection has exactly one category:

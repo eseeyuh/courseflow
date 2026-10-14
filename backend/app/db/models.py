@@ -9,6 +9,13 @@ Provenance chain (docs/architecture/data-contract.md):
 WorkflowRun records which ResourceVersions a run consumed. ModelCall records
 each logical model call, inside a run or standalone.
 
+Retrieval layer (see ADR-007):
+    ResourceVersion -> Chunk -> ChunkEmbedding -> Embedding -> EmbeddingSpaceRecord
+A Chunk is an exact slice of one version's text; its resource and course come
+only through that version. Embeddings are global and content-addressed: one
+row per (space, input format, input hash), shared by every chunk whose
+provider input was identical.
+
 All relationships use lazy="raise": async code must load related objects
 explicitly (e.g. selectinload) instead of triggering hidden I/O.
 """
@@ -18,7 +25,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
+from pgvector.sqlalchemy import VECTOR
 from sqlalchemy import (
     BigInteger,
     CheckConstraint,
@@ -31,6 +40,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, CreatedAt, Timestamps, UUIDPrimaryKey, str_enum
@@ -40,6 +50,7 @@ from app.domain.enums import (
     LmsType,
     MediaType,
     ModelCallErrorCategory,
+    ModelCallKind,
     ModelCallStatus,
     ModelRole,
     ResourceType,
@@ -267,8 +278,12 @@ class WorkflowRun(UUIDPrimaryKey, Timestamps, Base):
             "finished_at IS NULL OR (started_at IS NOT NULL AND finished_at >= started_at)",
             name="finished_after_started",
         ),
+        CheckConstraint(
+            "summary IS NULL OR jsonb_typeof(summary) = 'object'", name="summary_is_object"
+        ),
     )
 
+    # "<kind>/v<N>", e.g. "index/v1". It also fixes the shape of ``summary``.
     workflow_version: Mapped[str] = mapped_column(Text)
     course_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("courses.id"), index=True)
     status: Mapped[WorkflowRunStatus] = mapped_column(
@@ -278,6 +293,9 @@ class WorkflowRun(UUIDPrimaryKey, Timestamps, Base):
     )
     started_at: Mapped[datetime | None]
     finished_at: Mapped[datetime | None]
+    # Final counts, written once when the run finishes. Counts and IDs only,
+    # never document text; the shape is defined by workflow_version.
+    summary: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
     course: Mapped[Course] = relationship(lazy="raise")
     input_versions: Mapped[list[ResourceVersion]] = relationship(
@@ -314,13 +332,21 @@ class ModelCall(UUIDPrimaryKey, CreatedAt, Base):
             " OR (status = 'failed' AND error_category IS NOT NULL)",
             name="outcome_consistent",
         ),
+        # Roles route generative models; an embedding call has none, and no repairs.
+        CheckConstraint(
+            "call_kind <> 'embedding' OR (model_role IS NULL AND repair_rounds = 0)",
+            name="embedding_has_no_role",
+        ),
     )
 
     # Nullable: smoke tests and evaluations call models outside any workflow.
     workflow_run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("workflow_runs.id", ondelete="CASCADE"), index=True
     )
+    # What operation happened. No default: every writer states it.
+    call_kind: Mapped[ModelCallKind] = mapped_column(str_enum(ModelCallKind, "model_call_kind"))
     provider: Mapped[str] = mapped_column(Text)
+    # The served model ID when the response reports one, else the configured one.
     model: Mapped[str] = mapped_column(Text)
     model_role: Mapped[ModelRole | None] = mapped_column(str_enum(ModelRole, "model_role"))
     prompt_version: Mapped[str] = mapped_column(Text)
@@ -344,3 +370,184 @@ class ModelCall(UUIDPrimaryKey, CreatedAt, Base):
     finished_at: Mapped[datetime]
 
     workflow_run: Mapped[WorkflowRun | None] = relationship(lazy="raise")
+
+
+# --- retrieval layer ------------------------------------------------------------------
+
+
+class Chunk(UUIDPrimaryKey, CreatedAt, Base):
+    """A retrieval unit: ``text`` is exactly ``extracted_text[start_offset:end_offset]``
+    of one ResourceVersion, starting inside span ``first_span_ordinal`` and
+    ending inside span ``last_span_ordinal``.
+
+    Its spans are those with ordinals first..last. A chunk that splits one
+    oversized span has first == last, with offsets inside that span. The
+    exact-slice and containment rules span several tables: the application
+    checks them before writing, and the ``chunks_provenance`` trigger (in the
+    migration) checks them again for every row. Immutable: a new chunker
+    version creates a new set of chunks.
+    """
+
+    __tablename__ = "chunks"
+    __table_args__ = (
+        # Idempotency key. Its leading column also serves lookups by version.
+        UniqueConstraint(
+            "resource_version_id",
+            "chunker_version",
+            "ordinal",
+            name="uq_chunks_version_chunker_ordinal",
+        ),
+        # Both ends of the range are spans OF THIS version.
+        ForeignKeyConstraint(
+            ["resource_version_id", "first_span_ordinal"],
+            ["source_spans.resource_version_id", "source_spans.ordinal"],
+            name="fk_chunks_first_span",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["resource_version_id", "last_span_ordinal"],
+            ["source_spans.resource_version_id", "source_spans.ordinal"],
+            name="fk_chunks_last_span",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("length(btrim(chunker_version)) > 0", name="chunker_version_nonblank"),
+        CheckConstraint("ordinal >= 0", name="ordinal_nonnegative"),
+        CheckConstraint("start_offset >= 0 AND start_offset < end_offset", name="offsets_ordered"),
+        CheckConstraint("first_span_ordinal <= last_span_ordinal", name="span_range_ordered"),
+        CheckConstraint("length(text) = end_offset - start_offset", name="text_matches_offsets"),
+        CheckConstraint(
+            "text_hash = encode(sha256(convert_to(text, 'UTF8')), 'hex')",
+            name="text_hash_matches_text",
+        ),
+        CheckConstraint("estimated_tokens > 0", name="estimated_tokens_positive"),
+    )
+
+    # Derived data follows its source: deleting a version deletes its chunks.
+    resource_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("resource_versions.id", ondelete="CASCADE")
+    )
+    chunker_version: Mapped[str] = mapped_column(Text)
+    # 0-based order within (version, chunker_version).
+    ordinal: Mapped[int]
+    # Unicode code points in the version's extracted_text, like SourceSpan.
+    start_offset: Mapped[int]
+    end_offset: Mapped[int]
+    first_span_ordinal: Mapped[int]
+    last_span_ordinal: Mapped[int]
+    text: Mapped[str] = mapped_column(Text)
+    text_hash: Mapped[str] = mapped_column(Text)
+    estimated_tokens: Mapped[int]
+
+    resource_version: Mapped[ResourceVersion] = relationship(lazy="raise")
+
+
+class EmbeddingSpaceRecord(UUIDPrimaryKey, CreatedAt, Base):
+    """The unit of vector comparability (``app.ai.embeddings.EmbeddingSpace``).
+
+    ``model`` is the configured/requested model ID. ``space_version`` is
+    CourseFlow's own compatibility revision, not an upstream model version.
+    """
+
+    __tablename__ = "embedding_spaces"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider", "model", "dimensions", "space_version", name="uq_embedding_spaces_identity"
+        ),
+        # Target of fk_embeddings_space: an embedding's dimensions are its space's.
+        UniqueConstraint("id", "dimensions", name="uq_embedding_spaces_id_dimensions"),
+        CheckConstraint(
+            "length(provider) BETWEEN 1 AND 64 AND provider = btrim(provider)",
+            name="provider_valid",
+        ),
+        CheckConstraint(
+            "length(model) BETWEEN 1 AND 256 AND model = btrim(model)", name="model_valid"
+        ),
+        # Same rule as the EMBEDDING_SPACE_VERSION setting.
+        CheckConstraint(
+            "space_version ~ '^[a-z0-9][a-z0-9._-]{0,31}$'", name="space_version_valid"
+        ),
+        # 16,000 is pgvector's limit for the vector type.
+        CheckConstraint("dimensions BETWEEN 1 AND 16000", name="dimensions_in_range"),
+    )
+
+    provider: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    dimensions: Mapped[int]
+    space_version: Mapped[str] = mapped_column(Text)
+
+
+# Versioned input formats ("document/v1", "query/v1"). Only document formats
+# can be attached to a chunk; a future document/v2 needs no schema change.
+INPUT_FORMAT_SQL = "input_format ~ '^(document|query)/v[1-9][0-9]*$'"
+DOCUMENT_FORMAT_SQL = "input_format ~ '^document/v[1-9][0-9]*$'"
+
+
+class Embedding(UUIDPrimaryKey, CreatedAt, Base):
+    """One vector, shared by every chunk whose exact provider input hashed to
+    ``input_hash`` in this space and format. Cache key:
+    (space_id, input_format, input_hash)."""
+
+    __tablename__ = "embeddings"
+    __table_args__ = (
+        UniqueConstraint("space_id", "input_format", "input_hash", name="uq_embeddings_cache_key"),
+        # Target of fk_chunk_embeddings_embedding.
+        UniqueConstraint("id", "space_id", "input_format", name="uq_embeddings_id_space_format"),
+        ForeignKeyConstraint(
+            ["space_id", "dimensions"],
+            ["embedding_spaces.id", "embedding_spaces.dimensions"],
+            name="fk_embeddings_space",
+        ),
+        CheckConstraint(INPUT_FORMAT_SQL, name="input_format_versioned"),
+        CheckConstraint("input_hash ~ '^[0-9a-f]{64}$'", name="input_hash_sha256_hex"),
+        # The column has no fixed dimension (spaces differ): each row must
+        # match its space, and a zero vector would make cosine distance NaN.
+        CheckConstraint("vector_dims(vector) = dimensions", name="vector_dims_match"),
+        CheckConstraint("vector_norm(vector) > 0", name="vector_nonzero"),
+    )
+
+    space_id: Mapped[uuid.UUID]
+    # Copied from the space (fk_embeddings_space proves it) so a CHECK can use it.
+    dimensions: Mapped[int]
+    input_format: Mapped[str] = mapped_column(Text)
+    # SHA-256 of the exact UTF-8 provider input.
+    input_hash: Mapped[str] = mapped_column(Text)
+    # pgvector stores float32.
+    vector: Mapped[list[float]] = mapped_column(VECTOR())
+    # The call that produced it: telemetry, not identity. Pruning it keeps the vector.
+    model_call_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_calls.id", ondelete="SET NULL"), index=True
+    )
+
+    space: Mapped[EmbeddingSpaceRecord] = relationship(lazy="raise")
+
+
+class ChunkEmbedding(CreatedAt, Base):
+    """The explicit link from a chunk to its document-side vector in one space.
+
+    ``space_id`` and ``input_format`` are copied from the embedding
+    (fk_chunk_embeddings_embedding proves they match) so that "one vector per
+    chunk, space and format" is a plain unique constraint.
+    """
+
+    __tablename__ = "chunk_embeddings"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["embedding_id", "space_id", "input_format"],
+            ["embeddings.id", "embeddings.space_id", "embeddings.input_format"],
+            name="fk_chunk_embeddings_embedding",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "chunk_id", "space_id", "input_format", name="uq_chunk_embeddings_chunk_space_format"
+        ),
+        # Query embeddings exist only at retrieval time, never attached to a chunk.
+        CheckConstraint(DOCUMENT_FORMAT_SQL, name="document_format_only"),
+        Index("ix_chunk_embeddings_embedding_id", "embedding_id"),
+    )
+
+    chunk_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chunks.id", ondelete="CASCADE"), primary_key=True
+    )
+    embedding_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    space_id: Mapped[uuid.UUID]
+    input_format: Mapped[str] = mapped_column(Text)

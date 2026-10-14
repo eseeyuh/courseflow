@@ -72,6 +72,31 @@ Consequential claim / domain object
 - **Locators:** `page_number` is the physical 1-based page; `slide_number` the 1-based position in the presentation (hidden slides included); `section_path` is the heading chain joined with ` > `, or `(preamble)` for text before the first heading. Each block kind requires its canonical locator: `page` requires `page_number`; `heading`, `paragraph` and `table` require `section_path`; `slide_text` and `slide_notes` require `slide_number`. Additional locator fields are permitted by the provenance contract, though the v0.1 parsers normally emit only the locator relevant to the format. `timestamp_seconds` is reserved for media sources, which v0.1 does not ingest.
 - **Evidence finer than a span** references a `SourceSpan` plus sub-offsets in the evidence layer. It does not create a different kind of `SourceSpan`.
 
+### Retrieval layer
+
+Retrieval units are not evidence units. A `Chunk` is what similarity search ranks; evidence still points at `SourceSpan`s, which every chunk resolves to exactly.
+
+```text
+SourceSpan (first..last ordinal) <- Chunk -> ChunkEmbedding -> Embedding -> EmbeddingSpace
+```
+
+| Entity | Meaning | Minimum fields |
+|---|---|---|
+| `Chunk` | An exact slice of one `ResourceVersion`'s `extracted_text`, produced by a versioned chunker. Its resource and course come only through that version. Immutable. | id, resource_version_id, chunker_version, ordinal (unique per version and chunker version), start_offset, end_offset, first_span_ordinal, last_span_ordinal, text, text_hash, estimated_tokens |
+| `EmbeddingSpace` | The unit of vector comparability. `model` is the configured model ID; `space_version` is CourseFlow's own compatibility revision, not an upstream model version. | id, provider, model, dimensions (1–16,000), space_version (unique together) |
+| `Embedding` | One vector, global and content-addressed: shared by every input that hashed identically in the same space and input format. | id, space_id, dimensions (equal to the space's), input_format (`document/vN` or `query/vN`), input_hash (SHA-256 of the exact UTF-8 provider input), vector (non-zero), model_call_id (nullable) |
+| `ChunkEmbedding` | The explicit link from a chunk to its document-format vector in one space. | chunk_id, embedding_id, space_id, input_format (`document/vN` only); at most one per (chunk, space, input format) |
+
+Rules:
+
+- **Chunkable source:** span ordinals are exactly 0..n-1 in source order and every span has offsets inside the text (ingestion always writes them so); a version that breaks this cannot be chunked and is never searched.
+- **Chunk provenance:** `text == extracted_text[start_offset:end_offset]`; the start lies inside span `first_span_ordinal` and the end inside span `last_span_ordinal`, both spans of the chunk's own version, with `first_span_ordinal <= last_span_ordinal`. A chunk that splits one oversized span has `first_span_ordinal == last_span_ordinal`. The chunk's spans are those with ordinals between the two. These rules are checked by the application before writing and again, for every row, by the database.
+- **Coverage:** for each indexed version and chunker version, every `SourceSpan` that contains visible (non-whitespace) text lies within at least one chunk's span range, and every non-whitespace character of `extracted_text` lies within at least one chunk. A whitespace-only span gets no retrieval unit of its own; any text not covered by a chunk is whitespace only.
+- **Vectors** are compared only within one `EmbeddingSpace`. The relevance score is `1 - cosine distance`; it ranks results and is never a confidence.
+- **Query embeddings** (`query/vN`) are never linked to chunks.
+- **Search** covers only the current version of each resource, and is scoped to a course through `Chunk -> ResourceVersion -> Resource -> Course`.
+- **Deletion:** deleting a version's spans or the version deletes its chunks and their links; an embedding in use cannot be deleted; pruning a `ModelCall` keeps the vectors it produced.
+
 ### Academic layer
 
 | Entity | Meaning | Minimum fields |
@@ -101,8 +126,10 @@ Consequential claim / domain object
 
 | Entity | Meaning | Minimum fields |
 |---|---|---|
-| `WorkflowRun` | One execution of an import/analysis/change workflow, including deterministic and LLM steps. | id, workflow_version, course_id, input resource_version_ids, status, started_at, finished_at |
-| `ModelCall` | One logical model call: its final outcome after retries and repair turns. | id, workflow_run_id (nullable: standalone calls such as evaluations), provider, model, model_role, prompt_version, output_schema, status, error_category, attempts, repair_rounds, token counts, latency_ms, started_at, finished_at |
+| `WorkflowRun` | One execution of an import/analysis/change workflow, including deterministic and LLM steps. | id, workflow_version (`<kind>/v<N>`, e.g. `index/v1`), course_id, input resource_version_ids, status, started_at, finished_at, summary (a JSON object of final counts whose shape is fixed by workflow_version; never document text) |
+| `ModelCall` | One logical model call: its final outcome after retries and repair turns. | id, workflow_run_id (nullable: standalone calls such as evaluations and search queries), call_kind (`chat_structured`, `embedding`), provider, model, model_role, prompt_version, output_schema, status, error_category, attempts, repair_rounds, token counts, latency_ms, started_at, finished_at |
+
+`call_kind` says what operation happened; `model_role` says why a generative model was chosen (`fast` or `strong`). Embedding calls have `call_kind = embedding`, no `model_role` and no repair rounds. Their `prompt_version` is the input format (`document/v1`, `query/v1`) and their `output_schema` is `vector[<dimensions>]`.
 
 A `ModelCall` belongs to a `WorkflowRun` when made inside one. Per-attempt detail (each HTTP request, its latency and error) is in structured logs, not separate rows. A `ModelCall` never stores secrets or prompts; its output summary is the *validated* output only. See [ADR-005](../decisions/ADR-005-ai-provider-boundary.md). Per-step records (step name, node) are defined when workflow orchestration is implemented.
 

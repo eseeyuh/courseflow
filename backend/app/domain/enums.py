@@ -48,6 +48,14 @@ class ModelRole(StrEnum):
     STRONG = "strong"
 
 
+class ModelCallKind(StrEnum):
+    """What operation a model call performed. Independent of ``ModelRole``,
+    which says why a model was chosen; embedding calls have no role."""
+
+    CHAT_STRUCTURED = "chat_structured"
+    EMBEDDING = "embedding"
+
+
 class ModelCallStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
