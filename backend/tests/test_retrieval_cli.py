@@ -322,6 +322,9 @@ async def test_search_prints_a_readable_ranking_with_evidence_and_safe_logs(
     assert code == cli.EXIT_OK
     assert "Searched 1 of 1 current version(s)" in out
     assert "#1 " in out and "(lecture) v1 | chunk" in out
+    async with session_factory() as session:
+        chunk_ids = {str(c) for c in await session.scalars(select(Chunk.id))}
+    assert any(chunk_id in out for chunk_id in chunk_ids)  # top-k chunk IDs are printed
     assert "upload:secret-brief.pdf" in out  # stdout may show the reference, deliberately
     assert "evidence: span" in out and "not a confidence" in out
     _assert_safe_logs(err)

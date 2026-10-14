@@ -230,7 +230,8 @@ def _render_hit(hit: SearchHit) -> list[str]:
         "",
         (
             f"#{hit.rank}  {hit.score:.4f}  {resource.title} ({resource.type.value}) "
-            f"v{hit.version.version_number} | chunk {hit.chunk_ordinal} | {resource.source_uri}"
+            f"v{hit.version.version_number} | chunk {hit.chunk_ordinal} {hit.chunk_id} | "
+            f"{resource.source_uri}"
         ),
         f"    {preview}",
         *(f"    evidence: {line}" for line in _evidence_lines(hit.spans)),
