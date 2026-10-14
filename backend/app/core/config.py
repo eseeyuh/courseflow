@@ -86,6 +86,16 @@ class Settings(BaseSettings):
     # Reasoning shares this budget, so it is far above the visible answer size.
     ai_max_output_tokens: int = Field(default=4096, ge=256)
 
+    # Embedding space (see ADR-007). Requested explicitly, never left to the
+    # provider's default. 16,000 is pgvector's limit for the `vector` type.
+    embedding_dimensions: int = Field(default=4096, ge=1, le=16_000)
+    # CourseFlow's own compatibility revision, not an upstream weight version:
+    # bump it to start a fresh space when stored vectors must not be reused.
+    embedding_space_version: str = Field(default="v1", pattern=r"^[a-z0-9][a-z0-9._-]{0,31}$")
+    # A request batch closes at whichever limit is reached first.
+    embedding_batch_max_items: int = Field(default=64, ge=1, le=2048)
+    embedding_batch_max_tokens: int = Field(default=32_000, ge=1)
+
     # Canonical store for original source bytes. No default: a relative or
     # implicit location would silently give each process (host CLI, API
     # container) its own store behind the same sha256: references.

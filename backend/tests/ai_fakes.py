@@ -19,6 +19,7 @@ import openai
 from pydantic import SecretStr
 
 from app.ai.nebius import NebiusTokenFactoryProvider
+from app.ai.nebius_embeddings import NebiusEmbeddingProvider
 from app.ai.retry import RetryPolicy
 from app.domain.enums import ModelRole
 
@@ -26,6 +27,8 @@ API_KEY = "sk-test-secret-value-1234567890"
 BASE_URL = "https://token-factory.test/v1/"
 FAST_MODEL = "vendor/fast-model"
 STRONG_MODEL = "vendor/strong-model"
+EMBEDDING_MODEL = "vendor/embedding-model"
+EMBEDDING_DIMENSIONS = 8
 
 VALID_FACT = {
     "kind": "deadline",
@@ -81,6 +84,54 @@ def completion(
 
 def fact_completion(fact: dict[str, Any] | None = None, **kwargs: Any) -> Step:
     return completion(json.dumps(fact or VALID_FACT), **kwargs)
+
+
+def basis_vector(position: int, dimensions: int) -> list[float]:
+    """A distinct, non-zero direction for each input position."""
+    vector = [0.0] * dimensions
+    vector[position % dimensions] = 1.0
+    return vector
+
+
+def embeddings(
+    vectors: list[Any] | None = None,
+    *,
+    order: list[int] | None = None,
+    indices: list[int] | None = None,
+    prompt_tokens: int | None = 12,
+    total_tokens: int | None = None,
+    usage: bool = True,
+    request_id: str | None = "req-emb",
+    served_model: str | None = None,
+) -> Step:
+    """An embeddings response. By default one basis vector per input at the
+    requested dimensions; ``order`` permutes the items as listed and
+    ``indices`` overrides their ``index`` fields."""
+    headers = {"x-request-id": request_id} if request_id else {}
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        sent = json.loads(request.content)
+        vecs = vectors
+        if vecs is None:
+            vecs = [basis_vector(i, sent["dimensions"]) for i in range(len(sent["input"]))]
+        data = [{"object": "embedding", "index": i, "embedding": v} for i, v in enumerate(vecs)]
+        if order is not None:
+            data = [data[i] for i in order]
+        if indices is not None:
+            data = [item | {"index": index} for item, index in zip(data, indices, strict=True)]
+        body: dict[str, Any] = {
+            "object": "list",
+            "data": data,
+            "model": served_model or sent["model"],
+        }
+        if usage:
+            body["usage"] = {
+                "prompt_tokens": prompt_tokens,
+                "total_tokens": prompt_tokens if total_tokens is None else total_tokens,
+            }
+        return httpx2.Response(200, json=body, headers=headers)
+
+    return respond
 
 
 def status(code: int, headers: dict[str, str] | None = None, body: Any = None) -> Step:
@@ -148,4 +199,29 @@ def make_provider(
         http_client=openai.DefaultAsyncHttpx2Client(transport=httpx2.MockTransport(server)),
         sleep=sleeps or RecordedSleeps(),
         rand=lambda: 1.0,  # jitter at its ceiling: delays become deterministic
+    )
+
+
+def make_embedding_provider(
+    server: ScriptedServer,
+    sleeps: RecordedSleeps | None = None,
+    *,
+    max_attempts: int = 3,
+    max_batch_items: int = 4,
+    dimensions: int = EMBEDDING_DIMENSIONS,
+) -> NebiusEmbeddingProvider:
+    return NebiusEmbeddingProvider(
+        api_key=SecretStr(API_KEY),
+        base_url=BASE_URL,
+        model=EMBEDDING_MODEL,
+        dimensions=dimensions,
+        space_version="v1",
+        timeout_seconds=5.0,
+        retry_policy=RetryPolicy(
+            max_attempts=max_attempts, base_delay_seconds=1.0, max_delay_seconds=8.0
+        ),
+        max_batch_items=max_batch_items,
+        http_client=openai.DefaultAsyncHttpx2Client(transport=httpx2.MockTransport(server)),
+        sleep=sleeps or RecordedSleeps(),
+        rand=lambda: 1.0,
     )
