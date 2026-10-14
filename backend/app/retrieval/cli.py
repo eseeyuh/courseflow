@@ -6,6 +6,7 @@
 
     docker compose run --rm --no-deps api python -m app.retrieval.cli index --course-id <uuid>
     docker compose run --rm --no-deps api python -m app.retrieval.cli status --course-id <uuid>
+    docker compose run --rm --no-deps api python -m app.retrieval.cli stats --course-id <uuid>
     docker compose run --rm --no-deps api python -m app.retrieval.cli search \\
         --course-id <uuid> --query "When is coursework 1 due?" [-k 5] [--type brief] [--json]
     echo "When is coursework 1 due?" | docker compose run --rm --no-deps -T api \\
@@ -16,19 +17,21 @@
 each version atomically. ``status`` re-derives each current version's index
 state offline: it needs only the embedding space (EMBEDDING_MODEL,
 EMBEDDING_DIMENSIONS, EMBEDDING_SPACE_VERSION), no API key, no provider
-client and no network, and it writes nothing. ``search`` embeds the question
+client and no network, and it writes nothing. ``stats`` reports chunk and
+token-budget statistics of the course's current versions, also offline and
+read-only (it does not even need the embedding settings). ``search`` embeds the question
 (one recorded provider call) and ranks the course's verified, current chunks.
 
-``index`` and ``status`` print one JSON object on stdout. ``search`` prints a
-readable ranking, or one JSON object with ``--json``; it deliberately shows
+``index`` and ``status`` print one JSON object on stdout. ``stats`` and
+``search`` print readable text, or one JSON object with ``--json``; ``search`` it deliberately shows
 retrieved course text. Logs (JSON lines, stderr) never contain query text,
 chunk text, excerpts or source URIs.
 
 Exit codes: 0 ok (index: the run succeeded); 1 unexpected or configuration
 error; 2 embedding provider not configured; 3 course not found; 4 invalid
 search request; 5 provider failure (index: the run failed, see its summary;
-search: the query embedding failed); 6 inconsistent index or provenance
-state (search refuses to run on it); 64 command-line usage.
+search: the query embedding failed); 6 inconsistent index, provenance or
+chunk state (search and stats refuse to report on it); 64 command-line usage.
 """
 
 import argparse
@@ -68,6 +71,7 @@ from app.retrieval.search import (
     SearchService,
     SpanEvidence,
 )
+from app.retrieval.stats import ChunkStats, CourseStats, StatsIntegrityError, course_stats
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +157,77 @@ def _status(course_id: uuid.UUID, reports: Sequence[VersionIndexReport]) -> int:
         }
     )
     return EXIT_OK
+
+
+# --- stats ----------------------------------------------------------------------------------
+
+
+async def _run_stats(settings: Settings, args: argparse.Namespace) -> int:
+    engine = create_db_engine(settings)  # offline: no provider, no embedding settings
+    try:
+        report = await course_stats(create_session_factory(engine), args.course_id)
+    finally:
+        await engine.dispose()
+    if args.json:
+        _emit({"status": "ok", **dataclasses.asdict(report)})
+    else:
+        _print_text(_render_stats(report))
+    return EXIT_OK
+
+
+def _render_stats(report: CourseStats) -> str:
+    header = (
+        f"Course {report.course_id} | chunker {report.chunker_version} "
+        f"(target {report.target_estimated_tokens}, hard max "
+        f"{report.hard_max_estimated_tokens} estimated tokens)"
+    )
+    note = (
+        f"{len(report.versions)} current version(s); token figures are estimates "
+        "(ceil(chars / 4)), not tokenizer counts."
+    )
+    lines = [header, note, "", "course total:", *_stats_lines(report.total)]
+    for version in report.versions:
+        title = (
+            f"version {version.resource_version_id} ({version.content.value}; "
+            f"stored chunks: {version.stored_chunk_state.value}):"
+        )
+        lines += ["", title, *_stats_lines(version.stats)]
+    return "\n".join(lines)
+
+
+def _stats_lines(stats: ChunkStats) -> list[str]:
+    tokens = stats.estimated_tokens
+    spread = "n/a"
+    if tokens is not None:
+        spread = f"min {tokens.min}, p50 {tokens.p50}, p95 {tokens.p95}, max {tokens.max}"
+    mean = "n/a" if stats.spans_per_chunk_mean is None else f"{stats.spans_per_chunk_mean:.2f}"
+    spans = f"{stats.spans} ({stats.visible_spans} with visible text)"
+    budget = (
+        f"at or above target: {stats.chunks_at_or_above_target}; "
+        f"at hard max: {stats.chunks_at_hard_max}"
+    )
+    shape = (
+        f"spans per chunk: mean {mean}, max {stats.spans_per_chunk_max or 'n/a'}; "
+        f"split spans {stats.split_spans}; "
+        f"chunk edges inside spans {stats.chunk_edges_inside_spans}"
+    )
+    coverage = (
+        f"duplication factor {_ratio(stats.duplication_factor)} "
+        f"(overlap extra {_ratio(stats.overlap_extra_ratio)}); "
+        f"visible coverage {_ratio(stats.visible_coverage)}; "
+        f"uncovered whitespace {stats.uncovered_whitespace_chars} chars"
+    )
+    return [
+        f"  chunks {stats.chunks}; spans {spans}",
+        f"  estimated tokens per chunk: {spread}",
+        f"  {budget}",
+        f"  {shape}",
+        f"  {coverage}",
+    ]
+
+
+def _ratio(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.3f}"
 
 
 # --- search ---------------------------------------------------------------------------------
@@ -300,6 +375,9 @@ def _parser() -> argparse.ArgumentParser:
     index.add_argument("--course-id", type=uuid.UUID, required=True)
     status = commands.add_parser("status", help="show each current version's index state")
     status.add_argument("--course-id", type=uuid.UUID, required=True)
+    stats = commands.add_parser("stats", help="chunk and token-budget statistics (offline)")
+    stats.add_argument("--course-id", type=uuid.UUID, required=True)
+    stats.add_argument("--json", action="store_true", help="one JSON object instead of text")
     search = commands.add_parser("search", help="rank a course's chunks for a question")
     search.add_argument("--course-id", type=uuid.UUID, required=True)
     search.add_argument("--query", required=True, help='the question, or "-" to read stdin')
@@ -320,7 +398,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args = _parser().parse_args(argv)
     except SystemExit as exc:  # usage error (64) or --help (0): returned, not raised
         return exc.code if isinstance(exc.code, int) else EXIT_USAGE
-    human = args.command == "search" and not args.json
+    human = args.command in {"search", "stats"} and not args.json
 
     def fail(code: int, error: str, **details: Any) -> int:
         if human:
@@ -341,6 +419,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return asyncio.run(_run_index(settings, args.course_id))
         if args.command == "status":
             return asyncio.run(_run_status(settings, args.course_id))
+        if args.command == "stats":
+            return asyncio.run(_run_stats(settings, args))
         return asyncio.run(_run_search(settings, args))
     except AIConfigurationError as exc:
         return fail(EXIT_NOT_CONFIGURED, "provider_not_configured", detail=str(exc))
@@ -365,6 +445,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     except ProvenanceError as exc:
         return fail(EXIT_INDEX_STATE, "provenance_inconsistent", chunk_id=exc.chunk_id)
+    except StatsIntegrityError as exc:
+        return fail(
+            EXIT_INDEX_STATE,
+            "chunk_integrity_failed",
+            versions=[str(v) for v in exc.version_ids],
+        )
     except Exception as exc:  # noqa: BLE001 - one result, never a traceback
         # The exception type only: messages may quote document text.
         logger.error("cli.unexpected_error", extra={"error_type": type(exc).__name__})

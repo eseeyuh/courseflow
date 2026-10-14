@@ -22,7 +22,14 @@ from app.ai.errors import AIConfigurationError, AIProviderError
 from app.ai.nebius_embeddings import embedding_space_from_settings
 from app.ai.provider import TokenUsage
 from app.core.config import Settings
-from app.db.models import Chunk, ChunkEmbedding, Embedding, ModelCall, WorkflowRun
+from app.db.models import (
+    Chunk,
+    ChunkEmbedding,
+    Embedding,
+    ModelCall,
+    SourceSpan,
+    WorkflowRun,
+)
 from app.domain.enums import BlockKind, ModelCallErrorCategory
 from app.retrieval import cli
 from app.retrieval.search import SpanEvidence
@@ -482,3 +489,65 @@ def test_human_evidence_groups_whole_spans_and_keeps_partial_ranges_exact() -> N
         "span 3, page 4 (characters 40-100 of 100)",
         "spans 4-6: page 5 to page 7 (whole spans)",
     ]
+
+
+# --- stats ------------------------------------------------------------------------------------
+
+
+async def test_stats_is_offline_and_reports_estimates_in_text_and_json(
+    session_factory: async_sessionmaker[AsyncSession],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+) -> None:
+    course = await seed_course(session_factory)
+    await seed_version(session_factory, course, paragraphs(0, 3))
+
+    def no_provider(_settings: Settings) -> FakeEmbeddingProvider:
+        raise AssertionError("stats must not build an embedding provider")
+
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)  # no embedding settings, no key
+    monkeypatch.setattr(cli, "_provider", no_provider)
+
+    def no_client(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("stats must not build an API client")
+
+    monkeypatch.setattr(openai.AsyncOpenAI, "__init__", no_client)
+
+    code, out, err = await _raw(capsys, "stats", "--course-id", str(course))
+    json_code, result, _ = await _run(capsys, "stats", "--course-id", str(course), "--json")
+
+    assert code == json_code == cli.EXIT_OK
+    assert "course total:" in out and "duplication factor" in out
+    assert "estimates (ceil(chars / 4)), not tokenizer counts" in out
+    assert result["chunker_version"] == "span-pack/v1"
+    (version,) = result["versions"]
+    assert version["content"] == "chunkable" and version["stored_chunk_state"] == "none"
+    assert version["stats"]["visible_coverage"] == 1.0
+    assert "Sentence" not in err  # no source text in logs
+
+
+async def test_stats_refuse_to_report_invalid_chunk_state(
+    session_factory: async_sessionmaker[AsyncSession],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+) -> None:
+    course = await seed_course(session_factory)
+    version = await seed_version(session_factory, course, paragraphs(0, 3))
+    async with session_factory() as session, session.begin():
+        await session.execute(
+            SourceSpan.__table__.update()
+            .where(SourceSpan.resource_version_id == version, SourceSpan.ordinal == 1)
+            .values(start_offset=SourceSpan.start_offset - 3, end_offset=SourceSpan.end_offset - 3)
+        )
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)
+
+    code, result, _ = await _run(capsys, "stats", "--course-id", str(course), "--json")
+
+    assert code == cli.EXIT_INDEX_STATE == 6
+    assert result == {
+        "status": "error",
+        "error": "chunk_integrity_failed",
+        "versions": [str(version)],
+    }

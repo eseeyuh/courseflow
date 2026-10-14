@@ -68,13 +68,13 @@ class StoredChunk:
     estimated_tokens: int
 
 
-class ChunkState(enum.Enum):
+class ChunkState(enum.StrEnum):
     NONE = "none"  # no chunks for (version, chunker version)
     EXACT = "exact"  # exactly the deterministic drafts
     MISMATCH = "mismatch"  # anything else: incomplete, extra or different
 
 
-class LinkState(enum.Enum):
+class LinkState(enum.StrEnum):
     ZERO = "zero"  # no link in the active space and format
     COMPLETE = "complete"  # one correct link per chunk
     INCONSISTENT = "inconsistent"  # anything else
