@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db import models  # noqa: F401  (registers every table on Base.metadata)
 from app.db.base import Base
+from app.db.models import CHUNK_TEXT_TSV_EXPRESSION
 from tests.db_utils import (
     alembic_config,
     downgrade,
@@ -44,7 +45,7 @@ EXPECTED_TABLES = {
     "embeddings",
     "chunk_embeddings",
 }
-HEAD = "0005"
+HEAD = "0006"
 
 EXPECTED_SOURCE_SPAN_CHECKS = {
     "ck_source_spans_locator_present",
@@ -651,3 +652,74 @@ def test_0005_summary_must_be_a_json_object(db_at_0004: URL, summary: str) -> No
 
     with pytest.raises(IntegrityError, match="ck_workflow_runs_summary_is_object"):
         _execute(db_at_0004, [f"UPDATE workflow_runs SET summary = {summary}::jsonb"])
+
+
+# --- 0006: chunks.text_tsv -------------------------------------------------------------
+
+EXISTING_CHUNK_TEXT = "Submit by Friday."
+EXISTING_CHUNK = (
+    "INSERT INTO chunks (resource_version_id, chunker_version, ordinal, start_offset, "
+    "end_offset, first_span_ordinal, last_span_ordinal, text, text_hash, estimated_tokens) "
+    f"VALUES ('{VERSION}', 'span-pack/v1', 0, 0, 17, 0, 0, '{EXISTING_CHUNK_TEXT}', "
+    f"'{hashlib.sha256(EXISTING_CHUNK_TEXT.encode()).hexdigest()}', 5)"
+)
+TEXT_TSV_COLUMN = (
+    "SELECT a.attgenerated::text || ':' || a.attnotnull::text || ':' || pg_get_expr(d.adbin, d.adrelid) "
+    "FROM pg_attribute a JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum "
+    "WHERE a.attrelid = 'public.chunks'::regclass AND a.attname = 'text_tsv' "
+    "AND NOT a.attisdropped"
+)
+TEXT_TSV_INDEX_METHOD = (
+    "SELECT am.amname FROM pg_class c JOIN pg_am am ON am.oid = c.relam "
+    "WHERE c.relname = 'ix_chunks_text_tsv'"
+)
+
+
+@pytest.fixture
+def db_at_0005(test_database_url: URL) -> Iterator[URL]:
+    """A fresh database at 0005 holding pre-existing ingestion data and one chunk."""
+    url = test_database_url.set(database=MIGRATIONS_DATABASE)
+    recreate_database(url)
+    migrate(url, "0003")
+    _execute(url, EXISTING_ROWS)
+    migrate(url, "0005")
+    _execute(url, [EXISTING_CHUNK])
+    try:
+        yield url
+    finally:
+        drop_database(url)
+
+
+def _assert_at_0005_with_chunk(url: URL) -> None:
+    state = _state(url)
+    assert state.version == "0005"
+    assert _scalar(url, TEXT_TSV_COLUMN) is None
+    assert "ix_chunks_text_tsv" not in state.indexes
+    assert _scalar(url, "SELECT text FROM chunks") == EXISTING_CHUNK_TEXT
+    _assert_existing_data_intact(url)
+
+
+def _assert_at_0006_with_chunk(url: URL) -> None:
+    state = _state(url)
+    assert state.version == "0006"
+    # Stored generated ('s'), NOT NULL, and exactly the model's expression.
+    assert _scalar(url, TEXT_TSV_COLUMN) == f"s:true:{CHUNK_TEXT_TSV_EXPRESSION}"
+    assert "ix_chunks_text_tsv" in state.indexes
+    assert _scalar(url, TEXT_TSV_INDEX_METHOD) == "gin"
+    # The pre-existing chunk was backfilled by the table rewrite.
+    assert _scalar(url, "SELECT text_tsv::text FROM chunks") == "'friday':3 'submit':1"
+    assert _scalar(url, "SELECT text FROM chunks") == EXISTING_CHUNK_TEXT
+    _assert_existing_data_intact(url)
+
+
+def test_0006_upgrade_downgrade_upgrade_backfills_existing_chunks(db_at_0005: URL) -> None:
+    _assert_at_0005_with_chunk(db_at_0005)
+
+    migrate(db_at_0005, "0006")
+    _assert_at_0006_with_chunk(db_at_0005)
+
+    downgrade(db_at_0005, "0005")
+    _assert_at_0005_with_chunk(db_at_0005)
+
+    migrate(db_at_0005, "0006")
+    _assert_at_0006_with_chunk(db_at_0005)

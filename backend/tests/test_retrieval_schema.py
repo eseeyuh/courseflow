@@ -14,8 +14,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from sqlalchemy import delete, func, insert, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import Text, delete, func, insert, literal_column, select
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.embeddings import DOCUMENT_INPUT_FORMAT, QUERY_INPUT_FORMAT
@@ -367,6 +367,73 @@ async def test_chunk_ordinal_is_unique_per_version_and_chunker(db_session: Async
 
     with pytest.raises(IntegrityError, match="uq_chunks_version_chunker_ordinal"):
         await _insert_chunk(db_session, version, _draft(1, 1))
+
+
+# --- chunks.text_tsv: computed by PostgreSQL, never written by the application ----------
+
+
+async def test_text_tsv_is_computed_from_text_with_the_english_configuration(
+    db_session: AsyncSession,
+) -> None:
+    version = await _version(db_session, await _course(db_session))
+    chunk_id = await _insert_chunk(db_session, version, _draft(0, 0))
+
+    stored, expected = (
+        await db_session.execute(
+            select(
+                Chunk.text_tsv.cast(Text),
+                func.to_tsvector(literal_column("'english'::regconfig"), Chunk.text).cast(Text),
+            ).where(Chunk.id == chunk_id)
+        )
+    ).one()
+
+    assert stored == expected
+    # English stemming: "recursion" -> 'recurs', "cases" -> 'case'.
+    assert "'recurs'" in stored and "'case'" in stored
+
+
+async def test_orm_inserted_chunk_gets_text_tsv_without_writing_it(
+    db_session: AsyncSession,
+) -> None:
+    version = await _version(db_session, await _course(db_session))
+    chunk = Chunk(
+        **_fields(_draft(0, 0)),
+        resource_version_id=version.id,
+        chunker_version=CHUNKER,
+        text_hash=_draft(0, 0).text_hash,
+    )
+    db_session.add(chunk)
+    await db_session.flush()
+
+    stored = await db_session.scalar(select(Chunk.text_tsv).where(Chunk.id == chunk.id))
+    assert stored  # computed by the database, not sent by the ORM
+
+
+async def test_text_tsv_cannot_be_written_on_insert(db_session: AsyncSession) -> None:
+    version = await _version(db_session, await _course(db_session))
+
+    with pytest.raises(DBAPIError, match="text_tsv"):
+        await _insert_chunk(db_session, version, _draft(0, 0), text_tsv="'forged':1")
+
+
+async def test_text_tsv_cannot_be_written_on_update(db_session: AsyncSession) -> None:
+    version = await _version(db_session, await _course(db_session))
+    chunk_id = await _insert_chunk(db_session, version, _draft(0, 0))
+
+    with pytest.raises(DBAPIError, match="text_tsv"):
+        await db_session.execute(
+            Chunk.__table__.update().where(Chunk.id == chunk_id).values(text_tsv="'forged':1")
+        )
+
+
+async def test_text_tsv_is_deferred_on_ordinary_chunk_loads(db_session: AsyncSession) -> None:
+    version = await _version(db_session, await _course(db_session))
+    chunk_id = await _insert_chunk(db_session, version, _draft(0, 0))
+
+    chunk = await db_session.scalar(select(Chunk).where(Chunk.id == chunk_id))
+
+    assert chunk is not None
+    assert "text_tsv" not in chunk.__dict__
 
 
 # --- embedding spaces and embeddings -----------------------------------------------------
