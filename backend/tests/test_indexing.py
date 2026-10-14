@@ -387,6 +387,7 @@ async def test_a_version_local_failure_does_not_stop_a_valid_sibling(
     assert (summary.versions_failed, summary.versions_indexed) == (1, 1)
     (failure,) = summary.failures
     assert (failure.resource_version_id, failure.stage) == (blank, FailureStage.CHUNK)
+    assert failure.error == "NoVisibleText"  # valid but empty, not a chunker failure
     states = {
         s.resource_version_id: s.indexed
         for s in await _state(session_factory, course, FakeEmbeddingProvider())

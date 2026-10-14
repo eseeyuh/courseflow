@@ -17,6 +17,7 @@ Cancellation is not recorded: the task is being torn down.
 
 import json
 import logging
+import math
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
@@ -337,11 +338,16 @@ _COPIED_COLUMNS = [
 
 
 def _vector_shape_problem(result: EmbeddingResult, expected: int, dimensions: int) -> str | None:
-    """Why ``result`` does not answer a request of ``expected`` inputs, if it does not.
-    Counts and positions only: never vector values or input text."""
+    """Why ``result`` does not answer a request of ``expected`` inputs, if it does not:
+    wrong count or length, non-finite values, or an all-zero vector (which makes
+    every cosine score NaN). Counts and positions only: never values or text."""
     if len(result.vectors) != expected:
         return f"expected {expected} vectors, got {len(result.vectors)}"
     for index, vector in enumerate(result.vectors):
         if len(vector) != dimensions:
             return f"vector {index} has {len(vector)} dimensions; requested {dimensions}"
+        if not all(math.isfinite(value) for value in vector):
+            return f"vector {index} has non-finite values"
+        if not any(vector):
+            return f"vector {index} is all zeros (cosine undefined)"
     return None

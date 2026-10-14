@@ -36,7 +36,9 @@ QUERY_TASK_V1 = (
     "Given a student's question about a university course, retrieve passages "
     "from the course materials that answer it"
 )
-MAX_QUERY_CHARS = 2000
+# CourseFlow's own bound on a query/v1 question (stripped), not a provider
+# limit: a question, not a document. Changing it changes what query/v1 accepts.
+QUERY_V1_MAX_CHARS = 2000
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,8 +82,8 @@ def query_input(question: str) -> EmbeddingInput:
     question = question.strip()
     if not question:
         raise ValueError("query is empty")
-    if len(question) > MAX_QUERY_CHARS:
-        raise ValueError(f"query is longer than {MAX_QUERY_CHARS} characters")
+    if len(question) > QUERY_V1_MAX_CHARS:
+        raise ValueError(f"query is longer than {QUERY_V1_MAX_CHARS} characters")
     return EmbeddingInput(f"Instruct: {QUERY_TASK_V1}\nQuery:{question}", QUERY_INPUT_FORMAT)
 
 

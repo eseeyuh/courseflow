@@ -167,7 +167,7 @@ def chunk_version(
     extracted_text: str, spans: Sequence[ChunkSpan], params: ChunkingParams = SPAN_PACK_V1
 ) -> list[ChunkDraft]:
     """Chunk one version. Raises ``ChunkingError`` rather than return a bad chunk."""
-    _check_input(extracted_text, spans)
+    check_spans(extracted_text, spans)
     units = build_units(extracted_text, spans, params)
     if not units:
         raise ChunkingError("no span has visible text")
@@ -496,7 +496,15 @@ def _blank(text: str, start: int, end: int) -> bool:
     return start >= end or text[start:end].isspace()
 
 
-def _check_input(text: str, spans: Sequence[ChunkSpan]) -> None:
+def has_visible_text(text: str, spans: Sequence[ChunkSpan]) -> bool:
+    """Whether any span holds visible (non-whitespace) text. A version without
+    any is valid but has nothing to retrieve: no chunk unit, not an error.
+    Call ``check_spans`` first; this assumes valid spans."""
+    return any(not _blank(text, span.start_offset, span.end_offset) for span in spans)
+
+
+def check_spans(text: str, spans: Sequence[ChunkSpan]) -> None:
+    """Raise ChunkingError unless the spans are in source order and inside the text."""
     if not spans:
         raise ChunkingError("a version without spans cannot be chunked")
     previous: ChunkSpan | None = None

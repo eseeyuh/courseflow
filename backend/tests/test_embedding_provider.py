@@ -20,9 +20,9 @@ from pydantic import SecretStr
 
 from app.ai.embeddings import (
     DOCUMENT_INPUT_FORMAT,
-    MAX_QUERY_CHARS,
     QUERY_INPUT_FORMAT,
     QUERY_TASK_V1,
+    QUERY_V1_MAX_CHARS,
     EmbeddingInput,
     EmbeddingSpace,
     check_batch,
@@ -129,9 +129,9 @@ def test_blank_inputs_are_rejected(text: str) -> None:
 
 
 def test_overlong_query_is_rejected() -> None:
-    query_input("x" * MAX_QUERY_CHARS)
+    query_input("x" * QUERY_V1_MAX_CHARS)
     with pytest.raises(ValueError, match="longer than"):
-        query_input("x" * (MAX_QUERY_CHARS + 1))
+        query_input("x" * (QUERY_V1_MAX_CHARS + 1))
 
 
 @pytest.mark.parametrize(

@@ -104,3 +104,34 @@ Stored once in `workflow_runs.summary`; a change to these meanings needs a new w
 | `provider_calls / failed_provider_calls` | Real external requests, and those that failed |
 | `prompt_tokens` | Sum over successful requests; empty if any did not report usage. The `ModelCall` rows remain the source of truth |
 | `failures` | Per failed version: its ID, the stage and an error category or type (never a message) |
+
+## Search
+
+`python -m app.retrieval.cli search --course-id <id> --query "<question>" [-k 5] [--type brief] [--json]` (or `--query -` to read the question from stdin, which keeps it out of shell history). Code: `app/retrieval/search.py`.
+
+**Search runs only on complete, verified index states.** It verifies the corpus twice, never holding a lock across the provider call. The first verification, before any paid call, avoids paying for a search that cannot run and fails obvious corrupt state early. The second, after the question is embedded and before ranking, makes sure the corpus actually ranked is still trusted and current; it never triggers a second provider request. Only the versions verified the second time are ranked. Both check that the course exists and classify every *current* version with the same derived state `status` reports:
+
+| State | Meaning | Effect |
+|---|---|---|
+| searchable | chunks exactly the chunker's output, and every chunk has one correct link in the active space and `document/v1` | searched |
+| unindexed | no chunks; exact chunks with no links in this space; or valid spans with no visible text (for example an NBSP-only version: nothing to retrieve) | not searched; counted in `unindexed_versions` |
+| corrupt | anything else: partial links, a wrong vector, chunks that differ from the chunker's output, or spans the chunker cannot safely use (out of order, outside the text) | **the search fails** (`IndexStateError`, CLI exit 6) |
+
+If corruption is found by the first verification, no provider call is made. If it appears during the provider call, the search still fails and the successful query `ModelCall` stays recorded as it was. A version that stopped being current during the call is never ranked; a version that became fully indexed during the call may be ranked, because it passed the second verification.
+
+If nothing is searchable at the first verification, the result is empty and no provider call is made; if nothing is searchable at the second, the result is empty but still names the query's `ModelCall`. Otherwise the result reports `current_versions` and `searchable_versions`, so an incomplete corpus is visible rather than hidden.
+
+The question is embedded as `query/v1` (stripped, 1 to 2,000 characters, CourseFlow's own limit) in the **same embedding space** as the documents: same provider, model, dimensions and space version. `query/v1` and `document/v1` are input formats (the query carries a task instruction, as the model expects), not different spaces. Each search is one real provider request, recorded as one standalone `ModelCall` (no workflow run); query vectors are never stored or cached, so repeating a search pays again.
+
+Candidates are restricted to: the requested course; each resource's current version; the versions verified as searchable; the active chunker version; the active embedding space, on both the link and the embedding row; `document/v1` exactly; matching dimensions; and the optional resource types. Ranking is an exact cosine scan (no approximate index):
+
+```sql
+ORDER BY e.vector <=> :query, rv.id, c.ordinal   -- distance, then a stable tie-break
+LIMIT :k                                          -- 1..50, default 5
+```
+
+`score = 1 - cosine distance` ranks results; it is not a probability or a confidence.
+
+**Evidence.** A chunk is retrieval context; its evidence is its source spans. Every hit lists each span from `first_span_ordinal` to `last_span_ordinal` with its locator (page, slide or section), and the exact part of the span inside the chunk: absolute offsets in the version's text and code-point offsets into the span's excerpt (`coverage` is `full` or `partial`). Each hit is re-checked: the spans exist, overlap the chunk, and the excerpt's sub-range equals the matching part of the chunk text. Any inconsistency fails the whole search (`ProvenanceError`, CLI exit 6); a partly trustworthy result list is never returned.
+
+Search output (stdout, `--json`) deliberately shows retrieved course text and resource references. Logs never contain the question, chunk text, excerpts or source URIs.

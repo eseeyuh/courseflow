@@ -61,7 +61,14 @@ from app.db.models import Course, WorkflowRun, workflow_run_inputs
 from app.domain.enums import WorkflowRunStatus
 from app.retrieval import store
 from app.retrieval.batching import plan_batches
-from app.retrieval.chunking import SPAN_PACK_V1, ChunkingError, ChunkingParams, chunk_version
+from app.retrieval.chunking import (
+    SPAN_PACK_V1,
+    ChunkingError,
+    ChunkingParams,
+    check_spans,
+    chunk_version,
+    has_visible_text,
+)
 from app.retrieval.provenance import ChunkDraft
 from app.retrieval.store import CacheKey, ChunkState, LinkState, SpaceRef, StoredChunk
 
@@ -149,6 +156,33 @@ class IndexRunResult:
     summary: IndexRunSummary
 
 
+class SourceContent(enum.StrEnum):
+    """What deterministic chunking can make of a version's stored source."""
+
+    CHUNKABLE = "chunkable"
+    # Valid spans, but none holds visible text (e.g. NBSP-only): nothing to retrieve.
+    NO_VISIBLE_TEXT = "no_visible_text"
+    # Spans out of order or outside the text, or the chunker refused its own
+    # output: the expected state cannot be derived safely.
+    INVALID = "invalid"
+
+
+def derive_chunks(
+    source: store.VersionSource | None, params: ChunkingParams
+) -> tuple[SourceContent, list[ChunkDraft]]:
+    """The deterministic chunk set, or why there is none. Only a version with
+    no visible text yields an empty set without being invalid."""
+    if source is None:
+        return SourceContent.INVALID, []
+    try:
+        check_spans(source.extracted_text, source.spans)
+        if not has_visible_text(source.extracted_text, source.spans):
+            return SourceContent.NO_VISIBLE_TEXT, []
+        return SourceContent.CHUNKABLE, chunk_version(source.extracted_text, source.spans, params)
+    except ChunkingError:
+        return SourceContent.INVALID, []
+
+
 @dataclass(frozen=True, slots=True)
 class VersionIndexReport:
     """Derived, never stored. A version is indexed for (chunker version, space,
@@ -156,9 +190,10 @@ class VersionIndexReport:
     and every chunk has exactly one correct link in that space and format."""
 
     resource_version_id: uuid.UUID
-    chunk_state: ChunkState | None  # None: the version cannot be chunked
+    content: SourceContent
+    chunk_state: ChunkState | None  # None: not chunkable (see content)
     link_state: LinkState | None  # None: not examined (chunks are not exact)
-    chunks: int
+    chunks: int  # stored chunks for the chunker version
 
     @property
     def indexed(self) -> bool:
@@ -386,12 +421,11 @@ class IndexingService:
         async with self._sessions() as session:  # B
             source = await store.load_version(session, version_id)
             existing = await store.existing_chunks(session, version_id, chunker)
-        if source is None:
-            raise _VersionFailed(FailureStage.CHUNK, "VersionMissing")
-        try:
-            drafts = chunk_version(source.extracted_text, source.spans, self._params)
-        except ChunkingError:
-            raise _VersionFailed(FailureStage.CHUNK, "ChunkingError") from None
+        content, drafts = derive_chunks(source, self._params)
+        if content is SourceContent.NO_VISIBLE_TEXT:
+            raise _VersionFailed(FailureStage.CHUNK, "NoVisibleText")
+        if content is SourceContent.INVALID:
+            raise _VersionFailed(FailureStage.CHUNK, "ChunkingError")
 
         inputs = [document_input(draft.text) for draft in drafts]
         keys = [_key(run.space, item) for item in inputs]
@@ -574,23 +608,21 @@ async def _inspect_version(
     async with session_factory() as session:
         source = await store.load_version(session, version_id)
         existing = await store.existing_chunks(session, version_id, params.version)
-        try:
-            if source is None:
-                raise ChunkingError("version missing")
-            drafts = chunk_version(source.extracted_text, source.spans, params)
-        except ChunkingError:
-            return VersionIndexReport(version_id, None, None, len(existing))
+        content, drafts = derive_chunks(source, params)
+        chunkable = SourceContent.CHUNKABLE
+        if content is not chunkable:
+            return VersionIndexReport(version_id, content, None, None, len(existing))
         state = store.compare_chunks(existing, drafts)
         if state is not ChunkState.EXACT:
-            return VersionIndexReport(version_id, state, None, len(existing))
+            return VersionIndexReport(version_id, chunkable, state, None, len(existing))
         if space is None:  # nothing was ever indexed in this space
-            return VersionIndexReport(version_id, state, LinkState.ZERO, len(existing))
+            return VersionIndexReport(version_id, chunkable, state, LinkState.ZERO, len(existing))
         expected = {
             chunk.id: _key(space, document_input(draft.text))
             for chunk, draft in zip(existing, drafts, strict=True)
         }
         links = await store.link_state(session, existing, expected)
-    return VersionIndexReport(version_id, state, links, len(existing))
+    return VersionIndexReport(version_id, chunkable, state, links, len(existing))
 
 
 def _key(space: SpaceRef, item: EmbeddingInput) -> CacheKey:

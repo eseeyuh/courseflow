@@ -42,6 +42,8 @@ async def seed_version(
     blocks: Sequence[Block],
     *,
     source_uri: str = "upload:notes.pdf",
+    resource_type: ResourceType = ResourceType.LECTURE,
+    title: str = "Notes",
 ) -> uuid.UUID:
     """A new current version of the course's resource ``source_uri``, laid out
     exactly as ingestion would (excerpts joined by a blank line)."""
@@ -54,7 +56,7 @@ async def seed_version(
         )
         if resource is None:
             resource = Resource(
-                course_id=course_id, type=ResourceType.LECTURE, title="Notes", source_uri=source_uri
+                course_id=course_id, type=resource_type, title=title, source_uri=source_uri
             )
             session.add(resource)
             await session.flush()
