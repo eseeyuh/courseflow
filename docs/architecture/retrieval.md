@@ -1,6 +1,6 @@
 # Retrieval
 
-Retrieval turns ingested versions into searchable **chunks** with vectors, while every chunk still resolves to exact source spans. The stored fields and their rules are in the [data contract](data-contract.md#retrieval-layer).
+Retrieval turns ingested versions into searchable **chunks** with vectors, while every chunk still resolves to exact source spans. The stored fields and their rules are in the [data contract](data-contract.md#retrieval-layer). The reasoning behind the design is in [ADR-007](../decisions/ADR-007-chunking-embeddings-and-vector-search.md).
 
 ## Storage
 
@@ -135,3 +135,9 @@ LIMIT :k                                          -- 1..50, default 5
 **Evidence.** A chunk is retrieval context; its evidence is its source spans. Every hit lists each span from `first_span_ordinal` to `last_span_ordinal` with its locator (page, slide or section), and the exact part of the span inside the chunk: absolute offsets in the version's text and code-point offsets into the span's excerpt (`coverage` is `full` or `partial`). Each hit is re-checked: the spans exist, overlap the chunk, and the excerpt's sub-range equals the matching part of the chunk text. Any inconsistency fails the whole search (`ProvenanceError`, CLI exit 6); a partly trustworthy result list is never returned.
 
 Search output (stdout, `--json`) deliberately shows retrieved course text and resource references. Logs never contain the question, chunk text, excerpts or source URIs.
+
+## Inspection, statistics and measurements
+
+- `status --course-id <id>` shows each current version's derived index state (source content, chunk state, link state); `stats --course-id <id>` reports chunk statistics: estimated-token distribution, chunks at the target and hard maximum, spans per chunk, split spans, the duplication factor caused by overlap, and visible-text coverage. Both are offline and read-only. Spans that cannot be chunked safely, or a chunkable version whose chunks do not cover all its visible text, are reported as integrity failures (exit code 6), never as ordinary statistics.
+- `python -m app.retrieval.smoke_test` runs the whole path live (ingest, index, search) on invented courses with namespaced identities, and checks the guarantees above; reruns reuse every record and add only the new query calls.
+- `python -m app.retrieval.measure throughput | chunker` measures embedding throughput (synthetic inputs, a hard request budget, metric definitions in the module) and chunker speed. Results from one development environment are in [retrieval measurements](../experiments/retrieval-measurements.md).

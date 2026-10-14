@@ -39,12 +39,13 @@ A modular monolith: Next.js frontend, FastAPI backend, PostgreSQL + pgvector, an
 | [ADR-004](docs/decisions/ADR-004-async-sqlalchemy-asyncpg.md) | Async SQLAlchemy 2.x with the asyncpg driver for all database access |
 | [ADR-005](docs/decisions/ADR-005-ai-provider-boundary.md) | AI provider boundary, structured-output policy and retry semantics |
 | [ADR-006](docs/decisions/ADR-006-document-ingestion-and-raw-storage.md) | Deterministic document ingestion with a content-addressed raw store |
+| [ADR-007](docs/decisions/ADR-007-chunking-embeddings-and-vector-search.md) | Provenance-preserving chunking, embedding provider and vector search |
 
 ## Evaluation
 
 CourseFlow will be evaluated against a reproducible synthetic golden dataset (deadline exact match, obligation F1, dependency-edge F1, evidence-location accuracy, retrieval Recall@K, conflict detection, workflow completion, latency and cost).
 
-**No results yet.** Numbers will appear here only from saved benchmark runs.
+**No evaluation results yet.** Numbers will appear here only from saved benchmark runs. Development measurements (embedding throughput, chunker speed and a live retrieval smoke run, from one development environment) are recorded in [docs/experiments/retrieval-measurements.md](docs/experiments/retrieval-measurements.md); they are observations, not evaluation results.
 
 ## Development
 
@@ -79,7 +80,7 @@ On Windows PowerShell, use `Copy-Item` instead of `cp`. The defaults work for lo
 
 `NEXT_PUBLIC_*` values are compiled into the JavaScript sent to browsers, so they are public. Never put a secret in one.
 
-AI features need a Nebius Token Factory API key: set `NEBIUS_API_KEY` in your local `.env` only. Everything else runs without it. The model IDs in `.env.example` were verified on the date recorded in [docs/experiments/model-catalog.md](docs/experiments/model-catalog.md).
+AI features need a Nebius Token Factory API key: set `NEBIUS_API_KEY` in your local `.env` only. Everything else runs without it. Embeddings use `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` and `EMBEDDING_SPACE_VERSION` (see `.env.example`); Docker Compose passes these and the Nebius settings to the API container only. The model IDs in `.env.example` were verified on the date recorded in [docs/experiments/model-catalog.md](docs/experiments/model-catalog.md).
 
 ### 2. Install dependencies
 
@@ -138,6 +139,28 @@ docker compose run --rm --no-deps api python -m app.ingestion.cli verify <versio
 ```
 
 `import` prints one JSON result: `created` or `unchanged`, the version, hashes, and span counts. Importing the same bytes again creates nothing. On Windows PowerShell, use `${PWD}` in the volume path; in Git Bash, prefix the command with `MSYS_NO_PATHCONV=1`.
+
+### Indexing and searching a course
+
+Retrieval also runs in the API container. `index` chunks the course's current versions and embeds what is not cached yet (it needs `NEBIUS_API_KEY`); re-running it on unchanged content makes no provider calls. `status` and `stats` are offline and read-only: they need neither the API key nor the network.
+
+```bash
+docker compose run --rm --no-deps api python -m app.retrieval.cli index  --course-id <course-uuid>
+docker compose run --rm --no-deps api python -m app.retrieval.cli status --course-id <course-uuid>
+docker compose run --rm --no-deps api python -m app.retrieval.cli stats  --course-id <course-uuid>
+docker compose run --rm --no-deps api python -m app.retrieval.cli search --course-id <course-uuid> --query "When is the coursework report deadline?" -k 5
+docker compose run --rm --no-deps api python -m app.retrieval.cli search --course-id <course-uuid> --query "..." --type brief --json
+```
+
+`search` ranks only fully indexed, current versions of the course (an inconsistent index makes it refuse, exit code 6) and prints each hit's score, resource, version, chunk ID and the exact source spans it came from. The score ranks results; it is not a confidence. Use `--query -` to read the question from stdin (with `docker compose run -T`), which keeps it out of shell history. Every search makes one recorded embedding call; query vectors are not cached. Details: [docs/architecture/retrieval.md](docs/architecture/retrieval.md).
+
+A live end-to-end check with invented courses, and the development measurements:
+
+```bash
+docker compose run --rm --no-deps api python -m app.retrieval.smoke_test            # reruns reuse its records
+docker compose run --rm --no-deps api python -m app.retrieval.measure throughput --plan-only
+docker compose run --rm --no-deps api python -m app.retrieval.measure chunker
+```
 
 ### Database migrations
 
@@ -200,7 +223,7 @@ uv run uvicorn app.main:create_app --factory --reload --port 8000
 
 ## Demo data
 
-All demo content will be **fully synthetic** (a fictional "Northbridge University"). The repository contains no real university material and no student data.
+All demo content will be **fully synthetic** (a fictional "Northbridge University"). The repository contains no real university material and no student data. The retrieval smoke test creates its own clearly labelled synthetic courses and reuses them on every run.
 
 ## Contributing and security
 
