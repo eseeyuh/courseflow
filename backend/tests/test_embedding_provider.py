@@ -4,9 +4,14 @@
 
 """The embedding contract and NebiusEmbeddingProvider against scripted HTTP (no network)."""
 
+import json
 import logging
 import math
+import os
+import subprocess
+import sys
 import traceback
+from pathlib import Path
 
 import httpx2
 import openai
@@ -44,7 +49,7 @@ from tests.ai_fakes import (
     read_timeout,
     status,
 )
-from tests.embedding_fakes import FakeEmbeddingProvider
+from tests.embedding_fakes import FakeEmbeddingProvider, hashed_bag_of_words
 
 pytestmark = pytest.mark.anyio
 
@@ -485,3 +490,59 @@ async def test_fake_provider_enforces_batches_and_raises_scripted_failures() -> 
     assert caught.value is failure
     assert len(fake.calls) == 2  # the rejected batch never counts as a call
     assert result.attempts == 1
+
+
+# --- safe request correlation ---------------------------------------------------
+
+
+async def test_request_id_is_kept_when_a_status_error_body_is_dropped() -> None:
+    body = {"detail": f"bad input {SENSITIVE}"}
+    server = ScriptedServer([status(400, body=body, headers={"x-request-id": "req-400"})])
+
+    error = await _embed_error(make_embedding_provider(server), [query_input(SENSITIVE)])
+
+    assert error.request_id == "req-400"
+    assert SENSITIVE not in error.detail
+
+
+async def test_request_id_is_kept_on_invalid_output_and_after_retries() -> None:
+    invalid = ScriptedServer([embeddings([[0.0] * 8, [0.0] * 8], request_id="req-bad")])
+    exhausted = ScriptedServer(
+        [status(503, headers={"x-request-id": f"req-503-{n}"}) for n in (1, 2)]
+    )
+
+    invalid_error = await _embed_error(make_embedding_provider(invalid))
+    exhausted_error = await _embed_error(make_embedding_provider(exhausted, max_attempts=2))
+
+    assert invalid_error.request_id == "req-bad"
+    assert exhausted_error.request_id == "req-503-2"  # the last attempt's
+
+
+# --- the fake is stable across processes ----------------------------------------
+
+_FAKE_VECTOR_SCRIPT = """
+import json, sys
+from tests.embedding_fakes import hashed_bag_of_words
+print(json.dumps([hashed_bag_of_words(t, 64) for t in json.loads(sys.argv[1])]))
+"""
+
+
+@pytest.mark.parametrize("seed", ["0", "1", "4242"])
+def test_fake_vectors_are_identical_across_processes_and_hash_seeds(seed: str) -> None:
+    """Bucket placement uses SHA-256, not hash(): str hashing is salted per
+    process, which would make 'deterministic' fixtures differ between runs."""
+    texts = ["Recursion and base cases", "Lab 2: linked lists", "étude — graphs"]
+    backend = Path(__file__).resolve().parents[1]
+
+    completed = subprocess.run(
+        [sys.executable, "-c", _FAKE_VECTOR_SCRIPT, json.dumps(texts)],
+        cwd=backend,
+        env={**os.environ, "PYTHONHASHSEED": seed, "PYTHONPATH": str(backend)},
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    )
+
+    in_process = [list(hashed_bag_of_words(t, 64)) for t in texts]
+    assert json.loads(completed.stdout) == in_process

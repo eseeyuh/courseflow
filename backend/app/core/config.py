@@ -92,9 +92,11 @@ class Settings(BaseSettings):
     # CourseFlow's own compatibility revision, not an upstream weight version:
     # bump it to start a fresh space when stored vectors must not be reused.
     embedding_space_version: str = Field(default="v1", pattern=r"^[a-z0-9][a-z0-9._-]{0,31}$")
-    # A request batch closes at whichever limit is reached first.
+    # A request batch closes at whichever limit is reached first. Both are
+    # CourseFlow's own conservative budgets, not verified provider limits; the
+    # token budget is measured with CourseFlow's estimate, not a tokenizer.
     embedding_batch_max_items: int = Field(default=64, ge=1, le=2048)
-    embedding_batch_max_tokens: int = Field(default=32_000, ge=1)
+    embedding_batch_max_estimated_tokens: int = Field(default=32_000, ge=1)
 
     # Canonical store for original source bytes. No default: a relative or
     # implicit location would silently give each process (host CLI, API

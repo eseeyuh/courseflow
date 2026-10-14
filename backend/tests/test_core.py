@@ -266,7 +266,7 @@ def test_embedding_space_and_batch_defaults(monkeypatch: pytest.MonkeyPatch) -> 
     assert settings.embedding_dimensions == 4096
     assert settings.embedding_space_version == "v1"
     assert settings.embedding_batch_max_items == 64
-    assert settings.embedding_batch_max_tokens == 32_000
+    assert settings.embedding_batch_max_estimated_tokens == 32_000
 
 
 @pytest.mark.parametrize(
@@ -279,7 +279,7 @@ def test_embedding_space_and_batch_defaults(monkeypatch: pytest.MonkeyPatch) -> 
         ("EMBEDDING_SPACE_VERSION", "v 1"),
         ("EMBEDDING_BATCH_MAX_ITEMS", "0"),
         ("EMBEDDING_BATCH_MAX_ITEMS", "2049"),
-        ("EMBEDDING_BATCH_MAX_TOKENS", "0"),
+        ("EMBEDDING_BATCH_MAX_ESTIMATED_TOKENS", "0"),
     ],
 )
 def test_invalid_embedding_settings_fail_fast(
