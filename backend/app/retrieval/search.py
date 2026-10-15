@@ -4,14 +4,16 @@
 
 """Course-scoped search over complete, verified index states only.
 
-Two modes rank the same verified corpus (``SearchMode``):
+Three modes rank the same verified corpus (``SearchMode``):
 
 - ``vector``: exact cosine similarity between the query/v1 embedding and the
   chunks' document/v1 embeddings in the active space;
 - ``lexical``: PostgreSQL full-text match of the query's own normalised
-  lexemes against ``chunks.text_tsv`` (``rankers.LEXICAL_VERSION``).
+  lexemes against ``chunks.text_tsv`` (``rankers.LEXICAL_VERSION``);
+- ``hybrid``: both rankings, each ``fusion.CANDIDATE_DEPTH`` deep, fused by
+  reciprocal rank fusion (``fusion.FUSION_VERSION``).
 
-The corpus is the same in both: the course's CURRENT versions classified
+The corpus is the same in all of them: the course's CURRENT versions classified
 SEARCHABLE for the active chunker and embedding space, with the same derived
 index state indexing uses (re-chunked and compared, links checked):
 
@@ -27,14 +29,18 @@ deliberately limited to that verified corpus so it is never a way around the
 index-state checks. It needs only the space's identity: no provider, no
 credentials, no network, no ModelCall.
 
-Vector search:
+Vector and hybrid search:
 1. First verification, in its own read-only snapshot, before any paid call.
    Nothing searchable: an empty result and no provider call.
 2. Embed the question as query/v1: one standalone ModelCall. Query vectors
    are never stored or cached: every search pays. No transaction is open.
+   A failed call fails the search (SearchProviderError): hybrid never falls
+   back to lexical-only results.
 3. One read-only REPEATABLE READ snapshot holds the final classification,
    the ranking (only the versions classified searchable in that snapshot)
-   and the evidence for the hits.
+   and the evidence for the hits. In hybrid mode both rankers rank the same
+   verified scope in that snapshot; their fusion is pure (no I/O) and runs
+   there only because the evidence is read for the fused top-k.
 
 Lexical search: step 3 only, with the lexical ranker.
 
@@ -44,8 +50,10 @@ snapshot. Any provenance inconsistency fails the whole search
 sub-range is evidence.
 
 ``score`` is retriever-specific (``SearchResult.score_kind``): ``1 - cosine
-distance`` in vector mode, ``ts_rank_cd`` in lexical mode. It is a ranking
-score: never a confidence or probability, and not comparable across modes.
+distance`` in vector mode, ``ts_rank_cd`` in lexical mode, the RRF sum in
+hybrid mode. It is a ranking score: never a confidence or probability, and
+not comparable across modes. Each hit also carries what each ranker said
+about it (its rank and raw score) for evaluation.
 Logs carry IDs and counts only: never query text, lexemes, chunk text,
 excerpts or URIs.
 """
@@ -56,8 +64,9 @@ import enum
 import logging
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -78,6 +87,7 @@ from app.db.session import read_only_snapshot
 from app.domain.enums import BlockKind, ModelCallErrorCategory, ResourceType
 from app.retrieval import store
 from app.retrieval.chunking import SPAN_PACK_V1, ChunkingParams
+from app.retrieval.fusion import CANDIDATE_DEPTH, FUSION_VERSION, FusedCandidate, fuse_rrf
 from app.retrieval.indexing import (
     SourceContent,
     SpaceSummary,
@@ -169,6 +179,7 @@ class SearchMode(enum.StrEnum):
 
     VECTOR = "vector"
     LEXICAL = "lexical"
+    HYBRID = "hybrid"  # RRF of vector and lexical
 
 
 # What ``SearchHit.score`` means in each mode: retriever-specific, never a
@@ -176,6 +187,7 @@ class SearchMode(enum.StrEnum):
 SCORE_KINDS: dict[SearchMode, str] = {
     SearchMode.VECTOR: "cosine_similarity",  # 1 - cosine distance
     SearchMode.LEXICAL: "ts_rank_cd",
+    SearchMode.HYBRID: "rrf",  # sum of 1 / (RRF_K + rank) over both rankers
 }
 
 
@@ -267,6 +279,15 @@ class SearchHit:
     resource: ResourceRef
     version: VersionRef
     spans: tuple[SpanEvidence, ...]
+    # What each ranker said about this chunk, for evaluation: its 1-based rank
+    # and raw score there, or None when that ranker did not run or did not
+    # return it. fused_score is the exact RRF sum (hybrid only): an ordering
+    # value, never a confidence or probability.
+    vector_rank: int | None = None
+    vector_distance: float | None = None  # cosine distance: lower is closer
+    lexical_rank: int | None = None
+    lexical_score: float | None = None  # ts_rank_cd
+    fused_score: Fraction | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,7 +300,8 @@ class SearchResult:
     space: SpaceSummary
     query_format: str | None  # None in lexical mode: the query is not embedded
     document_format: str
-    lexical_version: str | None  # set in lexical mode only
+    lexical_version: str | None  # set in lexical and hybrid modes
+    fusion_version: str | None  # set in hybrid mode only
     # None when no provider call was needed (nothing searchable).
     query_model_call_id: uuid.UUID | None
     current_versions: int
@@ -368,7 +390,7 @@ class SearchService:
         if request.mode is SearchMode.LEXICAL:
             result = await self._search_lexical(request)
         else:
-            result = await self._search_vector(request)
+            result = await self._search_embedded(request)
         self._log(request, result, started)
         return result
 
@@ -379,16 +401,17 @@ class SearchService:
             candidates = await rank_lexical(
                 session, self._scope(request, corpus), request.query, request.k
             )
-            hits = await _assemble(session, candidates, _lexical_score)
+            hits = await _assemble(session, [_lexical_ranked(c) for c in candidates])
         return self._result(request, corpus, hits, query_format=None, query_model_call_id=None)
 
-    async def _search_vector(self, request: SearchRequest) -> SearchResult:
-        """The first verification avoids paying for a search that cannot run
-        (nothing searchable, or corrupt state). No transaction is held across
-        the provider call. The final classification, the ranking and the
-        evidence then share one snapshot: only versions verified there rank."""
+    async def _search_embedded(self, request: SearchRequest) -> SearchResult:
+        """Vector or hybrid. The first verification avoids paying for a search
+        that cannot run (nothing searchable, or corrupt state). No transaction
+        is held across the provider call. The final classification, the
+        ranking(s) and the evidence then share one snapshot: only versions
+        verified there rank."""
         if self._provider is None:
-            raise AIConfigurationError("vector search needs an embedding provider")
+            raise AIConfigurationError(f"{request.mode.value} search needs an embedding provider")
         query = query_input(request.query)  # the exact query/v1 provider input
 
         async with read_only_snapshot(self._sessions) as session:
@@ -416,10 +439,20 @@ class SearchService:
                     raise RuntimeError("searchable versions without an embedding space row")
                 if len(vector) != space_ref.dimensions:  # pragma: no cover - recorder rejects it
                     raise RuntimeError("query vector does not match the space's dimensions")
-                candidates = await rank_vector(
-                    session, self._scope(request, corpus), space_ref, vector, request.k
-                )
-                hits = await _assemble(session, candidates, _cosine_similarity)
+                scope = self._scope(request, corpus)
+                ranked: list[_Ranked]
+                if request.mode is SearchMode.HYBRID:
+                    # Both rankers: the same verified scope, session and snapshot.
+                    by_vector = await rank_vector(
+                        session, scope, space_ref, vector, CANDIDATE_DEPTH
+                    )
+                    by_lexical = await rank_lexical(session, scope, request.query, CANDIDATE_DEPTH)
+                    fused = fuse_rrf(by_vector, by_lexical)[: request.k]
+                    ranked = [_fused_ranked(c) for c in fused]
+                else:
+                    candidates = await rank_vector(session, scope, space_ref, vector, request.k)
+                    ranked = [_vector_ranked(c) for c in candidates]
+                hits = await _assemble(session, ranked)
         return self._result(
             request, corpus, hits, query_format=query.input_format, query_model_call_id=call_id
         )
@@ -481,7 +514,8 @@ class SearchService:
             ),
             query_format=query_format,
             document_format=DOCUMENT_INPUT_FORMAT,
-            lexical_version=LEXICAL_VERSION if request.mode is SearchMode.LEXICAL else None,
+            lexical_version=None if request.mode is SearchMode.VECTOR else LEXICAL_VERSION,
+            fusion_version=FUSION_VERSION if request.mode is SearchMode.HYBRID else None,
             query_model_call_id=query_model_call_id,
             current_versions=corpus.current,
             searchable_versions=len(corpus.searchable),
@@ -509,21 +543,57 @@ class SearchService:
 # --- evidence -------------------------------------------------------------------------------
 
 
-def _cosine_similarity(candidate: RankedCandidate) -> float:
+@dataclass(frozen=True, slots=True)
+class _Ranked:
+    """One chunk in the mode's final order, with its score and what each
+    ranker said about it: everything a hit carries except its evidence."""
+
+    chunk_id: uuid.UUID
+    rank: int
+    score: float
+    vector_rank: int | None = None
+    vector_distance: float | None = None
+    lexical_rank: int | None = None
+    lexical_score: float | None = None
+    fused_score: Fraction | None = None
+
+
+def _vector_ranked(candidate: RankedCandidate) -> _Ranked:
     assert candidate.vector_distance is not None
-    return 1.0 - candidate.vector_distance
+    return _Ranked(
+        chunk_id=candidate.chunk_id,
+        rank=candidate.rank,
+        score=1.0 - candidate.vector_distance,  # cosine similarity
+        vector_rank=candidate.rank,
+        vector_distance=candidate.vector_distance,
+    )
 
 
-def _lexical_score(candidate: RankedCandidate) -> float:
+def _lexical_ranked(candidate: RankedCandidate) -> _Ranked:
     assert candidate.lexical_score is not None
-    return candidate.lexical_score
+    return _Ranked(
+        chunk_id=candidate.chunk_id,
+        rank=candidate.rank,
+        score=candidate.lexical_score,
+        lexical_rank=candidate.rank,
+        lexical_score=candidate.lexical_score,
+    )
 
 
-async def _assemble(
-    session: AsyncSession,
-    candidates: Sequence[RankedCandidate],
-    score_of: Callable[[RankedCandidate], float],
-) -> tuple[SearchHit, ...]:
+def _fused_ranked(candidate: FusedCandidate) -> _Ranked:
+    return _Ranked(
+        chunk_id=candidate.chunk_id,
+        rank=candidate.rank,
+        score=float(candidate.fused_score),
+        vector_rank=candidate.vector_rank,
+        vector_distance=candidate.vector_distance,
+        lexical_rank=candidate.lexical_rank,
+        lexical_score=candidate.lexical_score,
+        fused_score=candidate.fused_score,
+    )
+
+
+async def _assemble(session: AsyncSession, candidates: Sequence[_Ranked]) -> tuple[SearchHit, ...]:
     """Hits with their SourceSpan evidence, read in the ranking snapshot."""
     if not candidates:
         return ()
@@ -589,11 +659,11 @@ async def _assemble(
     for candidate in candidates:
         row = rows[candidate.chunk_id]
         version_spans = by_version.get(row.version_id, [])
-        hits.append(_hit(candidate.rank, row, score_of(candidate), version_spans))
+        hits.append(_hit(candidate, row, version_spans))
     return tuple(hits)
 
 
-def _hit(rank: int, row: Any, score: float, version_spans: Sequence[Any]) -> SearchHit:
+def _hit(ranked: _Ranked, row: Any, version_spans: Sequence[Any]) -> SearchHit:
     """One ranked chunk with its evidence, or ProvenanceError."""
     first, last = row.first_span_ordinal, row.last_span_ordinal
     spans = [span for span in version_spans if first <= span.ordinal <= last]
@@ -632,8 +702,8 @@ def _hit(rank: int, row: Any, score: float, version_spans: Sequence[Any]) -> Sea
             )
         )
     return SearchHit(
-        rank=rank,
-        score=score,
+        rank=ranked.rank,
+        score=ranked.score,
         chunk_id=row.id,
         chunk_ordinal=row.ordinal,
         start_offset=row.start_offset,
@@ -642,4 +712,9 @@ def _hit(rank: int, row: Any, score: float, version_spans: Sequence[Any]) -> Sea
         resource=ResourceRef(row.resource_id, row.title, row.type, row.source_uri),
         version=VersionRef(row.version_id, row.version_number),
         spans=tuple(evidence),
+        vector_rank=ranked.vector_rank,
+        vector_distance=ranked.vector_distance,
+        lexical_rank=ranked.lexical_rank,
+        lexical_score=ranked.lexical_score,
+        fused_score=ranked.fused_score,
     )

@@ -448,9 +448,10 @@ async def test_searchable_plus_corrupt_fails_closed(
     assert len(provider.calls) == calls
 
 
+@pytest.mark.parametrize("mode", ["vector", "hybrid"])  # the modes that pay for a query
 @pytest.mark.parametrize("state", ["no-versions", "not-indexed"])
 async def test_an_empty_index_makes_no_provider_call_and_no_model_call(
-    session_factory: async_sessionmaker[AsyncSession], state: str
+    session_factory: async_sessionmaker[AsyncSession], state: str, mode: str
 ) -> None:
     course = await seed_course(session_factory)
     if state == "not-indexed":
@@ -459,7 +460,7 @@ async def test_an_empty_index_makes_no_provider_call_and_no_model_call(
     async with session_factory() as session:  # the active space was never indexed
         assert await store.find_space(session, provider.space) is None
 
-    result = await _search(session_factory, provider, course)
+    result = await _search(session_factory, provider, course, mode=mode)
 
     assert result.hits == () and result.query_model_call_id is None
     assert result.searchable_versions == 0
@@ -467,9 +468,10 @@ async def test_an_empty_index_makes_no_provider_call_and_no_model_call(
     assert provider.calls == [] and await _model_calls(session_factory) == []
 
 
+@pytest.mark.parametrize("mode", ["vector", "hybrid"])
 @pytest.mark.parametrize("state", ["no-versions", "not-indexed", "superseded-by-unindexed"])
 async def test_an_existing_space_without_searchable_course_content_makes_no_query_call(
-    session_factory: async_sessionmaker[AsyncSession], state: str
+    session_factory: async_sessionmaker[AsyncSession], state: str, mode: str
 ) -> None:
     """The active space row exists (another course is indexed in it), but this
     course has no searchable current version there: the first verification
@@ -488,7 +490,7 @@ async def test_an_existing_space_without_searchable_course_content_makes_no_quer
         assert await store.find_space(session, provider.space) is not None
     calls = len(provider.calls)
 
-    result = await _search(session_factory, provider, course)
+    result = await _search(session_factory, provider, course, mode=mode)
 
     assert result.hits == () and result.query_model_call_id is None
     assert result.searchable_versions == 0

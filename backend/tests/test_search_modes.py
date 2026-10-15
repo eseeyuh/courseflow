@@ -3,13 +3,16 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """Search modes against PostgreSQL with real commits: the same trust contract
-for vector and lexical search, lexical query construction under adversarial
-input, offline lexical search, the shared ranking snapshot, and the vector
-ranker's equivalence with the original vector query."""
+for vector, lexical and hybrid search, lexical query construction under
+adversarial input, offline lexical search, the shared ranking snapshot,
+hybrid fusion end to end, and the vector ranker's equivalence with the
+original vector query."""
 
 import logging
+import math
 import uuid
 from collections.abc import Sequence
+from fractions import Fraction
 from typing import Any
 
 import openai
@@ -20,8 +23,9 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.ai.embeddings import DOCUMENT_INPUT_FORMAT, query_input
-from app.ai.errors import AIConfigurationError
+from app.ai.errors import AIConfigurationError, AIProviderError
 from app.ai.nebius_embeddings import NebiusEmbeddingProvider
+from app.ai.provider import TokenUsage
 from app.db.models import (
     Chunk,
     ChunkEmbedding,
@@ -32,9 +36,10 @@ from app.db.models import (
     ResourceVersion,
 )
 from app.db.session import read_only_snapshot
-from app.domain.enums import BlockKind, ResourceType
+from app.domain.enums import BlockKind, ModelCallErrorCategory, ModelCallStatus, ResourceType
 from app.retrieval import search, store
 from app.retrieval.chunking import ChunkingParams
+from app.retrieval.fusion import CANDIDATE_DEPTH, FUSION_VERSION
 from app.retrieval.indexing import IndexingService
 from app.retrieval.rankers import (
     LEXICAL_VERSION,
@@ -48,7 +53,9 @@ from app.retrieval.rankers import (
 from app.retrieval.search import (
     IndexStateError,
     InvalidSearchRequest,
+    SearchHit,
     SearchMode,
+    SearchProviderError,
     SearchRequest,
     SearchResult,
     SearchService,
@@ -72,7 +79,8 @@ P = BlockKind.PAGE
 DIMS = 256
 MARKER = "zebra quokka narwhal"
 MARKED = f"The {MARKER} rubric is assessed in week nine."
-MODES = [SearchMode.VECTOR, SearchMode.LEXICAL]
+MODES = [SearchMode.VECTOR, SearchMode.LEXICAL, SearchMode.HYBRID]
+PAID_MODES = [SearchMode.VECTOR, SearchMode.HYBRID]  # embed the query
 BACKSLASH = chr(92)
 
 
@@ -105,7 +113,7 @@ async def _search(
 ) -> SearchResult:
     """Lexical search is given no provider at all: it must not need one."""
     request = SearchRequest.build(course_id=course, query=query, mode=mode, **kwargs)
-    client = provider if mode is SearchMode.VECTOR else None
+    client = None if mode is SearchMode.LEXICAL else provider
     return await SearchService(sf, provider.space, client, params=SMALL).search_course(request)
 
 
@@ -237,7 +245,7 @@ async def test_a_corrupt_current_version_fails_closed(
         await _search(session_factory, provider, course, mode)
 
     assert caught.value.corrupt_version_ids == (version,)
-    assert len(provider.calls) == requests  # no paid call in either mode
+    assert len(provider.calls) == requests  # no paid call in any mode
 
 
 @pytest.mark.parametrize("mode", MODES)
@@ -444,9 +452,9 @@ def test_the_provider_must_embed_in_the_search_space() -> None:
 
 def test_vector_is_the_default_mode_and_only_implemented_modes_validate() -> None:
     assert SearchRequest.build(course_id=uuid.uuid4(), query="q").mode is SearchMode.VECTOR
-    assert [m.value for m in SearchMode] == ["vector", "lexical"]
+    assert [m.value for m in SearchMode] == ["vector", "lexical", "hybrid"]
     with pytest.raises(InvalidSearchRequest) as caught:
-        SearchRequest.build(course_id=uuid.uuid4(), query="q", mode="hybrid")
+        SearchRequest.build(course_id=uuid.uuid4(), query="q", mode="rrf")
     assert caught.value.fields == ("mode",)
 
 
@@ -603,11 +611,13 @@ async def test_a_snapshot_does_not_see_commits_made_after_its_first_read(
 
 class _Recorder:
     """Wraps the classification and the rankers, recording which session and
-    which version IDs each one used."""
+    which version IDs each one used, and for each ranker call its scope
+    object, its depth and the database snapshot it read."""
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.classified: list[tuple[AsyncSession, tuple[uuid.UUID, ...]]] = []
         self.ranked: list[tuple[str, AsyncSession, tuple[uuid.UUID, ...]]] = []
+        self.calls: list[tuple[SearchScope, int, str]] = []
         self.after_classify: Any = None
         classify, vector, lexical = (
             search.classify_course_in_session,
@@ -628,6 +638,8 @@ class _Recorder:
                 session: AsyncSession, scope: SearchScope, *args: Any
             ) -> list[RankedCandidate]:
                 self.ranked.append((name, session, scope.version_ids))
+                snapshot = await session.scalar(text("SELECT pg_current_snapshot()::text"))
+                self.calls.append((scope, args[-1], str(snapshot)))
                 return list(await inner(session, scope, *args))
 
             return wrapper
@@ -694,8 +706,9 @@ async def test_lexical_classifies_ranks_and_reads_evidence_in_one_snapshot(
     assert after.hits == () and (after.current_versions, after.searchable_versions) == (1, 0)
 
 
+@pytest.mark.parametrize("mode", PAID_MODES)
 async def test_no_transaction_is_open_while_the_query_is_embedded(
-    session_factory: async_sessionmaker[AsyncSession],
+    session_factory: async_sessionmaker[AsyncSession], mode: SearchMode
 ) -> None:
     course, _ = await _marked_course(session_factory)
     provider = _provider()
@@ -719,9 +732,219 @@ async def test_no_transaction_is_open_while_the_query_is_embedded(
 
     provider.before_embed = count_open_transactions
 
-    await _search(session_factory, provider, course, SearchMode.VECTOR)
+    await _search(session_factory, provider, course, mode)
 
     assert seen == [0]
+
+
+# --- hybrid: reciprocal rank fusion end to end ----------------------------------------------
+
+UNRELATED = (
+    "Laboratory safety briefings happen on Mondays.",
+    "Library opening hours change during December.",
+)
+
+
+async def _hybrid_course(sf: async_sessionmaker[AsyncSession]) -> uuid.UUID:
+    """Marked teaching text plus text no query word matches, so a vector
+    ranking holds chunks the lexical ranking cannot."""
+    course, _ = await _marked_course(sf)
+    await seed_version(sf, course, _blocks(*UNRELATED), source_uri="upload:notices.pdf")
+    provider = _provider()
+    await _index(sf, course, provider)
+    return course
+
+
+def _expected_rrf(vector: SearchResult, lexical: SearchResult) -> list[tuple[Any, ...]]:
+    """RRF of two full single-mode rankings, computed independently of the
+    fusion module: (chunk ID, fused score, vector rank, lexical rank) in the
+    frozen order."""
+    hits: dict[uuid.UUID, SearchHit] = {}
+    v_rank = {h.chunk_id: h.rank for h in vector.hits}
+    l_rank = {h.chunk_id: h.rank for h in lexical.hits}
+    for hit in (*vector.hits, *lexical.hits):
+        hits.setdefault(hit.chunk_id, hit)
+    rows = []
+    for chunk_id, hit in hits.items():
+        v, lex = v_rank.get(chunk_id), l_rank.get(chunk_id)
+        score = sum((Fraction(1, 60 + r) for r in (v, lex) if r is not None), Fraction(0))
+        key = (
+            -score,
+            min(r for r in (v, lex) if r is not None),
+            math.inf if v is None else v,
+            math.inf if lex is None else lex,
+            hit.version.id,
+            hit.chunk_ordinal,
+            chunk_id,
+        )
+        rows.append((key, (chunk_id, score, v, lex)))
+    return [row for _, row in sorted(rows)]
+
+
+@pytest.mark.parametrize("query", [f"rubric {MARKER}", "sentence explains topic 3", "rubric week"])
+async def test_hybrid_is_the_exact_rrf_of_the_vector_and_lexical_rankings(
+    session_factory: async_sessionmaker[AsyncSession], query: str
+) -> None:
+    course = await _hybrid_course(session_factory)
+    provider = _provider()
+
+    vector = await _search(session_factory, provider, course, SearchMode.VECTOR, query, k=50)
+    lexical = await _search(session_factory, provider, course, SearchMode.LEXICAL, query, k=50)
+    hybrid = await _search(session_factory, provider, course, SearchMode.HYBRID, query, k=50)
+
+    expected = _expected_rrf(vector, lexical)
+    assert [(h.chunk_id, h.fused_score, h.vector_rank, h.lexical_rank) for h in hybrid.hits] == (
+        expected
+    )
+    assert [h.rank for h in hybrid.hits] == list(range(1, len(hybrid.hits) + 1))
+    # both kinds of candidate are exercised: in both rankings, and vector only
+    assert any(h.lexical_rank is not None for h in hybrid.hits)
+    assert any(h.lexical_rank is None for h in hybrid.hits)
+    by_vector = {h.chunk_id: h for h in vector.hits}
+    by_lexical = {h.chunk_id: h for h in lexical.hits}
+    for hit in hybrid.hits:
+        assert type(hit.fused_score) is Fraction and hit.score == float(hit.fused_score)
+        assert hit.vector_distance == pytest.approx(1 - by_vector[hit.chunk_id].score)
+        if hit.lexical_rank is None:
+            assert hit.lexical_score is None
+        else:
+            assert hit.lexical_score == by_lexical[hit.chunk_id].score
+    _assert_exact_provenance(hybrid)
+
+
+async def test_hybrid_result_metadata_names_every_contract(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    course = await _hybrid_course(session_factory)
+
+    result = await _search(session_factory, _provider(), course, SearchMode.HYBRID)
+
+    assert (result.mode, result.score_kind) == (SearchMode.HYBRID, "rrf")
+    assert result.fusion_version == FUSION_VERSION
+    assert result.lexical_version == LEXICAL_VERSION
+    assert result.query_format == "query/v1" and result.query_model_call_id is not None
+    assert result.hits and all(h.fused_score is not None for h in result.hits)
+
+
+async def test_single_modes_report_their_own_ranker_and_no_fusion(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    course = await _hybrid_course(session_factory)
+    provider = _provider()
+
+    vector = await _search(session_factory, provider, course, SearchMode.VECTOR, k=50)
+    lexical = await _search(session_factory, provider, course, SearchMode.LEXICAL, k=50)
+
+    assert vector.fusion_version is None and lexical.fusion_version is None
+    for hit in vector.hits:
+        assert (hit.vector_rank, hit.lexical_rank, hit.fused_score) == (hit.rank, None, None)
+        assert hit.vector_distance == pytest.approx(1 - hit.score)
+    for hit in lexical.hits:
+        assert (hit.vector_rank, hit.lexical_rank, hit.fused_score) == (None, hit.rank, None)
+        assert hit.lexical_score == hit.score
+
+
+@pytest.mark.parametrize("k", [1, 3, 5])
+async def test_hybrid_top_k_is_a_prefix_of_the_depth_50_fused_order(
+    session_factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch, k: int
+) -> None:
+    course = await _hybrid_course(session_factory)
+    provider = _provider()
+    deep = await _search(session_factory, provider, course, SearchMode.HYBRID, k=50)
+    recorder = _Recorder(monkeypatch)
+
+    top = await _search(session_factory, provider, course, SearchMode.HYBRID, k=k)
+
+    assert len(deep.hits) > k
+    assert [h.chunk_id for h in top.hits] == [h.chunk_id for h in deep.hits[:k]]
+    assert [h.fused_score for h in top.hits] == [h.fused_score for h in deep.hits[:k]]
+    # both rankers rank CANDIDATE_DEPTH deep whatever k is
+    assert [depth for _, depth, _ in recorder.calls] == [CANDIDATE_DEPTH, CANDIDATE_DEPTH]
+
+
+@pytest.mark.parametrize("k", [3, 50])
+async def test_a_query_without_lexemes_makes_hybrid_equal_vector(
+    session_factory: async_sessionmaker[AsyncSession], k: int
+) -> None:
+    course = await _hybrid_course(session_factory)
+    provider = _provider()
+    query = "the and of"
+    async with session_factory() as session:
+        assert await query_lexemes(session, query) == []
+
+    vector = await _search(session_factory, provider, course, SearchMode.VECTOR, query, k=k)
+    hybrid = await _search(session_factory, provider, course, SearchMode.HYBRID, query, k=k)
+
+    assert hybrid.hits and [h.chunk_id for h in hybrid.hits] == [h.chunk_id for h in vector.hits]
+    assert all(h.lexical_rank is None and h.lexical_score is None for h in hybrid.hits)
+    assert [h.fused_score for h in hybrid.hits] == [Fraction(1, 60 + h.rank) for h in vector.hits]
+
+
+async def test_a_hybrid_provider_failure_fails_closed_without_a_lexical_fallback(
+    session_factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    course = await _hybrid_course(session_factory)
+    provider = _provider()
+    provider.failures = [
+        AIProviderError(
+            ModelCallErrorCategory.TIMEOUT, "scripted", model="fake", attempts=3, usage=TokenUsage()
+        )
+    ]
+    recorder = _Recorder(monkeypatch)
+
+    with pytest.raises(SearchProviderError) as caught:
+        await _search(session_factory, provider, course, SearchMode.HYBRID)
+
+    assert caught.value.category is ModelCallErrorCategory.TIMEOUT
+    async with session_factory() as session:
+        call = await session.get(ModelCall, caught.value.model_call_id)
+    assert call is not None and call.status is ModelCallStatus.FAILED
+    assert recorder.ranked == []  # neither ranker ran: no lexical-only result
+    assert len(recorder.classified) == 1  # the pre-call verification only
+
+
+async def test_hybrid_search_without_a_provider_is_a_configuration_error(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    course = await _hybrid_course(session_factory)
+    service = SearchService(session_factory, _provider().space, params=SMALL)
+    request = SearchRequest.build(course_id=course, query=MARKER, mode=SearchMode.HYBRID)
+    calls = await _count(session_factory, ModelCall)
+
+    with pytest.raises(AIConfigurationError, match="hybrid"):
+        await service.search_course(request)
+
+    assert await _count(session_factory, ModelCall) == calls
+
+
+async def test_hybrid_rankers_share_the_verified_scope_session_and_snapshot(
+    session_factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    course, first = await _marked_course(session_factory)
+    provider = _provider()
+    await _index(session_factory, course, provider)
+    second = await seed_version(
+        session_factory, course, _blocks(MARKED), source_uri="upload:second.pdf"
+    )
+    recorder = _Recorder(monkeypatch)
+
+    async def index_second_during_the_call(_inputs: object) -> None:
+        await _index(session_factory, course, _provider())
+
+    provider.before_embed = index_second_during_the_call
+
+    result = await _search(session_factory, provider, course, SearchMode.HYBRID, k=50)
+
+    (initial_session, initial), (final_session, final) = recorder.classified
+    (v_name, v_session, v_ids), (l_name, l_session, l_ids) = recorder.ranked
+    (v_scope, _, v_snapshot), (l_scope, _, l_snapshot) = recorder.calls
+    assert initial == (first,) and set(final) == {first, second}
+    assert (v_name, l_name) == ("vector", "lexical")
+    assert v_session is l_session is final_session and final_session is not initial_session
+    assert v_scope is l_scope and v_ids == l_ids == final
+    assert v_snapshot == l_snapshot  # one REPEATABLE READ snapshot for both rankings
+    assert {hit.version.id for hit in result.hits} == {first, second}
+    _assert_exact_provenance(result)
 
 
 # --- the vector ranker is the original vector query ----------------------------------------------

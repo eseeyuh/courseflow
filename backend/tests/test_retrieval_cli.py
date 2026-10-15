@@ -9,6 +9,7 @@ import asyncio
 import io
 import json
 import uuid
+from fractions import Fraction
 from typing import Any
 
 import openai
@@ -622,7 +623,99 @@ async def test_vector_remains_the_default_mode(
     assert result["query_model_call_id"] is not None
 
 
-@pytest.mark.parametrize("mode", ["hybrid", "rrf", ""])
+async def test_hybrid_json_reports_both_rankers_and_an_exact_fused_score(
+    provider: FakeEmbeddingProvider,
+    session_factory: async_sessionmaker[AsyncSession],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    course = await _indexed_course(session_factory, capsys)
+    requests_before = len(provider.calls)
+
+    code, result, err = await _run(
+        capsys, "search", "--course-id", str(course), "--query", MARKER, "--mode", "hybrid",
+        "--json",
+    )  # fmt: skip
+
+    assert code == cli.EXIT_OK
+    assert result["mode"] == "hybrid" and result["score_kind"] == "rrf"
+    assert result["fusion_version"] == "rrf-k60-depth50/v1"
+    assert result["lexical_version"] == "pg-fts-english/v1"
+    assert result["query_format"] == "query/v1" and result["query_model_call_id"] is not None
+    assert len(provider.calls) == requests_before + 1  # one paid query call
+    top = result["hits"][0]
+    assert MARKER in top["text"] and top["spans"]
+    assert (top["vector_rank"], top["lexical_rank"]) == (1, 1)
+    # the exact rational score as text; the float score is its approximation
+    assert Fraction(top["fused_score"]) == Fraction(2, 61) and top["fused_score"] == "2/61"
+    assert top["score"] == float(Fraction(2, 61))
+    assert top["vector_distance"] is not None and top["lexical_score"] is not None
+    _assert_safe_logs(err)
+
+
+async def test_hybrid_human_output_names_both_contracts_and_each_hit_s_ranks(
+    provider: FakeEmbeddingProvider,
+    session_factory: async_sessionmaker[AsyncSession],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    course = await _indexed_course(session_factory, capsys)
+
+    code, out, err = await _raw(
+        capsys, "search", "--course-id", str(course), "--query", MARKER, "--mode", "hybrid"
+    )
+
+    assert code == cli.EXIT_OK
+    assert "Mode hybrid (pg-fts-english/v1 + rrf-k60-depth50/v1)" in out
+    assert "reciprocal rank fusion" in out and "not a confidence or probability" in out
+    assert "ranks: vector 1 | lexical 1 | rrf 2/61" in out
+    assert "ranks: vector 2 | lexical - | rrf 1/62" in out  # a vector-only hit
+    assert "evidence: span" in out
+    _assert_safe_logs(err)
+
+
+async def test_a_hybrid_provider_failure_exits_5_and_never_falls_back_to_lexical(
+    provider: FakeEmbeddingProvider,
+    session_factory: async_sessionmaker[AsyncSession],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    course = await _indexed_course(session_factory, capsys)
+    provider.failures = [
+        AIProviderError(
+            ModelCallErrorCategory.TIMEOUT, "timed out", model="m", attempts=3, usage=TokenUsage()
+        )
+    ]
+
+    code, result, err = await _run(
+        capsys, "search", "--course-id", str(course), "--query", MARKER, "--mode", "hybrid",
+        "--json",
+    )  # fmt: skip
+
+    assert code == cli.EXIT_PROVIDER_FAILED
+    assert result["error"] == "query_embedding_failed" and "hits" not in result
+    assert result["category"] == "timeout" and result["model_call_id"]
+    _assert_safe_logs(err)
+
+
+async def test_hybrid_search_needs_a_configured_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    cli_settings: Settings,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def unconfigured(_settings: Settings) -> FakeEmbeddingProvider:
+        raise AIConfigurationError("AI provider not configured; missing: NEBIUS_API_KEY")
+
+    monkeypatch.setattr(cli, "get_settings", lambda: cli_settings)
+    monkeypatch.setattr(cli, "_provider", unconfigured)
+
+    code, result, _ = await _run(
+        capsys, "search", "--course-id", str(uuid.uuid4()), "--query", "q", "--mode", "hybrid",
+        "--json",
+    )  # fmt: skip
+
+    assert code == cli.EXIT_NOT_CONFIGURED
+    assert result["error"] == "provider_not_configured"
+
+
+@pytest.mark.parametrize("mode", ["rrf", "fused", ""])
 async def test_unimplemented_modes_are_usage_errors(
     provider: FakeEmbeddingProvider, capsys: pytest.CaptureFixture[str], mode: str
 ) -> None:

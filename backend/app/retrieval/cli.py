@@ -9,7 +9,7 @@
     docker compose run --rm --no-deps api python -m app.retrieval.cli stats --course-id <uuid>
     docker compose run --rm --no-deps api python -m app.retrieval.cli search \\
         --course-id <uuid> --query "When is coursework 1 due?" [-k 5] [--type brief] \\
-        [--mode vector|lexical] [--json]
+        [--mode vector|lexical|hybrid] [--json]
     echo "When is coursework 1 due?" | docker compose run --rm --no-deps -T api \\
         python -m app.retrieval.cli search --course-id <uuid> --query -
 
@@ -24,7 +24,9 @@ read-only (it does not even need the embedding settings). ``search`` ranks the c
 verified, current chunks: ``--mode vector`` (the default) embeds the question (one
 recorded provider call); ``--mode lexical`` matches its normalised words with PostgreSQL
 full-text search, offline like ``status`` (the embedding space settings, no API key, no
-provider client, no network). Both modes search the same verified corpus.
+provider client, no network); ``--mode hybrid`` runs both and fuses their rankings by
+reciprocal rank fusion (one recorded provider call, like vector; it fails rather than fall
+back to lexical when that call fails). All modes search the same verified corpus.
 
 ``index`` and ``status`` print one JSON object on stdout. ``stats`` and
 ``search`` print readable text, or one JSON object with ``--json``; ``search`` it deliberately shows
@@ -100,6 +102,10 @@ _SCORE_NOTES = {
     SearchMode.LEXICAL: (
         "Score is a full-text ranking score (ts_rank_cd), not a confidence, "
         "and not comparable with vector scores."
+    ),
+    SearchMode.HYBRID: (
+        "Score is a reciprocal rank fusion sum (1 / (60 + rank) per ranker that returned "
+        "the chunk): an ordering value, not a confidence or probability."
     ),
 }
 
@@ -276,10 +282,10 @@ async def _run_search(settings: Settings, args: argparse.Namespace) -> int:
         mode=SearchMode(args.mode),
     )
     # The active space defines the searchable corpus in every mode. Only vector
-    # search needs a provider client (and credentials); lexical never builds
-    # one and reads the space's identity from settings, like `status`.
+    # and hybrid search need a provider client (and credentials); lexical never
+    # builds one and reads the space's identity from settings, like `status`.
     provider: EmbeddingProvider | None = None
-    if request.mode is SearchMode.VECTOR:
+    if request.mode is not SearchMode.LEXICAL:
         provider = _provider(settings)
         space = provider.space
     else:
@@ -315,8 +321,9 @@ def _result_payload(result: SearchResult) -> dict[str, Any]:
 def _render(result: SearchResult) -> str:
     space = result.space
     mode = f"Mode {result.mode.value}"
-    if result.lexical_version:
-        mode += f" ({result.lexical_version})"
+    versions = [v for v in (result.lexical_version, result.fusion_version) if v]
+    if versions:
+        mode += f" ({' + '.join(versions)})"
     lines = [
         f"Course {result.course_id}",
         mode,
@@ -352,9 +359,17 @@ def _render_hit(hit: SearchHit) -> list[str]:
             f"v{hit.version.version_number} | chunk {hit.chunk_ordinal} {hit.chunk_id} | "
             f"{resource.source_uri}"
         ),
+        *([f"    ranks: {_ranks(hit)}"] if hit.fused_score is not None else []),
         f"    {preview}",
         *(f"    evidence: {line}" for line in _evidence_lines(hit.spans)),
     ]
+
+
+def _ranks(hit: SearchHit) -> str:
+    """Where each ranker placed a fused hit ("-": it did not return it)."""
+    vector = "-" if hit.vector_rank is None else str(hit.vector_rank)
+    lexical = "-" if hit.lexical_rank is None else str(hit.lexical_rank)
+    return f"vector {vector} | lexical {lexical} | rrf {hit.fused_score}"
 
 
 def _evidence_lines(spans: Sequence[SpanEvidence]) -> list[str]:
@@ -437,7 +452,10 @@ def _parser() -> argparse.ArgumentParser:
         "--mode",
         choices=[m.value for m in SearchMode],
         default=SearchMode.VECTOR.value,
-        help="vector (default; embeds the query) or lexical (offline full-text match)",
+        help=(
+            "vector (default; embeds the query), lexical (offline full-text match) "
+            "or hybrid (both, fused by reciprocal rank fusion; embeds the query)"
+        ),
     )
     search.add_argument("--json", action="store_true", help="one JSON object instead of text")
     return parser
