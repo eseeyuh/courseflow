@@ -100,7 +100,7 @@ async def _search(
     k: int = 5,
 ) -> SearchResult:
     request = SearchRequest.build(course_id=course, query=QUERY, k=k)
-    return await SearchService(sf, provider).search_course(request)
+    return await SearchService(sf, provider.space, provider).search_course(request)
 
 
 async def _course_with_target(

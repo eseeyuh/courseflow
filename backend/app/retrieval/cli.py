@@ -8,7 +8,8 @@
     docker compose run --rm --no-deps api python -m app.retrieval.cli status --course-id <uuid>
     docker compose run --rm --no-deps api python -m app.retrieval.cli stats --course-id <uuid>
     docker compose run --rm --no-deps api python -m app.retrieval.cli search \\
-        --course-id <uuid> --query "When is coursework 1 due?" [-k 5] [--type brief] [--json]
+        --course-id <uuid> --query "When is coursework 1 due?" [-k 5] [--type brief] \\
+        [--mode vector|lexical] [--json]
     echo "When is coursework 1 due?" | docker compose run --rm --no-deps -T api \\
         python -m app.retrieval.cli search --course-id <uuid> --query -
 
@@ -19,8 +20,11 @@ state offline: it needs only the embedding space (EMBEDDING_MODEL,
 EMBEDDING_DIMENSIONS, EMBEDDING_SPACE_VERSION), no API key, no provider
 client and no network, and it writes nothing. ``stats`` reports chunk and
 token-budget statistics of the course's current versions, also offline and
-read-only (it does not even need the embedding settings). ``search`` embeds the question
-(one recorded provider call) and ranks the course's verified, current chunks.
+read-only (it does not even need the embedding settings). ``search`` ranks the course's
+verified, current chunks: ``--mode vector`` (the default) embeds the question (one
+recorded provider call); ``--mode lexical`` matches its normalised words with PostgreSQL
+full-text search, offline like ``status`` (the embedding space settings, no API key, no
+provider client, no network). Both modes search the same verified corpus.
 
 ``index`` and ``status`` print one JSON object on stdout. ``stats`` and
 ``search`` print readable text, or one JSON object with ``--json``; ``search`` it deliberately shows
@@ -67,6 +71,7 @@ from app.retrieval.search import (
     ProvenanceError,
     QueryCallNotRecordedError,
     SearchHit,
+    SearchMode,
     SearchProviderError,
     SearchRequest,
     SearchResult,
@@ -90,6 +95,13 @@ EXIT_INDEX_STATE = 6
 EXIT_USAGE = 64
 
 _PREVIEW_CHARS = 200
+_SCORE_NOTES = {
+    SearchMode.VECTOR: "Score is a ranking similarity (1 - cosine distance), not a confidence.",
+    SearchMode.LEXICAL: (
+        "Score is a full-text ranking score (ts_rank_cd), not a confidence, "
+        "and not comparable with vector scores."
+    ),
+}
 
 
 def _emit(payload: dict[str, Any]) -> None:
@@ -261,13 +273,21 @@ async def _run_search(settings: Settings, args: argparse.Namespace) -> int:
         query=query,
         k=args.k,
         resource_types=frozenset(ResourceType(t) for t in args.types) if args.types else None,
+        mode=SearchMode(args.mode),
     )
-    provider = _provider(settings)
+    # The active space defines the searchable corpus in every mode. Only vector
+    # search needs a provider client (and credentials); lexical never builds
+    # one and reads the space's identity from settings, like `status`.
+    provider: EmbeddingProvider | None = None
+    if request.mode is SearchMode.VECTOR:
+        provider = _provider(settings)
+        space = provider.space
+    else:
+        space = embedding_space_from_settings(settings)
     engine = create_db_engine(settings)
     try:
-        result = await SearchService(create_session_factory(engine), provider).search_course(
-            request
-        )
+        service = SearchService(create_session_factory(engine), space, provider)
+        result = await service.search_course(request)
     finally:
         await _release(provider, engine)
     if args.json:
@@ -294,8 +314,12 @@ def _result_payload(result: SearchResult) -> dict[str, Any]:
 
 def _render(result: SearchResult) -> str:
     space = result.space
+    mode = f"Mode {result.mode.value}"
+    if result.lexical_version:
+        mode += f" ({result.lexical_version})"
     lines = [
         f"Course {result.course_id}",
+        mode,
         (
             f"Space {space.provider} {space.model} ({space.dimensions} dims, "
             f"{space.space_version}) | chunker {result.chunker_version}"
@@ -310,7 +334,7 @@ def _render(result: SearchResult) -> str:
     if not result.hits:
         lines.append("No results.")
         return "\n".join(lines)
-    lines.append("Score is a ranking similarity (1 - cosine distance), not a confidence.")
+    lines.append(_SCORE_NOTES[result.mode])
     for hit in result.hits:
         lines.extend(_render_hit(hit))
     return "\n".join(lines)
@@ -408,6 +432,12 @@ def _parser() -> argparse.ArgumentParser:
         action="append",
         choices=[t.value for t in ResourceType],
         help="only this resource type (repeatable)",
+    )
+    search.add_argument(
+        "--mode",
+        choices=[m.value for m in SearchMode],
+        default=SearchMode.VECTOR.value,
+        help="vector (default; embeds the query) or lexical (offline full-text match)",
     )
     search.add_argument("--json", action="store_true", help="one JSON object instead of text")
     return parser

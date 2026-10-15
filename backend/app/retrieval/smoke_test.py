@@ -231,7 +231,7 @@ async def run_smoke(
     stored = await _stored_dimensions(session_factory, course_a)
     checks.record("stored_vector_dimensions", stored == {expected_dimensions})
 
-    searcher = SearchService(session_factory, provider, params=params)
+    searcher = SearchService(session_factory, provider.space, provider, params=params)
     queries = {}
     for label, (question, marker) in QUERIES.items():
         started = time.perf_counter()

@@ -587,41 +587,52 @@ async def inspect_course(
 ) -> list[VersionIndexReport]:
     """Index state of each CURRENT version of the course, re-derived exactly as
     indexing would see it. Needs only the space's identity: no provider, no
-    credentials, no network. Reads only."""
+    credentials, no network. Reads only, in one session of its own."""
     async with session_factory() as session:
-        if not await session.scalar(select(exists().where(Course.id == course_id))):
-            raise CourseNotFoundError(f"course {course_id} does not exist")
-        version_ids = await store.current_versions(session, course_id)
-        space_ref = await store.find_space(session, space)
+        return await inspect_course_in_session(session, course_id, space, params=params)
+
+
+async def inspect_course_in_session(
+    session: AsyncSession,
+    course_id: uuid.UUID,
+    space: EmbeddingSpace,
+    *,
+    params: ChunkingParams = SPAN_PACK_V1,
+) -> list[VersionIndexReport]:
+    """``inspect_course`` inside the caller's session and transaction: every
+    read sees the caller's snapshot. Never commits, never opens another
+    session, never calls a provider. The one implementation of index state."""
+    if not await session.scalar(select(exists().where(Course.id == course_id))):
+        raise CourseNotFoundError(f"course {course_id} does not exist")
+    version_ids = await store.current_versions(session, course_id)
+    space_ref = await store.find_space(session, space)
     return [
-        await _inspect_version(session_factory, version_id, space_ref, params)
-        for version_id in version_ids
+        await _inspect_version(session, version_id, space_ref, params) for version_id in version_ids
     ]
 
 
 async def _inspect_version(
-    session_factory: async_sessionmaker[AsyncSession],
+    session: AsyncSession,
     version_id: uuid.UUID,
     space: SpaceRef | None,
     params: ChunkingParams,
 ) -> VersionIndexReport:
-    async with session_factory() as session:
-        source = await store.load_version(session, version_id)
-        existing = await store.existing_chunks(session, version_id, params.version)
-        content, drafts = derive_chunks(source, params)
-        chunkable = SourceContent.CHUNKABLE
-        if content is not chunkable:
-            return VersionIndexReport(version_id, content, None, None, len(existing))
-        state = store.compare_chunks(existing, drafts)
-        if state is not ChunkState.EXACT:
-            return VersionIndexReport(version_id, chunkable, state, None, len(existing))
-        if space is None:  # nothing was ever indexed in this space
-            return VersionIndexReport(version_id, chunkable, state, LinkState.ZERO, len(existing))
-        expected = {
-            chunk.id: _key(space, document_input(draft.text))
-            for chunk, draft in zip(existing, drafts, strict=True)
-        }
-        links = await store.link_state(session, existing, expected)
+    source = await store.load_version(session, version_id)
+    existing = await store.existing_chunks(session, version_id, params.version)
+    content, drafts = derive_chunks(source, params)
+    chunkable = SourceContent.CHUNKABLE
+    if content is not chunkable:
+        return VersionIndexReport(version_id, content, None, None, len(existing))
+    state = store.compare_chunks(existing, drafts)
+    if state is not ChunkState.EXACT:
+        return VersionIndexReport(version_id, chunkable, state, None, len(existing))
+    if space is None:  # nothing was ever indexed in this space
+        return VersionIndexReport(version_id, chunkable, state, LinkState.ZERO, len(existing))
+    expected = {
+        chunk.id: _key(space, document_input(draft.text))
+        for chunk, draft in zip(existing, drafts, strict=True)
+    }
+    links = await store.link_state(session, existing, expected)
     return VersionIndexReport(version_id, chunkable, state, links, len(existing))
 
 

@@ -28,6 +28,7 @@ from app.domain.enums import (
     ModelCallStatus,
     ResourceType,
 )
+from app.retrieval import store
 from app.retrieval.chunking import ChunkingParams
 from app.retrieval.indexing import (
     CourseNotFoundError,
@@ -96,7 +97,7 @@ async def _search(
     **kwargs: Any,
 ) -> SearchResult:
     request = SearchRequest.build(course_id=course, query=query, **kwargs)
-    return await SearchService(sf, provider, params=SMALL).search_course(request)
+    return await SearchService(sf, provider.space, provider, params=SMALL).search_course(request)
 
 
 async def _model_calls(sf: async_sessionmaker[AsyncSession]) -> list[ModelCall]:
@@ -455,6 +456,8 @@ async def test_an_empty_index_makes_no_provider_call_and_no_model_call(
     if state == "not-indexed":
         await seed_version(session_factory, course, _blocks(MARKED))
     provider = _provider()
+    async with session_factory() as session:  # the active space was never indexed
+        assert await store.find_space(session, provider.space) is None
 
     result = await _search(session_factory, provider, course)
 
@@ -462,6 +465,35 @@ async def test_an_empty_index_makes_no_provider_call_and_no_model_call(
     assert result.searchable_versions == 0
     assert result.current_versions == (1 if state == "not-indexed" else 0)
     assert provider.calls == [] and await _model_calls(session_factory) == []
+
+
+@pytest.mark.parametrize("state", ["no-versions", "not-indexed", "superseded-by-unindexed"])
+async def test_an_existing_space_without_searchable_course_content_makes_no_query_call(
+    session_factory: async_sessionmaker[AsyncSession], state: str
+) -> None:
+    """The active space row exists (another course is indexed in it), but this
+    course has no searchable current version there: the first verification
+    must stop before the paid query call."""
+    other, _ = await _marked_course(session_factory, "Other course")
+    provider = _provider()
+    await _index(session_factory, other, provider)
+    course = await seed_course(session_factory, "Course A")
+    if state == "not-indexed":
+        await seed_version(session_factory, course, _blocks(MARKED))
+    if state == "superseded-by-unindexed":
+        await seed_version(session_factory, course, _blocks(MARKED))
+        await _index(session_factory, course, provider)
+        await seed_version(session_factory, course, _blocks("a newer, unindexed version"))
+    async with session_factory() as session:
+        assert await store.find_space(session, provider.space) is not None
+    calls = len(provider.calls)
+
+    result = await _search(session_factory, provider, course)
+
+    assert result.hits == () and result.query_model_call_id is None
+    assert result.searchable_versions == 0
+    assert result.current_versions == (0 if state == "no-versions" else 1)
+    assert len(provider.calls) == calls and await _query_calls(session_factory) == []
 
 
 async def test_an_unknown_course_fails_before_any_provider_call(

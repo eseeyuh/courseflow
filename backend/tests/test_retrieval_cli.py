@@ -8,9 +8,7 @@ offline fake embedding provider."""
 import asyncio
 import io
 import json
-import logging
 import uuid
-from collections.abc import Iterator
 from typing import Any
 
 import openai
@@ -39,15 +37,6 @@ from tests.retrieval_seed import paragraphs, seed_course, seed_version
 pytestmark = pytest.mark.anyio
 
 SECRET = "SENSITIVE-COURSE-TEXT"
-
-
-@pytest.fixture(autouse=True)
-def _restore_root_logging() -> Iterator[None]:
-    root = logging.getLogger()
-    handlers, level = root.handlers[:], root.level
-    yield
-    root.handlers[:] = handlers
-    root.setLevel(level)
 
 
 @pytest.fixture
@@ -552,3 +541,112 @@ async def test_stats_refuse_to_report_invalid_chunk_state(
         "error": "chunk_integrity_failed",
         "versions": [str(version)],
     }
+
+
+# --- search modes ---------------------------------------------------------------------------
+
+
+async def test_lexical_search_runs_offline_without_a_key_a_client_or_a_model_call(
+    session_factory: async_sessionmaker[AsyncSession],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    provider: FakeEmbeddingProvider,
+    cli_settings: Settings,
+) -> None:
+    course = await _indexed_course(session_factory, capsys)  # indexed by the fake provider
+    async with session_factory() as session:
+        calls_before = await session.scalar(select(func.count()).select_from(ModelCall))
+    requests_before = len(provider.calls)  # the indexing requests
+
+    def no_provider(_settings: Settings) -> FakeEmbeddingProvider:
+        raise AssertionError("lexical search must not build an embedding provider")
+
+    def no_client(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("lexical search must not build an API client")
+
+    assert cli_settings.nebius_api_key is None  # no credentials at all
+    monkeypatch.setattr(cli, "_provider", no_provider)
+    monkeypatch.setattr(openai.AsyncOpenAI, "__init__", no_client)
+
+    code, result, err = await _run(
+        capsys, "search", "--course-id", str(course), "--query", MARKER, "--mode", "lexical",
+        "--json",
+    )  # fmt: skip
+
+    assert code == cli.EXIT_OK
+    assert result["mode"] == "lexical" and result["score_kind"] == "ts_rank_cd"
+    assert result["lexical_version"] == "pg-fts-english/v1"
+    assert result["query_format"] is None and result["query_model_call_id"] is None
+    assert result["hits"] and MARKER in result["hits"][0]["text"]
+    assert len(provider.calls) == requests_before  # no query request
+    async with session_factory() as session:
+        calls_after = await session.scalar(select(func.count()).select_from(ModelCall))
+    assert calls_after == calls_before  # no query ModelCall
+    _assert_safe_logs(err)
+    assert "'zebra'" not in json.dumps(result) and "'zebra'" not in err  # no tsquery shown
+
+
+async def test_lexical_human_output_names_the_mode_and_its_score(
+    provider: FakeEmbeddingProvider,
+    session_factory: async_sessionmaker[AsyncSession],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    course = await _indexed_course(session_factory, capsys)
+
+    code, out, err = await _raw(
+        capsys, "search", "--course-id", str(course), "--query", MARKER, "--mode", "lexical"
+    )
+
+    assert code == cli.EXIT_OK
+    assert "Mode lexical (pg-fts-english/v1)" in out
+    assert "ts_rank_cd" in out and "not comparable with vector scores" in out
+    assert "evidence: span" in out
+    assert "'zebra'" not in out  # the generated tsquery is never printed
+    _assert_safe_logs(err)
+
+
+async def test_vector_remains_the_default_mode(
+    provider: FakeEmbeddingProvider,
+    session_factory: async_sessionmaker[AsyncSession],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    course = await _indexed_course(session_factory, capsys)
+
+    code, result, _ = await _run(
+        capsys, "search", "--course-id", str(course), "--query", MARKER, "--json"
+    )
+
+    assert code == cli.EXIT_OK
+    assert result["mode"] == "vector" and result["score_kind"] == "cosine_similarity"
+    assert result["lexical_version"] is None and result["query_format"] == "query/v1"
+    assert result["query_model_call_id"] is not None
+
+
+@pytest.mark.parametrize("mode", ["hybrid", "rrf", ""])
+async def test_unimplemented_modes_are_usage_errors(
+    provider: FakeEmbeddingProvider, capsys: pytest.CaptureFixture[str], mode: str
+) -> None:
+    code, result, _ = await _run(
+        capsys, "search", "--course-id", str(uuid.uuid4()), "--query", "q", "--mode", mode
+    )
+
+    assert code == cli.EXIT_USAGE
+    assert result["error"] == "usage"
+
+
+async def test_lexical_search_without_embedding_settings_is_not_configured(
+    session_factory: async_sessionmaker[AsyncSession],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+) -> None:
+    """The active space defines the searchable corpus even for lexical search."""
+    course = await seed_course(session_factory)
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)  # no EMBEDDING_MODEL
+
+    code, out, _ = await _raw(
+        capsys, "search", "--course-id", str(course), "--query", "q", "--mode", "lexical"
+    )
+
+    assert code == cli.EXIT_NOT_CONFIGURED
+    assert "provider_not_configured" in out

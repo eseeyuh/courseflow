@@ -105,7 +105,7 @@ async def test_invalid_span_rows_fail_one_version_and_never_reach_search(
     # Search fails closed and names the version, before any paid call.
     calls = len(provider.calls)
     with pytest.raises(IndexStateError) as caught:
-        await SearchService(session_factory, provider, params=SMALL).search_course(
+        await SearchService(session_factory, provider.space, provider, params=SMALL).search_course(
             SearchRequest.build(course_id=course, query="topic")
         )
     assert caught.value.corrupt_version_ids == (broken,)
@@ -189,7 +189,7 @@ async def test_a_query_call_that_cannot_be_recorded_stops_the_search_with_a_type
     monkeypatch.setattr(search, "call_embeddings_recorded", unrecorded)
 
     with pytest.raises(QueryCallNotRecordedError) as caught:
-        await SearchService(session_factory, provider, params=SMALL).search_course(
+        await SearchService(session_factory, provider.space, provider, params=SMALL).search_course(
             SearchRequest.build(course_id=course, query="topic")
         )
 
