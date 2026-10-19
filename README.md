@@ -27,7 +27,7 @@ A modular monolith: Next.js frontend, FastAPI backend, PostgreSQL + pgvector, an
 - [System context](docs/architecture/system-context.md): actors, boundaries, internal parts, data flows
 - [Data contract](docs/architecture/data-contract.md): canonical domain objects and the provenance chain
 - [Document ingestion](docs/architecture/ingestion.md): parsers, locators, versions, the raw store and the import CLI
-- [Retrieval](docs/architecture/retrieval.md): chunks, embeddings, vector search and the provenance checks
+- [Retrieval](docs/architecture/retrieval.md): chunks, embeddings, vector, lexical and hybrid search, and the provenance checks
 
 ## Architecture decisions
 
@@ -40,12 +40,23 @@ A modular monolith: Next.js frontend, FastAPI backend, PostgreSQL + pgvector, an
 | [ADR-005](docs/decisions/ADR-005-ai-provider-boundary.md) | AI provider boundary, structured-output policy and retry semantics |
 | [ADR-006](docs/decisions/ADR-006-document-ingestion-and-raw-storage.md) | Deterministic document ingestion with a content-addressed raw store |
 | [ADR-007](docs/decisions/ADR-007-chunking-embeddings-and-vector-search.md) | Provenance-preserving chunking, embedding provider and vector search |
+| [ADR-008](docs/decisions/ADR-008-hybrid-retrieval-and-evaluation.md) | Lexical and hybrid retrieval, chosen as the default by a frozen benchmark |
 
 ## Evaluation
 
 CourseFlow will be evaluated against a reproducible synthetic golden dataset (deadline exact match, obligation F1, dependency-edge F1, evidence-location accuracy, retrieval Recall@K, conflict detection, workflow completion, latency and cost).
 
-**No evaluation results yet.** Numbers will appear here only from saved benchmark runs. Development measurements (embedding throughput, chunker speed and a live retrieval smoke run, from one development environment) are recorded in [docs/experiments/retrieval-measurements.md](docs/experiments/retrieval-measurements.md); they are observations, not evaluation results.
+**Retrieval** is the first component with saved results. It was measured on the frozen synthetic benchmark retrieval/v1 with replayed embeddings: 12 positive cases, plus 2 invariant-only probes excluded from the metrics. Every mode had 0 invariant failures.
+
+| Mode | Recall@1 | Recall@3 | Recall@5 | MRR@10 |
+|---|---|---|---|---|
+| vector | 9/12 | 11/12 | 12/12 | 121/144 |
+| lexical | 9/12 | 11/12 | 12/12 | 17/20 |
+| hybrid | 9/12 | 12/12 | 12/12 | 31/36 |
+
+Hybrid is the default search mode. It was selected by a rule declared before any score, not by tuning afterwards. The benchmark is small, so no statistical significance is claimed. Details, the selection rule and how to rerun it are in [evals/README.md](evals/README.md) and [ADR-008](docs/decisions/ADR-008-hybrid-retrieval-and-evaluation.md). The other metrics have no results yet.
+
+Development measurements (embedding throughput, chunker speed and a live retrieval smoke run, from one development environment) are recorded in [docs/experiments/retrieval-measurements.md](docs/experiments/retrieval-measurements.md). They are observations, not evaluation results.
 
 ## Development
 
@@ -150,9 +161,10 @@ docker compose run --rm --no-deps api python -m app.retrieval.cli status --cours
 docker compose run --rm --no-deps api python -m app.retrieval.cli stats  --course-id <course-uuid>
 docker compose run --rm --no-deps api python -m app.retrieval.cli search --course-id <course-uuid> --query "When is the coursework report deadline?" -k 5
 docker compose run --rm --no-deps api python -m app.retrieval.cli search --course-id <course-uuid> --query "..." --type brief --json
+docker compose run --rm --no-deps api python -m app.retrieval.cli search --course-id <course-uuid> --query "EC7 form" --mode lexical
 ```
 
-`search` ranks only fully indexed, current versions of the course (an inconsistent index makes it refuse, exit code 6) and prints each hit's score, resource, version, chunk ID and the exact source spans it came from. The score ranks results; it is not a confidence. Use `--query -` to read the question from stdin (with `docker compose run -T`), which keeps it out of shell history. Every search makes one recorded embedding call; query vectors are not cached. Details: [docs/architecture/retrieval.md](docs/architecture/retrieval.md).
+`search` ranks only fully indexed, current versions of the course (an inconsistent index makes it refuse, exit code 6) and prints each hit's score, resource, version, chunk ID and the exact source spans it came from. The score ranks results; it is not a confidence. Use `--query -` to read the question from stdin (with `docker compose run -T`), which keeps it out of shell history. The default mode is `hybrid` (vector and full-text rankings fused by reciprocal rank fusion); `--mode vector` and `--mode lexical` select one ranker. Hybrid and vector searches make one recorded embedding call each (query vectors are not cached); lexical search makes none and needs no API key. Details: [docs/architecture/retrieval.md](docs/architecture/retrieval.md).
 
 A live end-to-end check with invented courses, and the development measurements:
 

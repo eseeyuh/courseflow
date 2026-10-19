@@ -1,6 +1,6 @@
 # Retrieval
 
-Retrieval turns ingested versions into searchable **chunks** with vectors, while every chunk still resolves to exact source spans. The stored fields and their rules are in the [data contract](data-contract.md#retrieval-layer). The reasoning behind the design is in [ADR-007](../decisions/ADR-007-chunking-embeddings-and-vector-search.md).
+Retrieval turns ingested versions into searchable **chunks** with vectors, while every chunk still resolves to exact source spans. The stored fields and their rules are in the [data contract](data-contract.md#retrieval-layer). The reasoning behind the design is in [ADR-007](../decisions/ADR-007-chunking-embeddings-and-vector-search.md) (chunking, embeddings, vector search) and [ADR-008](../decisions/ADR-008-hybrid-retrieval-and-evaluation.md) (lexical and hybrid retrieval, and the benchmark that chose the default).
 
 ## Storage
 
@@ -12,6 +12,8 @@ ResourceVersion ─┬─ SourceSpan (ordinal 0..n)
                               │
                               └─ Embedding (space, input format, input hash, vector) ─ EmbeddingSpace
 ```
+
+Each chunk also has `text_tsv`, a stored generated `tsvector` of its text (`to_tsvector('english', text)`, GIN indexed) used by lexical search. It is derived from the chunk text and never written by the application.
 
 - A **chunk** belongs to exactly one resource version; its resource and course come through that version, never from columns of its own.
 - An **embedding** is global and content-addressed: one row per (space, input format, input hash), reused by every chunk in any course whose provider input was identical.
@@ -123,7 +125,7 @@ If corruption is found by the first verification, no provider call is made. If i
 
 If nothing is searchable at the first verification, the result is empty and no provider call is made; if nothing is searchable at the second, the result is empty but still names the query's `ModelCall`. Otherwise the result reports `current_versions` and `searchable_versions`, so an incomplete corpus is visible rather than hidden.
 
-The question is embedded as `query/v1` (stripped, 1 to 2,000 characters, CourseFlow's own limit) in the **same embedding space** as the documents: same provider, model, dimensions and space version. `query/v1` and `document/v1` are input formats (the query carries a task instruction, as the model expects), not different spaces. Each search is one real provider request, recorded as one standalone `ModelCall` (no workflow run); query vectors are never stored or cached, so repeating a search pays again.
+The question is embedded as `query/v1` (stripped, 1 to 2,000 characters, CourseFlow's own limit) in the **same embedding space** as the documents: same provider, model, dimensions and space version. `query/v1` and `document/v1` are input formats (the query carries a task instruction, as the model expects), not different spaces. Each vector or hybrid search is one real provider request, recorded as one standalone `ModelCall` (no workflow run); query vectors are never stored or cached, so repeating a search pays again. Lexical search makes no provider request.
 
 Candidates are restricted to: the requested course; each resource's current version; the versions verified as searchable; the active chunker version; the active embedding space, on both the link and the embedding row; `document/v1` exactly; matching dimensions; and the optional resource types. Ranking is an exact cosine scan (no approximate index):
 
@@ -137,9 +139,29 @@ Every ranking (vector, lexical `pg-fts-english/v2`, hybrid `rrf-k60-depth50/v2`)
 
 `score = 1 - cosine distance` ranks results; it is not a probability or a confidence.
 
+### Lexical and hybrid ranking
+
+**Lexical (`pg-fts-english/v2`).** PostgreSQL normalises the question with the explicit `english` configuration (never the server default). Its distinct lexemes are combined with OR into a `tsquery`, sent as a bound parameter. Chunks whose `text_tsv` matches are ranked by `ts_rank_cd` without length normalisation (`score_kind = ts_rank_cd`). A question with no lexemes, such as stop words only, returns no hits. Lexical search needs the embedding space's identity, because the corpus is still the one verified for that space, but it needs no API key, provider client or network. **This is English lexical retrieval:** English stemming and stop words apply to all text, and non-English material gets weak lexical matching.
+
+**Hybrid (`rrf-k60-depth50/v2`).** Both rankers run over the same verified corpus, each returning at most 50 candidates. They are fused by reciprocal rank fusion: a chunk's score is the exact rational sum of `1 / (60 + rank)` over the rankings that returned it (`score_kind = rrf`, with the exact `fused_score` on each hit). The raw cosine and `ts_rank_cd` scores are not comparable, so they are reported per hit only as diagnostics. The fused order is fused score, then best single rank, vector rank, lexical rank, then natural identity. Any top-k is a prefix of that order. Hybrid shares vector search's two-verification lifecycle and its single provider call. If the call fails, the search fails; it never falls back to lexical-only results.
+
+All three modes rank exactly the same trusted corpus: the course's current versions classified searchable in the same read-only snapshot. Each hit carries its rank and raw score from every ranker that ran. Evidence (source spans) is assembled and verified the same way in every mode.
+
 **Evidence.** A chunk is retrieval context; its evidence is its source spans. Every hit lists each span from `first_span_ordinal` to `last_span_ordinal` with its locator (page, slide or section), and the exact part of the span inside the chunk: absolute offsets in the version's text and code-point offsets into the span's excerpt (`coverage` is `full` or `partial`). Each hit is re-checked: the spans exist, overlap the chunk, and the excerpt's sub-range equals the matching part of the chunk text. Any inconsistency fails the whole search (`ProvenanceError`, CLI exit 6); a partly trustworthy result list is never returned.
 
 Search output (stdout, `--json`) deliberately shows retrieved course text and resource references. Logs never contain the question, chunk text, excerpts or source URIs.
+
+## Evaluation
+
+Retrieval quality is measured on the frozen synthetic benchmark retrieval/v1 (12 positive cases, plus 2 invariant-only probes that are excluded from the metrics). Each run replays recorded embeddings, so it makes no live provider calls. It uses a guarded, freshly recreated evaluation database and the production ingestion, indexing and search code. Results (0 invariant failures in every mode):
+
+| Mode | Recall@1 | Recall@3 | Recall@5 | MRR@10 |
+|---|---|---|---|---|
+| vector | 9/12 | 11/12 | 12/12 | 121/144 |
+| lexical | 9/12 | 11/12 | 12/12 | 17/20 |
+| hybrid | 9/12 | 12/12 | 12/12 | 31/36 |
+
+Hybrid became the default under `default-selection/v1`, a rule fixed before any score. The benchmark is small, so no statistical significance is claimed. See the [evaluation guide](../../evals/README.md), the [full report](../../evals/reports/retrieval-v1.md) and [ADR-008](../decisions/ADR-008-hybrid-retrieval-and-evaluation.md).
 
 ## Inspection, statistics and measurements
 

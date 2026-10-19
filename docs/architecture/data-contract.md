@@ -82,7 +82,7 @@ SourceSpan (first..last ordinal) <- Chunk -> ChunkEmbedding -> Embedding -> Embe
 
 | Entity | Meaning | Minimum fields |
 |---|---|---|
-| `Chunk` | An exact slice of one `ResourceVersion`'s `extracted_text`, produced by a versioned chunker. Its resource and course come only through that version. Immutable. | id, resource_version_id, chunker_version, ordinal (unique per version and chunker version), start_offset, end_offset, first_span_ordinal, last_span_ordinal, text, text_hash, estimated_tokens |
+| `Chunk` | An exact slice of one `ResourceVersion`'s `extracted_text`, produced by a versioned chunker. Its resource and course come only through that version. Immutable. | id, resource_version_id, chunker_version, ordinal (unique per version and chunker version), start_offset, end_offset, first_span_ordinal, last_span_ordinal, text, text_hash, estimated_tokens, text_tsv (generated `tsvector` of `text`, English configuration; derived, never written) |
 | `EmbeddingSpace` | The unit of vector comparability. `model` is the configured model ID; `space_version` is CourseFlow's own compatibility revision, not an upstream model version. | id, provider, model, dimensions (1–16,000), space_version (unique together) |
 | `Embedding` | One vector, global and content-addressed: shared by every input that hashed identically in the same space and input format. | id, space_id, dimensions (equal to the space's), input_format (`document/vN` or `query/vN`), input_hash (SHA-256 of the exact UTF-8 provider input), vector (non-zero), model_call_id (nullable) |
 | `ChunkEmbedding` | The explicit link from a chunk to its document-format vector in one space. | chunk_id, embedding_id, space_id, input_format (`document/vN` only); at most one per (chunk, space, input format) |
@@ -94,7 +94,7 @@ Rules:
 - **Coverage:** for each indexed version and chunker version, every `SourceSpan` that contains visible (non-whitespace) text lies within at least one chunk's span range, and every non-whitespace character of `extracted_text` lies within at least one chunk. A whitespace-only span gets no retrieval unit of its own; any text not covered by a chunk is whitespace only.
 - **Vectors** are compared only within one `EmbeddingSpace`. The relevance score is `1 - cosine distance`; it ranks results and is never a confidence.
 - **Query embeddings** (`query/vN`) are never linked to chunks.
-- **Search** covers only the current version of each resource, and is scoped to a course through `Chunk -> ResourceVersion -> Resource -> Course`.
+- **Search** covers only the current version of each resource, and is scoped to a course through `Chunk -> ResourceVersion -> Resource -> Course`. This holds in every search mode (vector, lexical, hybrid), and results are ordered by score and then by natural identity (source URI, version number, chunk ordinal), never by a generated ID.
 - **Deletion:** deleting a version's spans or the version deletes its chunks and their links; an embedding in use cannot be deleted; pruning a `ModelCall` keeps the vectors it produced.
 
 ### Academic layer
