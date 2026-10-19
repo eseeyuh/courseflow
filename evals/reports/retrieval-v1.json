@@ -1,0 +1,1583 @@
+{
+  "results": {
+    "cases": {
+      "critical": "ds101-mixed-cw1-deadline",
+      "invariant_only": 2,
+      "positive": 12,
+      "total": 14
+    },
+    "chunker": "span-pack/v1",
+    "corpus_state": {
+      "chunks": 41,
+      "courses": 2,
+      "current_version_chunks": 39,
+      "document_embeddings": 41,
+      "resource_versions": 14,
+      "resources": 13
+    },
+    "dataset": {
+      "name": "courseflow-retrieval",
+      "relevance_rule": "full-target-containment/v1",
+      "sha256": "07c11efaea7efd516f6d6ec0bdb27229008bd0f1972890fb82d4827e0ba45747",
+      "target_span_rule": "single-source-span/v1",
+      "version": "v1"
+    },
+    "embedding_space": {
+      "dimensions": 4096,
+      "model": "Qwen/Qwen3-Embedding-8B",
+      "provider": "nebius-token-factory",
+      "space_version": "v1"
+    },
+    "migration_head": "0006",
+    "modes": {
+      "hybrid": {
+        "cases": [
+          {
+            "case_id": "ds101-kw-ec7-extension-form",
+            "category": "keyword",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": 9,
+                "kind": "same_course_semantic",
+                "ref": "ds101/coursework-brief/v2"
+              },
+              {
+                "first_rank": null,
+                "kind": "cross_course_near_duplicate",
+                "ref": "snd210/studio-handbook/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/module-handbook/v1#1",
+              "ds101/module-handbook/v1#0",
+              "ds101/module-handbook/v1#2",
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/careers-fair-notice/v1#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/coursework-brief/v2#2",
+              "ds101/coursework-brief/v2#0"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-kw-repeatable-read-phantoms",
+            "category": "keyword",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lecture-07-transactions/v1#1",
+              "ds101/lecture-07-transactions/v1#3",
+              "ds101/lecture-07-transactions/v1#0",
+              "ds101/lecture-07-transactions/v1#2",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lecture-05-indexing/v1#0",
+              "ds101/lab-04-query-plans/v1#2",
+              "ds101/lecture-01-relational-model/v1#2",
+              "ds101/lab-04-query-plans/v1#1",
+              "ds101/lecture-05-indexing/v1#1"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-kw-explain-analyze-buffers",
+            "category": "keyword",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/lecture-05-indexing/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lab-04-query-plans/v1#1",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lab-04-query-plans/v1#2",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/lab-02-sql-joins/v1#0"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-kw-bcnf-definition",
+            "category": "keyword",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              },
+              {
+                "first_rank": null,
+                "kind": "cross_course_homonym",
+                "ref": "snd210/lecture-04-loudness-targets/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/coursework-brief/v2#1",
+              "ds101/coursework-brief/v2#0",
+              "ds101/lecture-01-relational-model/v1#3",
+              "ds101/lecture-01-relational-model/v1#2",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/lecture-07-transactions/v1#1",
+              "ds101/module-handbook/v1#0"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-update-anomaly",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              },
+              {
+                "first_rank": 6,
+                "kind": "same_course_semantic",
+                "ref": "ds101/coursework-brief/v2"
+              }
+            ],
+            "first_relevant_rank": 3,
+            "first_relevant_tie": [
+              3,
+              3
+            ],
+            "hits": [
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/coursework-brief/v2#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/lecture-01-relational-model/v1#3",
+              "ds101/lab-04-query-plans/v1#1"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-late-penalty",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "cross_course_near_duplicate",
+                "ref": "snd210/studio-handbook/v1"
+              },
+              {
+                "first_rank": 6,
+                "kind": "same_course_irrelevant",
+                "ref": "ds101/careers-fair-notice/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/module-handbook/v1#0",
+              "ds101/module-handbook/v1#1",
+              "ds101/coursework-brief/v2#0",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/module-handbook/v1#2",
+              "ds101/careers-fair-notice/v1#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/lecture-05-indexing/v1#2",
+              "ds101/lecture-03-normal-forms/v1#3"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-deadlock",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": 5,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lecture-07-transactions/v1#2",
+              "ds101/lecture-07-transactions/v1#0",
+              "ds101/lecture-07-transactions/v1#1",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/reading-document-stores/v1#1",
+              "ds101/module-handbook/v1#0",
+              "ds101/lecture-05-indexing/v1#3",
+              "ds101/lecture-01-relational-model/v1#1",
+              "ds101/lecture-07-transactions/v1#3",
+              "ds101/lecture-05-indexing/v1#2"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-composite-index-order",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lecture-05-indexing/v1#1",
+              "ds101/lecture-05-indexing/v1#2",
+              "ds101/lecture-05-indexing/v1#3",
+              "ds101/lecture-05-indexing/v1#0",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/lab-04-query-plans/v1#2",
+              "ds101/lecture-01-relational-model/v1#3",
+              "ds101/lab-04-query-plans/v1#1"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-members-without-loans",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": 3,
+                "kind": "same_course_semantic",
+                "ref": "ds101/coursework-brief/v2"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lecture-01-relational-model/v1#3",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/coursework-brief/v2#0",
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lecture-03-normal-forms/v1#0"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-mixed-cw1-deadline",
+            "category": "mixed",
+            "critical": true,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "stale_version",
+                "ref": "ds101/coursework-brief/v1"
+              },
+              {
+                "first_rank": null,
+                "kind": "cross_course_near_duplicate",
+                "ref": "snd210/portfolio-brief/v1"
+              },
+              {
+                "first_rank": 1,
+                "kind": "same_course_semantic",
+                "ref": "ds101/module-handbook/v1"
+              },
+              {
+                "first_rank": null,
+                "kind": "same_course_irrelevant",
+                "ref": "ds101/careers-fair-notice/v1"
+              }
+            ],
+            "first_relevant_rank": 2,
+            "first_relevant_tie": [
+              2,
+              2
+            ],
+            "hits": [
+              "ds101/module-handbook/v1#0",
+              "ds101/coursework-brief/v2#0",
+              "ds101/module-handbook/v1#2",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/module-handbook/v1#1",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lecture-01-relational-model/v1#0",
+              "ds101/coursework-brief/v2#2"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-mixed-cw1-3nf-justification",
+            "category": "mixed",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "stale_version",
+                "ref": "ds101/coursework-brief/v1"
+              },
+              {
+                "first_rank": 1,
+                "kind": "same_course_semantic",
+                "ref": "ds101/lecture-03-normal-forms/v1"
+              }
+            ],
+            "first_relevant_rank": 2,
+            "first_relevant_tie": [
+              2,
+              2
+            ],
+            "hits": [
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/coursework-brief/v2#0",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/module-handbook/v1#0",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/module-handbook/v1#2",
+              "ds101/reading-document-stores/v1#0"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-mixed-genai-declaration",
+            "category": "mixed",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "stale_version",
+                "ref": "ds101/coursework-brief/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/module-handbook/v1#1",
+              "ds101/module-handbook/v1#0",
+              "ds101/coursework-brief/v2#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/module-handbook/v1#2",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lecture-01-relational-model/v1#2"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-inv-stale-group-submission",
+            "category": "stale_version_invariant",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "stale_version",
+                "ref": "ds101/coursework-brief/v1"
+              }
+            ],
+            "first_relevant_rank": null,
+            "first_relevant_tie": null,
+            "hits": [
+              "ds101/module-handbook/v1#0",
+              "ds101/module-handbook/v1#2",
+              "ds101/coursework-brief/v2#0",
+              "ds101/module-handbook/v1#1",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/careers-fair-notice/v1#0",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/lecture-03-normal-forms/v1#2"
+            ],
+            "invariant_failures": [],
+            "positive": false
+          },
+          {
+            "case_id": "ds101-inv-cross-course-loudness",
+            "category": "cross_course_invariant",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "cross_course_homonym",
+                "ref": "snd210/lecture-04-loudness-targets/v1"
+              }
+            ],
+            "first_relevant_rank": null,
+            "first_relevant_tie": null,
+            "hits": [
+              "ds101/coursework-brief/v2#0",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/module-handbook/v1#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/module-handbook/v1#2",
+              "ds101/module-handbook/v1#1",
+              "ds101/reading-document-stores/v1#1",
+              "ds101/coursework-brief/v2#2",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/lecture-01-relational-model/v1#3"
+            ],
+            "invariant_failures": [],
+            "positive": false
+          }
+        ],
+        "components": {
+          "document_format": "document/v1",
+          "fusion_version": "rrf-k60-depth50/v2",
+          "lexical_version": "pg-fts-english/v2",
+          "query_format": "query/v1",
+          "score_kind": "rrf"
+        },
+        "invariant_failures": 0,
+        "metrics": {
+          "mrr@10": {
+            "exact": "31/36",
+            "reciprocal_rank_sum": "31/3",
+            "value": "0.861111"
+          },
+          "positive_cases": 12,
+          "recall@1": {
+            "exact": "3/4",
+            "hits": 9,
+            "value": "0.750000"
+          },
+          "recall@3": {
+            "exact": "1/1",
+            "hits": 12,
+            "value": "1.000000"
+          },
+          "recall@5": {
+            "exact": "1/1",
+            "hits": 12,
+            "value": "1.000000"
+          }
+        }
+      },
+      "lexical": {
+        "cases": [
+          {
+            "case_id": "ds101-kw-ec7-extension-form",
+            "category": "keyword",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/coursework-brief/v2"
+              },
+              {
+                "first_rank": null,
+                "kind": "cross_course_near_duplicate",
+                "ref": "snd210/studio-handbook/v1"
+              }
+            ],
+            "first_relevant_rank": 2,
+            "first_relevant_tie": [
+              2,
+              2
+            ],
+            "hits": [
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/module-handbook/v1#1",
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/module-handbook/v1#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/module-handbook/v1#2",
+              "ds101/careers-fair-notice/v1#0",
+              "ds101/coursework-brief/v2#0"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-kw-repeatable-read-phantoms",
+            "category": "keyword",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lecture-07-transactions/v1#1",
+              "ds101/lecture-07-transactions/v1#0",
+              "ds101/lecture-07-transactions/v1#3",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lecture-07-transactions/v1#2",
+              "ds101/lecture-01-relational-model/v1#2",
+              "ds101/lecture-05-indexing/v1#0",
+              "ds101/lab-04-query-plans/v1#2",
+              "ds101/lecture-05-indexing/v1#1",
+              "ds101/reading-document-stores/v1#0"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-kw-explain-analyze-buffers",
+            "category": "keyword",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/lecture-05-indexing/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lab-04-query-plans/v1#1",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lab-04-query-plans/v1#2",
+              "ds101/lab-02-sql-joins/v1#1"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-kw-bcnf-definition",
+            "category": "keyword",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              },
+              {
+                "first_rank": null,
+                "kind": "cross_course_homonym",
+                "ref": "snd210/lecture-04-loudness-targets/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/coursework-brief/v2#0",
+              "ds101/module-handbook/v1#1",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/lecture-01-relational-model/v1#2",
+              "ds101/lecture-01-relational-model/v1#3"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-update-anomaly",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              },
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/coursework-brief/v2"
+              }
+            ],
+            "first_relevant_rank": 5,
+            "first_relevant_tie": [
+              5,
+              5
+            ],
+            "hits": [
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/lab-04-query-plans/v1#1",
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/lecture-05-indexing/v1#2",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lecture-01-relational-model/v1#1"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-late-penalty",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "cross_course_near_duplicate",
+                "ref": "snd210/studio-handbook/v1"
+              },
+              {
+                "first_rank": 7,
+                "kind": "same_course_irrelevant",
+                "ref": "ds101/careers-fair-notice/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/module-handbook/v1#0",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/coursework-brief/v2#0",
+              "ds101/lecture-05-indexing/v1#2",
+              "ds101/module-handbook/v1#1",
+              "ds101/module-handbook/v1#2",
+              "ds101/careers-fair-notice/v1#0",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/lecture-01-relational-model/v1#0",
+              "ds101/lecture-03-normal-forms/v1#2"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-deadlock",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lecture-07-transactions/v1#2",
+              "ds101/lecture-07-transactions/v1#0",
+              "ds101/lecture-07-transactions/v1#1",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/lecture-05-indexing/v1#2",
+              "ds101/careers-fair-notice/v1#0",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lecture-01-relational-model/v1#1",
+              "ds101/lecture-05-indexing/v1#3",
+              "ds101/module-handbook/v1#0"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-composite-index-order",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lecture-05-indexing/v1#1",
+              "ds101/lecture-05-indexing/v1#2",
+              "ds101/lecture-05-indexing/v1#0",
+              "ds101/lecture-05-indexing/v1#3",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/lecture-01-relational-model/v1#3",
+              "ds101/reading-document-stores/v1#0",
+              "ds101/lab-02-sql-joins/v1#0"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-members-without-loans",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": 7,
+                "kind": "same_course_semantic",
+                "ref": "ds101/coursework-brief/v2"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/lecture-01-relational-model/v1#3",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lecture-01-relational-model/v1#1",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/coursework-brief/v2#0"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-mixed-cw1-deadline",
+            "category": "mixed",
+            "critical": true,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "stale_version",
+                "ref": "ds101/coursework-brief/v1"
+              },
+              {
+                "first_rank": null,
+                "kind": "cross_course_near_duplicate",
+                "ref": "snd210/portfolio-brief/v1"
+              },
+              {
+                "first_rank": 3,
+                "kind": "same_course_semantic",
+                "ref": "ds101/module-handbook/v1"
+              },
+              {
+                "first_rank": null,
+                "kind": "same_course_irrelevant",
+                "ref": "ds101/careers-fair-notice/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/coursework-brief/v2#0",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/module-handbook/v1#0",
+              "ds101/lecture-05-indexing/v1#2",
+              "ds101/module-handbook/v1#2",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/lecture-01-relational-model/v1#0",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/module-handbook/v1#1",
+              "ds101/lab-02-sql-joins/v1#1"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-mixed-cw1-3nf-justification",
+            "category": "mixed",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "stale_version",
+                "ref": "ds101/coursework-brief/v1"
+              },
+              {
+                "first_rank": 1,
+                "kind": "same_course_semantic",
+                "ref": "ds101/lecture-03-normal-forms/v1"
+              }
+            ],
+            "first_relevant_rank": 2,
+            "first_relevant_tie": [
+              2,
+              2
+            ],
+            "hits": [
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/coursework-brief/v2#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/module-handbook/v1#0",
+              "ds101/lecture-05-indexing/v1#0",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/module-handbook/v1#2"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-mixed-genai-declaration",
+            "category": "mixed",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "stale_version",
+                "ref": "ds101/coursework-brief/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/module-handbook/v1#1",
+              "ds101/module-handbook/v1#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/coursework-brief/v2#0",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/lecture-01-relational-model/v1#2",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lecture-01-relational-model/v1#1"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-inv-stale-group-submission",
+            "category": "stale_version_invariant",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "stale_version",
+                "ref": "ds101/coursework-brief/v1"
+              }
+            ],
+            "first_relevant_rank": null,
+            "first_relevant_tie": null,
+            "hits": [
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/module-handbook/v1#0",
+              "ds101/coursework-brief/v2#0",
+              "ds101/module-handbook/v1#2",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/module-handbook/v1#1",
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/lecture-07-transactions/v1#2"
+            ],
+            "invariant_failures": [],
+            "positive": false
+          },
+          {
+            "case_id": "ds101-inv-cross-course-loudness",
+            "category": "cross_course_invariant",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "cross_course_homonym",
+                "ref": "snd210/lecture-04-loudness-targets/v1"
+              }
+            ],
+            "first_relevant_rank": null,
+            "first_relevant_tie": null,
+            "hits": [
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/coursework-brief/v2#0",
+              "ds101/module-handbook/v1#0",
+              "ds101/module-handbook/v1#2",
+              "ds101/reading-document-stores/v1#1",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lecture-01-relational-model/v1#1",
+              "ds101/lecture-01-relational-model/v1#3",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/module-handbook/v1#1"
+            ],
+            "invariant_failures": [],
+            "positive": false
+          }
+        ],
+        "components": {
+          "document_format": "document/v1",
+          "fusion_version": null,
+          "lexical_version": "pg-fts-english/v2",
+          "query_format": null,
+          "score_kind": "ts_rank_cd"
+        },
+        "invariant_failures": 0,
+        "metrics": {
+          "mrr@10": {
+            "exact": "17/20",
+            "reciprocal_rank_sum": "51/5",
+            "value": "0.850000"
+          },
+          "positive_cases": 12,
+          "recall@1": {
+            "exact": "3/4",
+            "hits": 9,
+            "value": "0.750000"
+          },
+          "recall@3": {
+            "exact": "11/12",
+            "hits": 11,
+            "value": "0.916667"
+          },
+          "recall@5": {
+            "exact": "1/1",
+            "hits": 12,
+            "value": "1.000000"
+          }
+        }
+      },
+      "vector": {
+        "cases": [
+          {
+            "case_id": "ds101-kw-ec7-extension-form",
+            "category": "keyword",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": 5,
+                "kind": "same_course_semantic",
+                "ref": "ds101/coursework-brief/v2"
+              },
+              {
+                "first_rank": null,
+                "kind": "cross_course_near_duplicate",
+                "ref": "snd210/studio-handbook/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/module-handbook/v1#1",
+              "ds101/module-handbook/v1#2",
+              "ds101/module-handbook/v1#0",
+              "ds101/careers-fair-notice/v1#0",
+              "ds101/coursework-brief/v2#2",
+              "ds101/coursework-brief/v2#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/lecture-03-normal-forms/v1#1"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-kw-repeatable-read-phantoms",
+            "category": "keyword",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lecture-07-transactions/v1#1",
+              "ds101/lecture-07-transactions/v1#3",
+              "ds101/lecture-07-transactions/v1#2",
+              "ds101/lecture-07-transactions/v1#0",
+              "ds101/lecture-05-indexing/v1#0",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lab-04-query-plans/v1#1",
+              "ds101/lab-04-query-plans/v1#2",
+              "ds101/lecture-05-indexing/v1#3",
+              "ds101/lab-02-sql-joins/v1#2"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-kw-explain-analyze-buffers",
+            "category": "keyword",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/lecture-05-indexing/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lab-04-query-plans/v1#1",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lab-04-query-plans/v1#2",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/lab-02-sql-joins/v1#0"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-kw-bcnf-definition",
+            "category": "keyword",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              },
+              {
+                "first_rank": null,
+                "kind": "cross_course_homonym",
+                "ref": "snd210/lecture-04-loudness-targets/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/lecture-01-relational-model/v1#1",
+              "ds101/lecture-01-relational-model/v1#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/coursework-brief/v2#0",
+              "ds101/lecture-01-relational-model/v1#3",
+              "ds101/coursework-brief/v2#2"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-update-anomaly",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              },
+              {
+                "first_rank": 1,
+                "kind": "same_course_semantic",
+                "ref": "ds101/coursework-brief/v2"
+              }
+            ],
+            "first_relevant_rank": 4,
+            "first_relevant_tie": [
+              4,
+              4
+            ],
+            "hits": [
+              "ds101/coursework-brief/v2#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/reading-document-stores/v1#2",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/lecture-01-relational-model/v1#3",
+              "ds101/coursework-brief/v2#2",
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/lab-02-sql-joins/v1#1"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-late-penalty",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "cross_course_near_duplicate",
+                "ref": "snd210/studio-handbook/v1"
+              },
+              {
+                "first_rank": 8,
+                "kind": "same_course_irrelevant",
+                "ref": "ds101/careers-fair-notice/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/module-handbook/v1#1",
+              "ds101/module-handbook/v1#0",
+              "ds101/module-handbook/v1#2",
+              "ds101/coursework-brief/v2#0",
+              "ds101/coursework-brief/v2#2",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/careers-fair-notice/v1#0",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/lab-04-query-plans/v1#1"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-deadlock",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": 5,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lecture-07-transactions/v1#2",
+              "ds101/lecture-07-transactions/v1#0",
+              "ds101/lecture-07-transactions/v1#1",
+              "ds101/lecture-07-transactions/v1#3",
+              "ds101/reading-document-stores/v1#1",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/coursework-brief/v2#2",
+              "ds101/reading-document-stores/v1#2",
+              "ds101/lecture-01-relational-model/v1#2",
+              "ds101/module-handbook/v1#0"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-composite-index-order",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "same_course_semantic",
+                "ref": "ds101/reading-document-stores/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lecture-05-indexing/v1#1",
+              "ds101/lecture-05-indexing/v1#3",
+              "ds101/lecture-05-indexing/v1#2",
+              "ds101/lecture-05-indexing/v1#0",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/lab-04-query-plans/v1#1",
+              "ds101/lab-04-query-plans/v1#2",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/lecture-01-relational-model/v1#0",
+              "ds101/lecture-01-relational-model/v1#3"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-para-members-without-loans",
+            "category": "paraphrase",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": 2,
+                "kind": "same_course_semantic",
+                "ref": "ds101/coursework-brief/v2"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/coursework-brief/v2#0",
+              "ds101/lecture-01-relational-model/v1#3",
+              "ds101/coursework-brief/v2#2",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/lab-04-query-plans/v1#0",
+              "ds101/reading-document-stores/v1#2"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-mixed-cw1-deadline",
+            "category": "mixed",
+            "critical": true,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "stale_version",
+                "ref": "ds101/coursework-brief/v1"
+              },
+              {
+                "first_rank": null,
+                "kind": "cross_course_near_duplicate",
+                "ref": "snd210/portfolio-brief/v1"
+              },
+              {
+                "first_rank": 1,
+                "kind": "same_course_semantic",
+                "ref": "ds101/module-handbook/v1"
+              },
+              {
+                "first_rank": 5,
+                "kind": "same_course_irrelevant",
+                "ref": "ds101/careers-fair-notice/v1"
+              }
+            ],
+            "first_relevant_rank": 3,
+            "first_relevant_tie": [
+              3,
+              3
+            ],
+            "hits": [
+              "ds101/module-handbook/v1#0",
+              "ds101/module-handbook/v1#1",
+              "ds101/coursework-brief/v2#0",
+              "ds101/module-handbook/v1#2",
+              "ds101/careers-fair-notice/v1#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/coursework-brief/v2#2",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/lab-04-query-plans/v1#0"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-mixed-cw1-3nf-justification",
+            "category": "mixed",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "stale_version",
+                "ref": "ds101/coursework-brief/v1"
+              },
+              {
+                "first_rank": 1,
+                "kind": "same_course_semantic",
+                "ref": "ds101/lecture-03-normal-forms/v1"
+              }
+            ],
+            "first_relevant_rank": 2,
+            "first_relevant_tie": [
+              2,
+              2
+            ],
+            "hits": [
+              "ds101/lecture-03-normal-forms/v1#1",
+              "ds101/coursework-brief/v2#0",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/lecture-03-normal-forms/v1#2",
+              "ds101/coursework-brief/v2#1",
+              "ds101/lecture-03-normal-forms/v1#0",
+              "ds101/coursework-brief/v2#2",
+              "ds101/module-handbook/v1#0",
+              "ds101/lecture-01-relational-model/v1#0",
+              "ds101/lecture-01-relational-model/v1#3"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-mixed-genai-declaration",
+            "category": "mixed",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "stale_version",
+                "ref": "ds101/coursework-brief/v1"
+              }
+            ],
+            "first_relevant_rank": 1,
+            "first_relevant_tie": [
+              1,
+              1
+            ],
+            "hits": [
+              "ds101/module-handbook/v1#1",
+              "ds101/module-handbook/v1#2",
+              "ds101/module-handbook/v1#0",
+              "ds101/coursework-brief/v2#0",
+              "ds101/careers-fair-notice/v1#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/coursework-brief/v2#2",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/lab-02-sql-joins/v1#2",
+              "ds101/lab-02-sql-joins/v1#1"
+            ],
+            "invariant_failures": [],
+            "positive": true
+          },
+          {
+            "case_id": "ds101-inv-stale-group-submission",
+            "category": "stale_version_invariant",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "stale_version",
+                "ref": "ds101/coursework-brief/v1"
+              }
+            ],
+            "first_relevant_rank": null,
+            "first_relevant_tie": null,
+            "hits": [
+              "ds101/module-handbook/v1#0",
+              "ds101/module-handbook/v1#1",
+              "ds101/module-handbook/v1#2",
+              "ds101/coursework-brief/v2#0",
+              "ds101/careers-fair-notice/v1#0",
+              "ds101/coursework-brief/v2#1",
+              "ds101/coursework-brief/v2#2",
+              "ds101/lab-02-sql-joins/v1#0",
+              "ds101/lab-02-sql-joins/v1#1",
+              "ds101/lecture-03-normal-forms/v1#3"
+            ],
+            "invariant_failures": [],
+            "positive": false
+          },
+          {
+            "case_id": "ds101-inv-cross-course-loudness",
+            "category": "cross_course_invariant",
+            "critical": false,
+            "distractors": [
+              {
+                "first_rank": null,
+                "kind": "cross_course_homonym",
+                "ref": "snd210/lecture-04-loudness-targets/v1"
+              }
+            ],
+            "first_relevant_rank": null,
+            "first_relevant_tie": null,
+            "hits": [
+              "ds101/coursework-brief/v2#0",
+              "ds101/module-handbook/v1#1",
+              "ds101/coursework-brief/v2#1",
+              "ds101/module-handbook/v1#0",
+              "ds101/module-handbook/v1#2",
+              "ds101/lecture-03-normal-forms/v1#3",
+              "ds101/reading-document-stores/v1#1",
+              "ds101/coursework-brief/v2#2",
+              "ds101/reading-document-stores/v1#2",
+              "ds101/lecture-03-normal-forms/v1#2"
+            ],
+            "invariant_failures": [],
+            "positive": false
+          }
+        ],
+        "components": {
+          "document_format": "document/v1",
+          "fusion_version": null,
+          "lexical_version": null,
+          "query_format": "query/v1",
+          "score_kind": "cosine_similarity"
+        },
+        "invariant_failures": 0,
+        "metrics": {
+          "mrr@10": {
+            "exact": "121/144",
+            "reciprocal_rank_sum": "121/12",
+            "value": "0.840278"
+          },
+          "positive_cases": 12,
+          "recall@1": {
+            "exact": "3/4",
+            "hits": 9,
+            "value": "0.750000"
+          },
+          "recall@3": {
+            "exact": "11/12",
+            "hits": 11,
+            "value": "0.916667"
+          },
+          "recall@5": {
+            "exact": "1/1",
+            "hits": 12,
+            "value": "1.000000"
+          }
+        }
+      }
+    },
+    "provider_calls": {
+      "live": 0,
+      "replayed_batches": 42,
+      "replayed_model_calls": 42
+    },
+    "runner": "retrieval-eval/v1",
+    "search_k": 10,
+    "selection": {
+      "assessments": [
+        {
+          "critical_rank": 3,
+          "invariant_failures": 0,
+          "mode": "vector",
+          "mrr@10": "121/144",
+          "passes": true,
+          "recall@5": "1/1"
+        },
+        {
+          "critical_rank": 1,
+          "invariant_failures": 0,
+          "mode": "lexical",
+          "mrr@10": "17/20",
+          "passes": true,
+          "recall@5": "1/1"
+        },
+        {
+          "critical_rank": 2,
+          "invariant_failures": 0,
+          "mode": "hybrid",
+          "mrr@10": "31/36",
+          "passes": true,
+          "recall@5": "1/1"
+        }
+      ],
+      "hybrid_replaces_single": true,
+      "lexical_replaces_vector": true,
+      "preferred_single": "lexical",
+      "reason": "A: lexical replaces vector; B: hybrid replaces lexical",
+      "rule": "default-selection/v1",
+      "selected": "hybrid"
+    },
+    "snapshot": {
+      "file": "nebius-qwen3-embedding-8b-d4096-sv1.jsonl",
+      "sha256": "56509e7d364dbd403a6932ea98272a5334cc0f0a2bdb0d468645632429371941"
+    }
+  },
+  "run": {
+    "finished_at": "2026-10-19T14:59:08Z",
+    "identical": true,
+    "metrics_identical": true,
+    "repeat": 2,
+    "selection_rule": "default-selection/v1",
+    "started_at": "2026-10-19T14:58:41Z"
+  }
+}

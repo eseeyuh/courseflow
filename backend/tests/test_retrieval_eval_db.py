@@ -326,3 +326,68 @@ async def test_the_expected_state_check_reports_a_stale_version_without_links(
     assert expected_state_problems(state, dataset, inputs) == [
         "ds101/coursework-brief/1: 0/2 chunks have embedding links"
     ]
+
+
+# --- the evaluation on the committed snapshot ---------------------------------------------
+
+SNAPSHOT = (
+    DATASET_DIR.parents[2]
+    / "snapshots"
+    / "retrieval"
+    / "v1"
+    / "nebius-qwen3-embedding-8b-d4096-sv1.jsonl"
+)
+SNAPSHOT_SHA = "56509e7d364dbd403a6932ea98272a5334cc0f0a2bdb0d468645632429371941"
+
+
+def test_the_replayed_evaluation_keeps_the_critical_case_and_every_invariant(
+    test_database_url: URL, dataset: Dataset, tmp_path: Path
+) -> None:
+    """The critical regression: in the selected default mode the current CW1
+    deadline must stay in the top 3, no mode may leak a stale or foreign
+    version, and the metrics must not change between two fresh runs."""
+    from app.evaluation.retrieval.runner import (
+        RunInputs,
+        failures,
+        metric_view,
+        run_once,
+        write_reports,
+    )
+
+    run = RunInputs(
+        dataset=dataset,
+        snapshot=SNAPSHOT,
+        snapshot_sha256=SNAPSHOT_SHA,
+        database=guard(
+            test_database_url.set(database="courseflow_eval").render_as_string(hide_password=False),
+            test_database_url.render_as_string(hide_password=False),
+        ),
+        space=SPACE,
+        batch_max_items=64,
+        batch_max_estimated_tokens=32_000,
+    )
+    first, second = run_once(run), run_once(run)  # two independently seeded fresh databases
+    # Identical complete ordered hit lists, ranks, metrics and selection.
+    assert first == second
+    assert metric_view(first) == metric_view(second)
+    for mode in first["modes"].values():
+        assert all(case["hits"] for case in mode["cases"])
+    meta = {"repeat": 2, "identical": True, "metrics_identical": True,
+            "finished_at": "t", "started_at": "t"}  # fmt: skip
+    one, two = tmp_path / "one", tmp_path / "two"
+    paths = write_reports(first, meta, [one]) + write_reports(second, meta, [two])
+    assert [p.read_bytes() for p in paths[:2]] == [p.read_bytes() for p in paths[2:]]
+    assert failures(first) == []
+    assert first["provider_calls"]["live"] == 0
+    selected = first["selection"]["selected"]
+    critical = next(c for c in first["modes"][selected]["cases"] if c["critical"])
+    assert critical["case_id"] == dataset.manifest.critical_case.case_id
+    assert critical["first_relevant_rank"] is not None and critical["first_relevant_rank"] <= 3
+    for data in first["modes"].values():
+        assert data["metrics"]["positive_cases"] == 12  # invariant cases excluded
+
+    text = b"".join(p.read_bytes() for p in paths)
+    for case in dataset.cases:  # no query or target text in any report
+        assert case.query.encode() not in text
+        for group in case.target_groups:
+            assert all(alt.quote.encode() not in text for alt in group.alternatives)

@@ -167,13 +167,14 @@ def test_loading_makes_no_network_call(monkeypatch: pytest.MonkeyPatch) -> None:
     assert load_dataset(DATASET).sha256
 
 
-def test_evaluation_code_cannot_rank_search_or_fuse() -> None:
-    """The dataset is frozen, and the snapshot tooling may embed its inputs,
-    but nothing in the evaluation package ranks, searches or fuses yet: no
-    retrieval score can be computed by it."""
+def test_only_the_evaluation_runner_searches() -> None:
+    """Scoring happens in one place: the runner, through the production
+    SearchService. No other evaluation module ranks, searches or fuses."""
     names = ("rank_vector", "rank_lexical", "SearchService", "fuse_rrf", "app.retrieval.search",
              "app.retrieval.fusion")  # fmt: skip
     for source in EVALUATION_SOURCES.rglob("*.py"):
+        if source.name == "runner.py":
+            continue
         content = source.read_text("utf-8")
         assert not [name for name in names if name in content], source.name
 
