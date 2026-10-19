@@ -1,0 +1,107 @@
+{
+  "configs": {
+    "span-pack-eval-small/v1": {
+      "chunker": "span-pack-eval-small/v1",
+      "chunks": {
+        "all_versions": 51,
+        "current_versions": 48
+      },
+      "document_inputs": {
+        "in_committed_snapshot": 3,
+        "missing_estimated_cost_usd": "0.000261",
+        "missing_estimated_tokens": 26052,
+        "missing_from_snapshot": 48,
+        "unique": 51
+      },
+      "lexical": {
+        "critical_rank": 1,
+        "first_relevant_ranks": {
+          "ds101-kw-bcnf-definition": 1,
+          "ds101-kw-ec7-extension-form": 2,
+          "ds101-kw-explain-analyze-buffers": 1,
+          "ds101-kw-repeatable-read-phantoms": 1,
+          "ds101-mixed-cw1-3nf-justification": 6,
+          "ds101-mixed-cw1-deadline": 1,
+          "ds101-mixed-genai-declaration": 1,
+          "ds101-para-composite-index-order": 1,
+          "ds101-para-deadlock": 2,
+          "ds101-para-late-penalty": 4,
+          "ds101-para-members-without-loans": 1,
+          "ds101-para-update-anomaly": null
+        },
+        "invariant_failures": 0,
+        "mrr@10": "101/144",
+        "recall@1": "7/12",
+        "recall@3": "3/4",
+        "recall@5": "5/6"
+      },
+      "parameters": {
+        "hard_max_estimated_tokens": 800,
+        "min_estimated_tokens": 160,
+        "overlap_estimated_tokens": 100,
+        "split_above_estimated_tokens": 680,
+        "split_piece_min_estimated_tokens": 400,
+        "target_estimated_tokens": 600
+      },
+      "stale_lifecycle_ok": true,
+      "target_containment": {
+        "cases": 12,
+        "of": 12
+      }
+    },
+    "span-pack/v1": {
+      "chunker": "span-pack/v1",
+      "chunks": {
+        "all_versions": 41,
+        "current_versions": 39
+      },
+      "document_inputs": {
+        "in_committed_snapshot": 41,
+        "missing_estimated_cost_usd": "0.000000",
+        "missing_estimated_tokens": 0,
+        "missing_from_snapshot": 0,
+        "unique": 41
+      },
+      "lexical": {
+        "critical_rank": 1,
+        "first_relevant_ranks": {
+          "ds101-kw-bcnf-definition": 1,
+          "ds101-kw-ec7-extension-form": 2,
+          "ds101-kw-explain-analyze-buffers": 1,
+          "ds101-kw-repeatable-read-phantoms": 1,
+          "ds101-mixed-cw1-3nf-justification": 2,
+          "ds101-mixed-cw1-deadline": 1,
+          "ds101-mixed-genai-declaration": 1,
+          "ds101-para-composite-index-order": 1,
+          "ds101-para-deadlock": 1,
+          "ds101-para-late-penalty": 1,
+          "ds101-para-members-without-loans": 1,
+          "ds101-para-update-anomaly": 5
+        },
+        "invariant_failures": 0,
+        "mrr@10": "17/20",
+        "recall@1": "3/4",
+        "recall@3": "11/12",
+        "recall@5": "1/1"
+      },
+      "parameters": {
+        "hard_max_estimated_tokens": 1000,
+        "min_estimated_tokens": 200,
+        "overlap_estimated_tokens": 120,
+        "split_above_estimated_tokens": 880,
+        "split_piece_min_estimated_tokens": 400,
+        "target_estimated_tokens": 800
+      },
+      "stale_lifecycle_ok": true,
+      "target_containment": {
+        "cases": 12,
+        "of": 12
+      }
+    }
+  },
+  "control_matches_committed_lexical": true,
+  "dataset_sha256": "07c11efaea7efd516f6d6ec0bdb27229008bd0f1972890fb82d4827e0ba45747",
+  "experiment": "chunk-variant/v1",
+  "hybrid_compared": false,
+  "mode": "lexical"
+}
