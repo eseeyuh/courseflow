@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SND210 Lecture 4: Loudness and normalisation</title>
+</head>
+<body>
+<h1>SND210 Sound Design for Media - Lecture 4: Loudness and normalisation</h1>
+<p>Quillmere Institute is a fictional institution. This material was written for the CourseFlow retrieval benchmark and describes no real course.</p>
+
+<h2>Why loudness matters</h2>
+<p>Listeners do not hear peak levels; they hear loudness. Two recordings can have exactly the same peak level and sound very different in loudness, because one has its energy concentrated in a few short transients while the other is dense and compressed. For years this led to a competition in which each release was made louder than the last by compressing and limiting it harder, at the expense of dynamics and clarity.</p>
+<p>Broadcasters and streaming platforms ended that competition by measuring loudness and adjusting playback level so that programmes play at similar perceived loudness. If your master is louder than the platform's target, it will simply be turned down, and the only lasting effect of the extra limiting is the damage it did to the sound.</p>
+
+<h2>Measuring loudness</h2>
+<p>Loudness is measured in LUFS, loudness units relative to full scale, using a frequency weighting that approximates the sensitivity of human hearing and a gating rule that ignores silence and very quiet passages. Integrated loudness is the measurement over a whole programme. Short-term loudness uses a three-second window and momentary loudness a window of four hundred milliseconds; these are useful while mixing, but delivery specifications are written in terms of integrated loudness.</p>
+<p>Loudness range, measured in LU, describes how much the loudness varies over the programme. A dialogue-led podcast intended for listening on the move benefits from a modest loudness range, so that quiet passages remain audible in a noisy street without loud passages becoming uncomfortable.</p>
+<p>True peak is the estimated maximum level of the continuous waveform, which can exceed the highest sample value when the signal is converted to analogue or encoded to a lossy format. True peak is measured in dBTP and is always at least as high as the sample peak.</p>
+
+<h2>Normalisation</h2>
+<p>Loudness normalisation means adjusting the overall gain of a programme so that its integrated loudness meets a target. It is a single gain change applied to the whole file: it does not alter the balance within the mix or the dynamics of the programme. Peak normalisation, an older practice, adjusts the gain so that the highest sample reaches a given level, and says nothing about how loud the result sounds.</p>
+<p>For podcast delivery in this module, normalise the final mix to an integrated loudness of -16 LUFS with true peaks no higher than -1 dBTP. If raising the gain to reach the target would push true peaks above the ceiling, use a true-peak limiter to control the peaks, and check that the limiter is not working so hard that it becomes audible.</p>
+<p>Broadcast programmes use different targets. European television commonly delivers at -23 LUFS, and several music streaming services normalise playback at around -14 LUFS. Always check the specification of the platform you are delivering to; a podcast mastered for one platform may be turned up or down on another.</p>
+
+<h2>A workflow</h2>
+<ol>
+<li>Mix for clarity and balance first, monitoring at a consistent level. Do not chase a loudness number while mixing.</li>
+<li>Control the dynamics of dialogue with gentle compression so that the loudness range suits the listening situation.</li>
+<li>Measure the integrated loudness of the complete programme, from the first sound to the last.</li>
+<li>Apply a single gain change to reach the target, then a true-peak limiter if needed.</li>
+<li>Measure again after encoding to MP3, because encoding can raise true peaks.</li>
+</ol>
+
+<h2>Dialogue and loudness</h2>
+<p>Integrated loudness measures the whole programme, but listeners judge a podcast by its speech. Most loudness meters can also report dialogue-gated loudness, which measures only the passages the meter classifies as speech. For a programme that is almost entirely speech the two values are close; for one with long music beds or effects they can differ by several LU, and a programme that meets its integrated target can still have dialogue that sounds quiet next to the music.</p>
+<p>The practical answer is to balance the mix so that speech sits clearly above music and effects throughout, and then to normalise the whole programme. A useful habit is to check a few seconds of the loudest music against a few seconds of typical speech with the short-term meter: if the music is more than a couple of LU louder than the speech, listeners will reach for the volume control at every transition.</p>
+<p>Inconsistent speakers cause the same problem within the dialogue itself. A guest who leans away from the microphone may be several LU quieter than the presenters. Clip gain or volume automation applied phrase by phrase is usually more transparent than heavy compression, because it changes the level only where needed and leaves the natural dynamics of each phrase intact.</p>
+
+<h2>Metering in practice</h2>
+<p>Set up a loudness meter on the master bus of your session before you start mixing, and keep it visible. While mixing, watch the short-term value to keep the balance consistent between sections. Before export, play the complete programme from start to finish with the meter reset, or use an offline measurement, and record the integrated loudness, the loudness range and the maximum true peak. Those three numbers belong in the production log.</p>
+<p>After export, measure the delivered files rather than the session. Sample-rate conversion, dither and lossy encoding can all change the measurements slightly, and the delivery specification applies to the files the listener receives, not to the session that produced them.</p>
+<p>Different meters can disagree by a fraction of a unit because of implementation details. For this module, use the meter provided in the studio template, so that your reported values match the values the markers measure.</p>
+
+<h2>Common mistakes</h2>
+<p>Measuring only a section of the programme gives a misleading integrated value; measure the whole file. Normalising each segment of a podcast separately before assembly makes the segments match in loudness but can leave the assembled episode at the wrong overall level. Limiting very hard to reach a target hides problems that should have been fixed in the mix, such as a guest whose level varies, and makes speech tiring to listen to.</p>
+<p>Finally, normalisation is not compression. A quiet, dynamic recording normalised to -16 LUFS is still dynamic; its quiet passages are still quiet relative to its loud ones. If the quiet passages are too quiet for the listening situation, the fix is compression or automation in the mix, not a different normalisation target.</p>
+
+<h2>Summary</h2>
+<ul>
+<li>Perceived loudness, not peak level, determines how loud a programme sounds.</li>
+<li>Integrated loudness is measured in LUFS over the whole programme; true peak in dBTP.</li>
+<li>Loudness normalisation is a single gain change to meet a target.</li>
+<li>This module's podcast specification is -16 LUFS integrated with a -1 dBTP ceiling.</li>
+</ul>
+</body>
+</html>

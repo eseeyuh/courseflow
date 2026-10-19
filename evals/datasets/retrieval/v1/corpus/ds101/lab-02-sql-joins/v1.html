@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DS101 Lab 2: Joins, grouping and missing data</title>
+</head>
+<body>
+<h1>DS101 Data Systems - Lab 2: Joins, grouping and missing data</h1>
+<p>Quillmere Institute is a fictional institution. This material was written for the CourseFlow retrieval benchmark and describes no real course.</p>
+
+<h2>Before you start</h2>
+<p>This lab uses the small library database you created at the end of Lab 1. If you did not finish Lab 1, run the setup script lab02_setup.sql from the module page first; it drops and recreates the tables members, items, authors, item_authors and loans and fills them with sample data. Connect with psql or with the query tool of your choice, and keep a text file of the queries you write, because several of them reappear in Coursework 1.</p>
+<p>Work in pairs if you like, but each of you should type every query. The aim of the lab is to predict what a query returns before you run it. For each exercise, write down your prediction, run the query, and if the result surprises you, find out why before moving on.</p>
+
+<h2>Exercise 2.1: Inner joins</h2>
+<p>List the title of every item together with the name of each of its authors. Because an item can have several authors and an author can write several items, the relationship goes through the linking table item_authors. Join items to item_authors on item_no, and item_authors to authors on author_id.</p>
+<p>Count the rows in your result and compare the count with the number of rows in item_authors. They should be equal. If your result has more rows, you have probably joined on the wrong column and produced part of a Cartesian product; if it has fewer, an item_authors row refers to an author or item that the join condition did not match.</p>
+
+<h2>Exercise 2.2: Who has borrowed what</h2>
+<p>List each loan with the member's name and the item's title, ordered by the date of the loan. This needs two joins from loans: one to members and one to items. Then restrict the result to loans that have not yet been returned. Remember from Lecture 1 that the test for a missing return date is returned_on IS NULL; the condition returned_on = NULL is never true.</p>
+
+<h2>Exercise 2.3: Including members without loans</h2>
+<p>An inner join keeps only rows that have a match on both sides. A member who has never borrowed anything has no rows in loans, so an inner join between members and loans leaves that member out entirely. This matters whenever the question is about every member, not every loan.</p>
+<p>Use a LEFT JOIN from members to loans so that members who have never borrowed anything still appear, with NULL in every column that comes from loans. Write the query that lists every member with the titles they have borrowed, and check that the members with no loans appear exactly once each.</p>
+<p>The side of the join matters. members LEFT JOIN loans keeps all members; loans LEFT JOIN members keeps all loans, which for a database with foreign keys is the same as the inner join. A RIGHT JOIN is a LEFT JOIN written the other way round, and most teams avoid it for readability.</p>
+
+<h2>Exercise 2.4: Counting with outer joins</h2>
+<p>Now count the loans of each member, including members with none. Group the result of the outer join by member_no and member name. Try COUNT(*) first and look at the members with no loans: they appear with a count of one, because the outer join produced one row for each of them, padded with NULLs. Replace COUNT(*) with COUNT(loans.item_no), which counts only non-NULL values, and those members now show zero.</p>
+<p>This is the third query of Coursework 1 without the restriction to the current year. Add that restriction and notice where you have to put it. A condition on loans placed in the WHERE clause removes the NULL-padded rows again and turns the outer join back into an inner one. The condition belongs in the ON clause of the join, so that it restricts which loans match without removing members.</p>
+
+<h2>Exercise 2.5: Filtering groups</h2>
+<p>List the authors who have more than three different titles in the collection. Group by author and count distinct items. The condition on the count cannot go in WHERE, which is applied to rows before grouping; it goes in HAVING, which is applied to groups after aggregation. Check your answer by listing the titles of one of the authors in the result.</p>
+
+<h2>Exercise 2.6: Items never borrowed</h2>
+<p>Find the items that have never been borrowed. Write the query three ways: with a LEFT JOIN and a test that the loan side IS NULL; with NOT EXISTS and a correlated subquery; and with NOT IN and a subquery over loans.item_no. All three should return the same rows on the sample data.</p>
+<p>Then run the extra script lab02_null_trap.sql, which inserts a loan with a NULL item number into a copy of the loans table that has no foreign key, and run the three queries again against the copy. The NOT IN version now returns no rows at all. Explain why, using the three-valued logic from Lecture 1, and decide which form you will use in the coursework.</p>
+
+<h2>Exercise 2.7: Self-joins</h2>
+<p>Some questions compare rows of the same table. Find pairs of members who live at the same postal address, listing each pair once. Join members to itself under two aliases, match on the address, and use a condition on the member numbers so that a member is not paired with themselves and each pair appears in only one order.</p>
+
+<h2>Exercise 2.8: Subqueries or joins</h2>
+<p>Write a query that lists the members who borrowed at least one item by a given author, using a join, and then the same query using EXISTS with a correlated subquery. Run both and compare the number of rows. The join version returns a member once for every matching loan unless you add DISTINCT; the EXISTS version returns each member once by construction, because it asks a yes-or-no question about each member rather than producing a row for every match.</p>
+<p>Neither form is always faster. The planner often turns both into the same plan, and you will look at plans in Lab 4. Choose the form that states the question most directly: if the question is about members, a condition on members with EXISTS usually reads better than a join followed by DISTINCT.</p>
+
+<h2>Exercise 2.9: Dates and intervals</h2>
+<p>Write the overdue-loans query: loans that have not been returned and whose due date is before today, with the number of days each is overdue, longest first. Use current_date for today, and subtract dates to get a number of days. Check your query by temporarily changing one loan's due date and confirming that the number of days overdue changes as expected.</p>
+<p>Then write the loans made in the current calendar year. Compare two ways of expressing the condition: extracting the year from loaned_on and comparing it with the current year, or comparing loaned_on with the first day of this year and the first day of next year. Both give the same rows. The second form can use an index on loaned_on, because it compares the column itself rather than a function of it; keep this in mind for Lab 4.</p>
+<p>Finally, try comparing a date with a string such as '2026-11-06'. PostgreSQL converts the string to a date because the column is a date. Now store the same values in a text column in a scratch table and compare again with a string in a different format, such as '6/11/2026'. The comparison is now alphabetical, and the result is wrong for some rows. This is the date-as-text trap the coursework brief warns about.</p>
+
+<h2>Checklist</h2>
+<ul>
+<li>I can predict the number of rows an inner join returns.</li>
+<li>I know when a LEFT JOIN is needed and which side to keep.</li>
+<li>I know why COUNT(*) and COUNT(column) differ after an outer join.</li>
+<li>I know why a WHERE condition can undo an outer join.</li>
+<li>I know why NOT IN fails when the subquery returns a NULL.</li>
+</ul>
+<p>There is no sign-off for this lab. The query file you build here is the starting point for the Coursework 1 script.</p>
+</body>
+</html>
