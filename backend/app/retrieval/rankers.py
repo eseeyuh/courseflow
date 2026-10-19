@@ -11,8 +11,10 @@ the search service). Both rankers apply the same scope predicates: the
 course, current versions only, the versions verified searchable in that
 snapshot, the active chunker and optional resource types.
 
-Ranks start at 1 and follow a total order ending in the chunk ID, so equal
-scores never make the order depend on the query plan. The raw score each
+Ranks start at 1 and follow a total order: the score, then the chunk's
+natural identity (``natural_order``), so equal scores never make the order
+depend on the query plan or on generated row IDs, and two databases seeded
+with the same content rank identically. The raw score each
 ranker keeps (cosine distance, ``ts_rank_cd``) is retriever-specific
 diagnostic data, not a confidence, and never comparable across rankers.
 """
@@ -36,9 +38,19 @@ from app.retrieval.store import SpaceRef
 
 # The lexical retrieval contract: chunks.text_tsv (english, migration 0006),
 # an OR of the query's own normalised lexemes, ts_rank_cd without length
-# normalisation. Changing any part of it is a new version.
-LEXICAL_VERSION = "pg-fts-english/v1"
+# normalisation, ties broken by the natural order. Changing any part of it is
+# a new version (v2: ties no longer broken by row IDs).
+LEXICAL_VERSION = "pg-fts-english/v2"
 LEXICAL_RANK_NORMALIZATION = 0
+
+
+# The tie-break after the score, in both rankers and in fusion: a chunk's
+# natural identity within one course's current corpus. (course, source_uri)
+# and (resource, version_number) are unique, and so is the ordinal within a
+# version and chunker, so the order is total. source_uri is compared bytewise
+# (the C collation; Python compares the same code points).
+def natural_order() -> tuple[Any, ...]:
+    return (Resource.source_uri.collate("C"), Version.version_number, Chunk.ordinal)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,12 +73,17 @@ class RankedCandidate:
     resource_version_id: uuid.UUID
     chunk_ordinal: int
     rank: int  # 1-based, within its ranker
+    # The natural identity that breaks score ties (see natural_order).
+    source_uri: str
+    version_number: int
     vector_distance: float | None = None  # cosine distance: lower is closer
     lexical_score: float | None = None  # ts_rank_cd: higher is better
 
 
-# Every ranker selects (chunk id, version id, chunk ordinal, raw score).
-_Ranked = Select[tuple[uuid.UUID, uuid.UUID, int, float]]
+# Every ranker selects (chunk id, version id, chunk ordinal, source URI,
+# version number, raw score).
+_Ranked = Select[tuple[uuid.UUID, uuid.UUID, int, str, int, float]]
+_IDENTITY = (Chunk.id, Chunk.resource_version_id, Chunk.ordinal)
 
 
 def _scoped(statement: _Ranked, scope: SearchScope) -> _Ranked:
@@ -97,10 +114,14 @@ def _candidates(rows: Sequence[Row[Any]], *, vector: bool) -> list[RankedCandida
             resource_version_id=version_id,
             chunk_ordinal=ordinal,
             rank=rank,
+            source_uri=source_uri,
+            version_number=version_number,
             vector_distance=float(score) if vector else None,
             lexical_score=None if vector else float(score),
         )
-        for rank, (chunk_id, version_id, ordinal, score) in enumerate(rows, start=1)
+        for rank, (chunk_id, version_id, ordinal, source_uri, version_number, score) in enumerate(
+            rows, start=1
+        )
     ]
 
 
@@ -118,7 +139,9 @@ async def rank_vector(
         return []
     distance = Embedding.vector.cosine_distance(list(vector)).label("distance")
     statement = _scoped(
-        select(Chunk.id, Chunk.resource_version_id, Chunk.ordinal, distance).select_from(Chunk),
+        select(*_IDENTITY, Resource.source_uri, Version.version_number, distance).select_from(
+            Chunk
+        ),
         scope,
     )
     statement = (
@@ -130,7 +153,7 @@ async def rank_vector(
             Embedding.space_id == space.id,
             Embedding.dimensions == space.dimensions,
         )
-        .order_by(distance, Chunk.resource_version_id, Chunk.ordinal, Chunk.id)
+        .order_by(distance, *natural_order())
         .limit(depth)
     )
     rows = (await session.execute(statement)).all()
@@ -185,12 +208,12 @@ async def rank_lexical(
     tsquery = cast(bindparam("lexical_query", or_tsquery(lexemes)), TSQUERY)
     score = func.ts_rank_cd(Chunk.text_tsv, tsquery, LEXICAL_RANK_NORMALIZATION).label("score")
     statement = _scoped(
-        select(Chunk.id, Chunk.resource_version_id, Chunk.ordinal, score).select_from(Chunk),
+        select(*_IDENTITY, Resource.source_uri, Version.version_number, score).select_from(Chunk),
         scope,
     )
     statement = (
         statement.where(Chunk.text_tsv.bool_op("@@")(tsquery))
-        .order_by(score.desc(), Chunk.resource_version_id, Chunk.ordinal, Chunk.id)
+        .order_by(score.desc(), *natural_order())
         .limit(depth)
     )
     rows = (await session.execute(statement)).all()

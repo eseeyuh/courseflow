@@ -252,11 +252,11 @@ async def test_partial_span_evidence_reports_exact_sub_ranges(
         assert span.excerpt[span.relative_start : span.relative_end] == hit.text
 
 
-async def test_ties_break_deterministically_by_version_then_chunk_ordinal(
+async def test_ties_break_deterministically_by_natural_identity(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     course = await seed_course(session_factory)
-    for name in ("a", "b", "c"):
+    for name in ("c", "a", "b"):  # seeded out of order: row IDs never decide
         await seed_version(
             session_factory, course, _blocks(MARKED), source_uri=f"upload:{name}.pdf"
         )
@@ -266,9 +266,9 @@ async def test_ties_break_deterministically_by_version_then_chunk_ordinal(
     first = await _search(session_factory, provider, course)
     second = await _search(session_factory, provider, course)
 
-    keys = [(str(h.version.id), h.chunk_ordinal) for h in first.hits]
+    keys = [(h.resource.source_uri, h.version.version_number, h.chunk_ordinal) for h in first.hits]
     assert len({h.score for h in first.hits}) == 1  # identical text: a three-way tie
-    assert keys == sorted(keys)
+    assert keys == [("upload:a.pdf", 1, 0), ("upload:b.pdf", 1, 0), ("upload:c.pdf", 1, 0)]
     assert [h.chunk_id for h in first.hits] == [h.chunk_id for h in second.hits]
 
 

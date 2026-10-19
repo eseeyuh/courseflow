@@ -126,9 +126,12 @@ The question is embedded as `query/v1` (stripped, 1 to 2,000 characters, CourseF
 Candidates are restricted to: the requested course; each resource's current version; the versions verified as searchable; the active chunker version; the active embedding space, on both the link and the embedding row; `document/v1` exactly; matching dimensions; and the optional resource types. Ranking is an exact cosine scan (no approximate index):
 
 ```sql
-ORDER BY e.vector <=> :query, rv.id, c.ordinal   -- distance, then a stable tie-break
+ORDER BY e.vector <=> :query,                     -- distance, then natural identity:
+         r.source_uri COLLATE "C", rv.version_number, c.ordinal
 LIMIT :k                                          -- 1..50, default 5
 ```
+
+Every ranking (vector, lexical `pg-fts-english/v2`, hybrid `rrf-k60-depth50/v2`) breaks score ties by the chunk's natural identity: source URI (bytewise), version number, chunk ordinal. This identity is unique within a course's current corpus, and no generated row ID is involved, so two databases seeded with the same content rank identically.
 
 `score = 1 - cosine distance` ranks results; it is not a probability or a confidence.
 

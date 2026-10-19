@@ -576,7 +576,7 @@ async def test_lexical_search_runs_offline_without_a_key_a_client_or_a_model_cal
 
     assert code == cli.EXIT_OK
     assert result["mode"] == "lexical" and result["score_kind"] == "ts_rank_cd"
-    assert result["lexical_version"] == "pg-fts-english/v1"
+    assert result["lexical_version"] == "pg-fts-english/v2"
     assert result["query_format"] is None and result["query_model_call_id"] is None
     assert result["hits"] and MARKER in result["hits"][0]["text"]
     assert len(provider.calls) == requests_before  # no query request
@@ -599,7 +599,7 @@ async def test_lexical_human_output_names_the_mode_and_its_score(
     )
 
     assert code == cli.EXIT_OK
-    assert "Mode lexical (pg-fts-english/v1)" in out
+    assert "Mode lexical (pg-fts-english/v2)" in out
     assert "ts_rank_cd" in out and "not comparable with vector scores" in out
     assert "evidence: span" in out
     assert "'zebra'" not in out  # the generated tsquery is never printed
@@ -638,8 +638,8 @@ async def test_hybrid_json_reports_both_rankers_and_an_exact_fused_score(
 
     assert code == cli.EXIT_OK
     assert result["mode"] == "hybrid" and result["score_kind"] == "rrf"
-    assert result["fusion_version"] == "rrf-k60-depth50/v1"
-    assert result["lexical_version"] == "pg-fts-english/v1"
+    assert result["fusion_version"] == "rrf-k60-depth50/v2"
+    assert result["lexical_version"] == "pg-fts-english/v2"
     assert result["query_format"] == "query/v1" and result["query_model_call_id"] is not None
     assert len(provider.calls) == requests_before + 1  # one paid query call
     top = result["hits"][0]
@@ -664,7 +664,7 @@ async def test_hybrid_human_output_names_both_contracts_and_each_hit_s_ranks(
     )
 
     assert code == cli.EXIT_OK
-    assert "Mode hybrid (pg-fts-english/v1 + rrf-k60-depth50/v1)" in out
+    assert "Mode hybrid (pg-fts-english/v2 + rrf-k60-depth50/v2)" in out
     assert "reciprocal rank fusion" in out and "not a confidence or probability" in out
     assert "ranks: vector 1 | lexical 1 | rrf 2/61" in out
     assert "ranks: vector 2 | lexical - | rrf 1/62" in out  # a vector-only hit

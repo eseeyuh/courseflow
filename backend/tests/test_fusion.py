@@ -31,18 +31,21 @@ def _id(n: int) -> uuid.UUID:
     return uuid.UUID(int=n)
 
 
+def _ranked(
+    chunk: uuid.UUID, rank: int, ordinal: int | None = None, **scores: float
+) -> RankedCandidate:
+    ordinal = chunk.int if ordinal is None else ordinal
+    return RankedCandidate(
+        chunk, VERSION, ordinal, rank=rank, source_uri="upload:a", version_number=1, **scores
+    )
+
+
 def _vector(*chunks: uuid.UUID) -> list[RankedCandidate]:
-    return [
-        RankedCandidate(c, VERSION, chunk_ordinal=c.int, rank=r, vector_distance=r / 100)
-        for r, c in enumerate(chunks, start=1)
-    ]
+    return [_ranked(c, r, vector_distance=r / 100) for r, c in enumerate(chunks, start=1)]
 
 
 def _lexical(*chunks: uuid.UUID) -> list[RankedCandidate]:
-    return [
-        RankedCandidate(c, VERSION, chunk_ordinal=c.int, rank=r, lexical_score=1 / r)
-        for r, c in enumerate(chunks, start=1)
-    ]
+    return [_ranked(c, r, lexical_score=1 / r) for r, c in enumerate(chunks, start=1)]
 
 
 def _order(fused: Sequence[FusedCandidate]) -> list[uuid.UUID]:
@@ -53,7 +56,7 @@ A, B, C, D = _id(1), _id(2), _id(3), _id(4)
 
 
 def test_the_contract_constants_are_frozen() -> None:
-    assert (RRF_K, CANDIDATE_DEPTH, FUSION_VERSION) == (60, 50, "rrf-k60-depth50/v1")
+    assert (RRF_K, CANDIDATE_DEPTH, FUSION_VERSION) == (60, 50, "rrf-k60-depth50/v2")
 
 
 def test_a_contribution_is_the_exact_reciprocal_of_k_plus_rank() -> None:
@@ -127,7 +130,7 @@ def test_a_chunk_in_both_rankings_appears_once() -> None:
 
 
 def test_a_chunk_ranked_twice_by_one_ranker_is_refused() -> None:
-    duplicated = [*_vector(A, B), RankedCandidate(A, VERSION, A.int, rank=3, vector_distance=0.5)]
+    duplicated = [*_vector(A, B), _ranked(A, 3, vector_distance=0.5)]
 
     with pytest.raises(FusionInputError, match="ranked twice by vector"):
         fuse_rrf(duplicated, [])
@@ -136,13 +139,13 @@ def test_a_chunk_ranked_twice_by_one_ranker_is_refused() -> None:
 @pytest.mark.parametrize(
     ("vector", "lexical", "message"),
     [
-        ([RankedCandidate(A, VERSION, 1, rank=2, vector_distance=0.1)], [], "1..n"),
-        ([RankedCandidate(A, VERSION, 1, rank=1)], [], "no vector score"),
-        ([], [RankedCandidate(A, VERSION, 1, rank=1, vector_distance=0.1)], "no lexical score"),
+        ([_ranked(A, 2, 1, vector_distance=0.1)], [], "1..n"),
+        ([_ranked(A, 1, 1)], [], "no vector score"),
+        ([], [_ranked(A, 1, 1, vector_distance=0.1)], "no lexical score"),
         (_vector(*(_id(n) for n in range(1, CANDIDATE_DEPTH + 2))), [], "deeper than 50"),
         (
-            [RankedCandidate(A, VERSION, 1, rank=1, vector_distance=0.1)],
-            [RankedCandidate(A, VERSION, 2, rank=1, lexical_score=0.1)],
+            [_ranked(A, 1, 1, vector_distance=0.1)],
+            [_ranked(A, 1, 2, lexical_score=0.1)],
             "different identity",
         ),
     ],
@@ -199,6 +202,8 @@ def _candidate(**overrides: object) -> FusedCandidate:
         "chunk_ordinal": 5,
         "rank": 0,
         "fused_score": Fraction(1, 61),
+        "source_uri": "upload:m",
+        "version_number": 1,
         "vector_rank": 1,
         "lexical_rank": None,
         "vector_distance": 0.1,
@@ -216,19 +221,20 @@ def _candidate(**overrides: object) -> FusedCandidate:
         ({"vector_rank": 2, "lexical_rank": None}, {"vector_rank": None, "lexical_rank": 2}),
         ({"vector_rank": 1, "lexical_rank": 2}, {"vector_rank": 1, "lexical_rank": 3}),
         ({"lexical_rank": 2}, {"lexical_rank": None}),
-        ({"resource_version_id": _id(40)}, {"resource_version_id": _id(60)}),
+        ({"source_uri": "upload:B"}, {"source_uri": "upload:a"}),  # code points: B < a
+        ({"source_uri": "upload:a"}, {"source_uri": "upload:é"}),
+        ({"version_number": 1}, {"version_number": 2}),
         ({"chunk_ordinal": 4}, {"chunk_ordinal": 6}),
-        ({"chunk_id": _id(4)}, {"chunk_id": _id(6)}),
     ],
 )
-def test_the_order_key_is_total_through_to_the_chunk_id(
+def test_the_order_key_is_total_through_to_the_natural_identity(
     first: dict[str, object], second: dict[str, object]
 ) -> None:
     """Each level of the frozen order decides, in its stated direction, once
-    every earlier level is equal; the chunk ID (the last level) is set to
-    disagree, so it never overrides an earlier one."""
-    if "chunk_id" not in first:
-        first, second = {**first, "chunk_id": _id(9)}, {**second, "chunk_id": _id(1)}
+    every earlier level is equal. Generated IDs are set to disagree, so they
+    never decide anything."""
+    first = {"chunk_id": _id(9), "resource_version_id": _id(90), **first}
+    second = {"chunk_id": _id(1), "resource_version_id": _id(10), **second}
     a, b = _candidate(**first), _candidate(**second)
 
     assert fused_order_key(a) < fused_order_key(b)

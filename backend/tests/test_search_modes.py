@@ -336,7 +336,7 @@ async def test_lexical_search_ranks_by_ts_rank_cd_without_any_model_call(
     result = await _search(session_factory, provider, course, SearchMode.LEXICAL)
 
     assert result.mode is SearchMode.LEXICAL and result.score_kind == "ts_rank_cd"
-    assert result.lexical_version == LEXICAL_VERSION == "pg-fts-english/v1"
+    assert result.lexical_version == LEXICAL_VERSION == "pg-fts-english/v2"
     assert result.query_format is None and result.query_model_call_id is None
     assert result.document_format == DOCUMENT_INPUT_FORMAT
     assert [hit.rank for hit in result.hits] == list(range(1, len(result.hits) + 1))
@@ -375,11 +375,11 @@ async def test_only_matching_chunks_are_lexical_candidates(
     assert result.hits == () and result.searchable_versions == 1
 
 
-async def test_equal_lexical_scores_break_ties_by_version_then_ordinal(
+async def test_equal_lexical_scores_break_ties_by_natural_identity(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     course = await seed_course(session_factory)
-    for name in ("a", "b", "c"):
+    for name in ("c", "a", "b"):  # seeded out of order: row IDs never decide
         await seed_version(session_factory, course, _blocks(MARKED), source_uri=f"upload:{name}")
     provider = _provider()
     await _index(session_factory, course, provider)
@@ -387,9 +387,9 @@ async def test_equal_lexical_scores_break_ties_by_version_then_ordinal(
     first = await _search(session_factory, provider, course, SearchMode.LEXICAL, k=50)
     again = await _search(session_factory, provider, course, SearchMode.LEXICAL, k=50)
 
-    keys = [(hit.version.id, hit.chunk_ordinal) for hit in first.hits]
-    assert len(keys) == 3 and len({hit.score for hit in first.hits}) == 1
-    assert keys == sorted(keys)
+    keys = [(hit.resource.source_uri, hit.chunk_ordinal) for hit in first.hits]
+    assert len({hit.score for hit in first.hits}) == 1
+    assert keys == [("upload:a", 0), ("upload:b", 0), ("upload:c", 0)]
     assert [h.chunk_id for h in again.hits] == [h.chunk_id for h in first.hits]
 
 
@@ -773,9 +773,9 @@ def _expected_rrf(vector: SearchResult, lexical: SearchResult) -> list[tuple[Any
             min(r for r in (v, lex) if r is not None),
             math.inf if v is None else v,
             math.inf if lex is None else lex,
-            hit.version.id,
+            hit.resource.source_uri,
+            hit.version.version_number,
             hit.chunk_ordinal,
-            chunk_id,
         )
         rows.append((key, (chunk_id, score, v, lex)))
     return [row for _, row in sorted(rows)]
@@ -959,7 +959,8 @@ async def _reference_vector_ranking(
     vector: Sequence[float],
     k: int,
 ) -> list[tuple[uuid.UUID, float]]:
-    """The vector query as it was before rankers existed, verbatim in shape."""
+    """The vector query as it was before rankers existed, verbatim in shape,
+    with ties broken by natural identity (source URI, version, ordinal)."""
     distance = Embedding.vector.cosine_distance(list(vector)).label("distance")
     statement = (
         select(Chunk.id, distance)
@@ -983,7 +984,12 @@ async def _reference_vector_ranking(
             Embedding.space_id == space_id,
             Embedding.dimensions == dimensions,
         )
-        .order_by(distance, ResourceVersion.id, Chunk.ordinal)
+        .order_by(
+            distance,
+            Resource.source_uri.collate("C"),
+            ResourceVersion.version_number,
+            Chunk.ordinal,
+        )
         .limit(k)
     )
     return [(row.id, float(row.distance)) for row in (await session.execute(statement)).all()]

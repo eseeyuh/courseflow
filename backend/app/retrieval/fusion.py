@@ -38,8 +38,9 @@ RRF_K = 60
 CANDIDATE_DEPTH = 50  # each ranker contributes at most this many candidates
 # The fusion contract: RRF over ranks with RRF_K, CANDIDATE_DEPTH candidates
 # per ranker and the tie-break of fused_order_key. Changing any part of it is
-# a new version.
-FUSION_VERSION = "rrf-k60-depth50/v1"
+# a new version (v2: the last levels are the chunk's natural identity, not
+# row IDs).
+FUSION_VERSION = "rrf-k60-depth50/v2"
 
 
 class FusionInputError(ValueError):
@@ -56,6 +57,8 @@ class FusedCandidate:
     chunk_ordinal: int
     rank: int  # 1-based, in the fused order
     fused_score: Fraction  # exact; an ordering value, never a confidence
+    source_uri: str  # natural identity: the final tie-break
+    version_number: int
     vector_rank: int | None
     lexical_rank: int | None
     vector_distance: float | None
@@ -71,17 +74,18 @@ def rrf_contribution(rank: int) -> Fraction:
 
 def fused_order_key(candidate: FusedCandidate) -> tuple[object, ...]:
     """The frozen fused order: fused score descending, then the best single
-    rank, the vector rank, the lexical rank (a missing rank sorts last), the
-    resource version, the chunk ordinal and the chunk ID."""
+    rank, the vector rank, the lexical rank (a missing rank sorts last), then
+    the natural identity: source URI (by code point, as the rankers' C
+    collation), version number and chunk ordinal. No generated ID decides."""
     ranks = [r for r in (candidate.vector_rank, candidate.lexical_rank) if r is not None]
     return (
         -candidate.fused_score,
         min(ranks),
         math.inf if candidate.vector_rank is None else candidate.vector_rank,
         math.inf if candidate.lexical_rank is None else candidate.lexical_rank,
-        candidate.resource_version_id,
+        candidate.source_uri,
+        candidate.version_number,
         candidate.chunk_ordinal,
-        candidate.chunk_id,
     )
 
 
@@ -106,25 +110,25 @@ def _fused(
     """One chunk's summed contributions (rank 0: not yet ordered)."""
     identity = v if v is not None else lex
     assert identity is not None
-    if (
-        v is not None
-        and lex is not None
-        and (
-            (v.resource_version_id, v.chunk_ordinal) != (lex.resource_version_id, lex.chunk_ordinal)
-        )
-    ):
+    if v is not None and lex is not None and _identity(v) != _identity(lex):
         raise FusionInputError(f"chunk {chunk_id} has a different identity in each ranking")
     return FusedCandidate(
         chunk_id=chunk_id,
         resource_version_id=identity.resource_version_id,
         chunk_ordinal=identity.chunk_ordinal,
         rank=0,
+        source_uri=identity.source_uri,
+        version_number=identity.version_number,
         fused_score=sum((rrf_contribution(c.rank) for c in (v, lex) if c is not None), Fraction(0)),
         vector_rank=None if v is None else v.rank,
         lexical_rank=None if lex is None else lex.rank,
         vector_distance=None if v is None else v.vector_distance,
         lexical_score=None if lex is None else lex.lexical_score,
     )
+
+
+def _identity(c: RankedCandidate) -> tuple[object, ...]:
+    return (c.resource_version_id, c.chunk_ordinal, c.source_uri, c.version_number)
 
 
 def _ranking(candidates: Sequence[RankedCandidate], kind: str) -> dict[uuid.UUID, RankedCandidate]:
