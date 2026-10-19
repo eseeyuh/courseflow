@@ -32,6 +32,7 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     Column,
+    Computed,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -40,7 +41,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, CreatedAt, Timestamps, UUIDPrimaryKey, str_enum
@@ -375,6 +376,13 @@ class ModelCall(UUIDPrimaryKey, CreatedAt, Base):
 # --- retrieval layer ------------------------------------------------------------------
 
 
+# PostgreSQL text search configuration for chunks.text_tsv. English stemming
+# and stop words: English lexical retrieval, not multilingual. Changing it is
+# a migration (the stored column) plus a new lexical version.
+TEXT_SEARCH_CONFIG = "english"
+CHUNK_TEXT_TSV_EXPRESSION = f"to_tsvector('{TEXT_SEARCH_CONFIG}'::regconfig, text)"
+
+
 class Chunk(UUIDPrimaryKey, CreatedAt, Base):
     """A retrieval unit: ``text`` is exactly ``extracted_text[start_offset:end_offset]``
     of one ResourceVersion, starting inside span ``first_span_ordinal`` and
@@ -420,6 +428,7 @@ class Chunk(UUIDPrimaryKey, CreatedAt, Base):
             name="text_hash_matches_text",
         ),
         CheckConstraint("estimated_tokens > 0", name="estimated_tokens_positive"),
+        Index("ix_chunks_text_tsv", "text_tsv", postgresql_using="gin"),
     )
 
     # Derived data follows its source: deleting a version deletes its chunks.
@@ -437,6 +446,15 @@ class Chunk(UUIDPrimaryKey, CreatedAt, Base):
     text: Mapped[str] = mapped_column(Text)
     text_hash: Mapped[str] = mapped_column(Text)
     estimated_tokens: Mapped[int]
+    # Lexical search vector, computed by PostgreSQL from ``text`` and never
+    # written by the application. The configuration is explicit: stored
+    # lexemes must not depend on default_text_search_config. Deferred so
+    # ordinary chunk loads do not fetch it.
+    text_tsv: Mapped[str] = mapped_column(
+        TSVECTOR,
+        Computed(CHUNK_TEXT_TSV_EXPRESSION, persisted=True),
+        deferred=True,
+    )
 
     resource_version: Mapped[ResourceVersion] = relationship(lazy="raise")
 

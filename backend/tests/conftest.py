@@ -13,8 +13,9 @@ session, exactly as production databases are migrated. Start the server first:
 Each test builds its own app/engine, bound to that test's own event loop.
 """
 
+import logging
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 
 import httpx
@@ -85,6 +86,18 @@ def test_database_url() -> URL:
     except Exception as exc:  # noqa: BLE001 - re-raised as a clear test-setup failure
         pytest.fail(f"Migrating the test database {where} to head failed: {exc!r}")
     return url
+
+
+@pytest.fixture(autouse=True)
+def _restore_root_logging() -> Iterator[None]:
+    """CLI entry points call ``configure_logging``, which points the root handler
+    at that test's captured stderr. Restore it afterwards, so a later test never
+    logs (e.g. asyncio's DEBUG line at event-loop start) into a closed stream."""
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
+    yield
+    root.handlers[:] = handlers
+    root.setLevel(level)
 
 
 @pytest.fixture

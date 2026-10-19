@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DS101 Lecture 1: The relational model</title>
+</head>
+<body>
+<h1>DS101 Data Systems - Lecture 1: The relational model</h1>
+<p>Quillmere Institute is a fictional institution. This material was written for the CourseFlow retrieval benchmark and describes no real course.</p>
+
+<h2>Why a model at all</h2>
+<p>Before we write a single line of SQL we need a precise way to talk about data. A data model gives us a small number of concepts with exact meanings, so that two people who disagree about a design can at least agree about what they are disagreeing about. The relational model, proposed in 1970, has survived because its concepts are few, its rules are mathematical, and the questions we ask of data can be expressed as operations on those concepts rather than as procedures that walk through files.</p>
+<p>The central promise of the model is data independence. Applications describe what data they want, not how it is laid out on disk. The database system is then free to reorganise storage, add indexes or move data between machines without breaking the applications that use it. Much of this module is about the two sides of that promise: designing the logical structure well, and understanding enough about the physical side to know why a correct query can still be slow.</p>
+
+<h2>Relations, tuples and attributes</h2>
+<p>A relation is a set of tuples that share the same attributes. In SQL we usually call a relation a table, a tuple a row and an attribute a column, and in this module we will use both vocabularies. The words are not quite interchangeable, though. A relation is a set, so it has no duplicate tuples and no order. An SQL table can contain duplicate rows unless a key prevents it, and a query result has an order only if the query asks for one with ORDER BY.</p>
+<p>Every attribute has a domain, the set of values it may take. In PostgreSQL the domain is expressed by a data type such as integer, text, date or numeric, sometimes narrowed by a CHECK constraint. Choosing the domain carefully is the first and cheapest integrity check you have. A due date stored as text will accept the string 31/02/2026 without complaint; a due date stored as a date will not.</p>
+<p>The heading of a relation is its set of attribute names with their domains, and the body is the set of tuples present at a particular moment. The heading changes rarely and deliberately, through a schema migration. The body changes all the time. When we say that a design is correct we mean that every body the constraints allow describes a possible state of the real world, and that every possible state of the real world can be described by some allowed body.</p>
+
+<h2>Keys</h2>
+<p>A superkey is any set of attributes whose values are different in every tuple of the relation. The full set of attributes is always a superkey, because a relation has no duplicates. A candidate key is a minimal superkey: remove any attribute from it and it stops identifying tuples. A relation can have several candidate keys. A member might be identified by a membership number and, separately, by an email address that the library requires to be unique.</p>
+<p>The primary key is the candidate key we choose to identify tuples in references from other relations. The choice matters for practical reasons rather than theoretical ones. A good primary key never changes, is short, and carries no meaning that might later turn out to be wrong. Email addresses change; membership numbers issued by the library do not. For that reason many designs introduce a surrogate key, a generated number or UUID with no meaning outside the database, and keep the natural candidate keys as UNIQUE constraints.</p>
+<p>Whatever you choose, declare every candidate key. A natural key that is not declared UNIQUE is only a hope. The first time two volunteers register the same person twice, the database will store both rows and nothing downstream will notice until a report double counts.</p>
+
+<h2>Foreign keys and referential integrity</h2>
+<p>A foreign key is a set of attributes in one relation whose values must appear as a key in another relation. A loan refers to the member who borrowed and to the item that was borrowed. Declaring those references as foreign keys asks the database to guarantee that no loan ever points at a member or item that does not exist. This guarantee is called referential integrity.</p>
+<p>A foreign key also forces a decision about what happens when the referenced row is deleted or its key is updated. ON DELETE RESTRICT refuses the deletion while references exist. ON DELETE CASCADE deletes the referencing rows too. ON DELETE SET NULL keeps them but clears the reference. For the library, cascading the deletion of a member to all of that member's loans would silently destroy the loan history, so RESTRICT is the safer default; a member who leaves is better marked inactive than deleted.</p>
+<p>Foreign keys cost something on every insert, update and delete, because the database must check the referenced table. That cost is almost always worth paying. Applications that enforce references in their own code eventually disagree with each other, and the database is the only place that sees every write.</p>
+
+<h2>NULL and three-valued logic</h2>
+<p>SQL uses NULL to mean that a value is missing or not applicable. NULL is not a value in the domain; it is a marker. Comparisons with NULL do not return true or false but unknown, and a WHERE clause keeps only rows for which the condition is true. As a result, the condition returned_on = NULL is never true, even for loans that have not been returned. The correct test is returned_on IS NULL.</p>
+<p>Three-valued logic has consequences that surprise people who are used to two values. NOT IN with a subquery that returns a NULL returns no rows at all, because every comparison with the NULL is unknown. Aggregate functions such as SUM and AVG ignore NULLs, while COUNT(*) counts rows regardless of what they contain. When a design allows NULL in a column, every query that touches that column must decide what a missing value means.</p>
+<p>A useful discipline is to allow NULL only where the real world genuinely has no value yet, such as the return date of an item still on loan, and to declare every other column NOT NULL. A column that is nullable merely because nobody thought about it is a source of wrong answers that look plausible.</p>
+
+<h2>Integrity constraints beyond keys</h2>
+<p>Keys and foreign keys are the most common constraints, but the model allows any condition that every allowed body must satisfy. In PostgreSQL these are written as CHECK constraints on a single row, as UNIQUE constraints across rows, and, for conditions that span several tables, as triggers or carefully designed exclusion constraints. A loan whose due date precedes its loan date is impossible in the real world, so CHECK (due_on &gt;= loaned_on) belongs in the schema rather than in a comment.</p>
+<p>Constraints are part of the design, not an afterthought. A constraint written down in the schema is checked on every write, by every application, for ever. A rule written down only in a requirements document is checked by whoever remembers it.</p>
+
+<h2>Relational algebra in one page</h2>
+<p>The operations of the relational algebra take relations as input and produce a relation as output, which is why they can be combined freely. Selection keeps the tuples that satisfy a condition. Projection keeps some attributes and removes duplicates. The Cartesian product pairs every tuple of one relation with every tuple of another, and a join is a product followed by a selection on matching attributes. Union, intersection and difference combine relations with the same heading. Renaming changes attribute names so that the other operations can line them up.</p>
+<p>SQL is not the relational algebra, but every SELECT statement can be read as a combination of these operations. FROM with several tables forms a product, WHERE selects, the column list projects, and DISTINCT removes the duplicates that SQL otherwise keeps. Reading a query this way is the most reliable method for predicting what it returns, and it is the method we will use in the labs when a query gives an answer you did not expect.</p>
+
+<h2>Worked example: the members relation</h2>
+<p>Suppose the library asks us to record its members. A first attempt might be members(name, address, phone, joined_on). Ask the key question immediately: what identifies a member? Not the name, because two people can share one. Not the address, because families live together. Not the phone number, because people change numbers and some share one. None of the attributes the library naturally records identifies a member on its own, so the library issues membership numbers, and member_no becomes the primary key.</p>
+<p>Next, ask which attributes are required. A member without a name or an address cannot be contacted about an overdue item, so both are NOT NULL. A telephone number is optional, so the column may be NULL, and every query that uses it must cope with that. The date of joining is always known at registration, so it is NOT NULL with a default of the current date. An email address is optional but, where present, the library wants it to be unique, which PostgreSQL allows: a UNIQUE constraint permits any number of NULLs.</p>
+<p>Finally, ask what values are impossible. A membership number is a positive integer. A joining date cannot be in the future. A postcode has a known format, though checking it fully in SQL is more trouble than it is worth; a CHECK that it is not empty is a reasonable compromise. Writing these decisions down as constraints turns a list of columns into a schema that defends itself.</p>
+<p>The resulting definition is short, but every line of it records a decision about the real world. When a design review asks why a column is nullable or why a key was chosen, the answer should come from the domain, not from what was convenient to type.</p>
+
+<h2>Looking ahead: from entities to relations</h2>
+<p>Next week we step back from relations to entity-relationship modelling, which describes the domain before any table exists. Entities become relations, attributes become columns, and relationships become foreign keys or, for many-to-many relationships, linking relations of their own. A loan, for example, starts life in the diagram as a relationship between a member and an item, and becomes a relation because it has attributes of its own: the dates on which it began, was due and ended.</p>
+<p>Keep the library spreadsheet in mind as we go. Every problem the volunteers reported, from addresses that disagree to items listed twice, is a symptom of a missing entity, a missing key or a missing constraint, and by Lecture 3 we will have the tools to name each one precisely.</p>
+
+<h2>Summary</h2>
+<ul>
+<li>A relation is a set of tuples over a heading of typed attributes.</li>
+<li>Candidate keys identify tuples; the primary key is the one chosen for references; declare them all.</li>
+<li>Foreign keys guarantee referential integrity and force a decision about deletions.</li>
+<li>NULL means missing, and comparisons with it are unknown rather than false.</li>
+<li>Constraints belong in the schema, where every write is checked.</li>
+</ul>
+<p>Reading for next week: chapter 3 of the module text, on entity-relationship modelling.</p>
+</body>
+</html>

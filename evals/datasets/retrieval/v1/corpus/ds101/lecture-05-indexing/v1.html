@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DS101 Lecture 5: Indexes and access paths</title>
+</head>
+<body>
+<h1>DS101 Data Systems - Lecture 5: Indexes and access paths</h1>
+<p>Quillmere Institute is a fictional institution. This material was written for the CourseFlow retrieval benchmark and describes no real course.</p>
+
+<h2>From logical to physical</h2>
+<p>The first four lectures were about what a database should contain. This lecture is about how the system finds what you ask for. The relational model promises that a query's meaning does not depend on how data is stored, and that promise holds: adding or removing an index never changes the rows a correct query returns. What it changes is how much work the system does to find them, and on a large table that can be the difference between a millisecond and a minute.</p>
+<p>A table in PostgreSQL is stored as a heap: a sequence of fixed-size pages, each holding a number of row versions in no particular order. Without any other structure, the only way to find the rows that satisfy a condition is to read every page and test every row. This is a sequential scan. It is not always bad. For a small table, or for a query that needs most of the rows anyway, reading everything in order is the fastest plan available.</p>
+
+<h2>What an index is</h2>
+<p>An index is a separate structure that maps values of one or more columns to the locations of the rows that hold them. It is redundant by design: everything in it can be rebuilt from the table. The database keeps it up to date on every insert, update and delete, which is why indexes speed up reads and slow down writes. An index that no query uses is pure cost.</p>
+<p>PostgreSQL offers several index types. B-tree is the default and the right choice for most columns: it supports equality and range conditions and can return rows in sorted order. Hash indexes support equality only. GIN indexes suit values that contain many elements, such as arrays and full-text documents. GiST and SP-GiST support geometric and other specialised searches, and BRIN indexes summarise ranges of pages for very large tables whose physical order follows a column such as a timestamp.</p>
+
+<h2>B-trees</h2>
+<p>A B-tree keeps keys in sorted order in a balanced tree of pages. Each internal page holds keys that divide the key space and pointers to the pages below; the leaf pages hold the indexed values together with pointers to the table rows, and are linked to their neighbours so that a range can be read by walking along the leaves. Because each page holds hundreds of keys, the tree is shallow: a table of a hundred million rows typically needs an index only three or four levels deep.</p>
+<p>Finding one key costs one page read per level. Finding a range costs the descent plus a walk along the leaves, plus one visit to the table for each matching row, unless the index already contains every column the query needs. The last part dominates when many rows match, because those table visits are scattered across the heap. This is why an index helps most for selective conditions, those that match a small fraction of the rows.</p>
+
+<h2>Composite indexes</h2>
+<p>An index can cover several columns. The entries are sorted by the first column, then by the second within equal values of the first, and so on, exactly like a telephone directory sorted by surname and then by given name. A composite B-tree index is used efficiently only when the query constrains its leading column, so an index on (last_name, first_name) does little for a search on first_name alone.</p>
+<p>The order of columns in a composite index is therefore a design decision. Put first the column that queries constrain by equality most often; put range conditions last, because once the index is being scanned over a range of the first column, the later columns no longer narrow the walk. An index on (member_no, loaned_on) serves the question "which loans did this member make last year" very well, and the question "which loans were made last year" poorly.</p>
+<p>A composite index can also make a query index-only. If the index contains every column the query reads, the system can answer from the index without visiting the table at all, as long as the visibility map shows that the relevant pages contain no recently changed rows. PostgreSQL lets you add non-key columns to a B-tree for this purpose with the INCLUDE clause.</p>
+
+<h2>Selectivity and the planner</h2>
+<p>PostgreSQL decides whether to use an index by estimating costs. The planner keeps statistics about each column, such as the most common values, a histogram of the rest and the fraction of NULLs, and uses them to estimate how many rows each condition will match. It then compares the estimated cost of a sequential scan, an index scan, a bitmap scan and other plans, and picks the cheapest.</p>
+<p>A bitmap scan is a compromise between the two extremes. The system first reads the index to build a bitmap of the pages that contain matching rows, then reads those pages in physical order. This avoids the random access of a plain index scan when many rows match, while still skipping the pages that contain none.</p>
+<p>Statistics are refreshed by ANALYZE, which autovacuum runs periodically. When the statistics are stale, for example just after a bulk load, the planner's estimates can be wrong by orders of magnitude and it may choose a poor plan. You can check whether the planner chose an index with EXPLAIN, which prints the plan it intends to use without running the query; the lab next week goes further.</p>
+
+<h2>Indexes and constraints</h2>
+<p>PostgreSQL creates a unique B-tree index automatically for every PRIMARY KEY and UNIQUE constraint, because that is how it checks uniqueness efficiently. It does not create an index for a FOREIGN KEY. The referencing column of a foreign key is usually worth indexing, both because joins follow it and because deleting or updating a referenced row requires the system to look for referencing rows. Without an index on loans.member_no, deleting a single member means scanning the entire loans table.</p>
+
+<h2>Expression and partial indexes</h2>
+<p>An index can be built on an expression rather than a plain column. If queries search for members by lower(email), an index on lower(email) lets them use it; an index on email does not, because the planner cannot see through the function. A partial index covers only the rows that satisfy a condition. An index on loans(due_on) WHERE returned_on IS NULL is small, because only open loans are in it, and it is exactly what the overdue-loans query needs.</p>
+
+<h2>Worked example: the overdue-loans query</h2>
+<p>The overdue-loans query asks for loans that have not been returned and whose due date is before today. On a loans table with a few hundred rows, nothing we do with indexes matters; a sequential scan reads a handful of pages. Imagine instead a regional library service with ten years of history, two million loans, of which perhaps fifteen thousand are open at any time and a few hundred are overdue.</p>
+<p>A sequential scan of two million rows to find a few hundred is wasteful. An index on due_on alone helps less than you might expect: almost all historical loans have a due date before today, so the condition due_on &lt; current_date matches nearly every row, and the planner will rightly ignore the index. An index on returned_on alone is not much better, because a B-tree on a column where nearly every value is NULL or a past date is large and the condition IS NULL is matched by only a small set that must still be found within it.</p>
+<p>The useful observation is that the query only ever looks at open loans. A partial index on due_on restricted to rows where returned_on IS NULL contains only those fifteen thousand rows, sorted by due date. The overdue loans are a prefix of that index, and the planner can read exactly that prefix. The index stays small as history grows, because returning an item removes its loan from the index.</p>
+<p>The general lesson is to design indexes from queries, not from columns. Ask which rows a query must find, which conditions narrow them most, and whether a smaller structure than the whole table could hold exactly the rows of interest.</p>
+
+<h2>Hash indexes and when not to use them</h2>
+<p>A hash index stores a hash of each key and supports only equality. In principle it can be smaller and faster than a B-tree for long keys searched only by equality. In practice the B-tree is nearly always good enough, supports more queries, and can enforce uniqueness, which a PostgreSQL hash index cannot. Treat hash indexes as a specialised tool for measured cases rather than a default.</p>
+
+<h2>Costs and maintenance</h2>
+<p>Every index makes writes slower, takes disk space and memory, and must be vacuumed. Updates are particularly affected: an update that changes an indexed column must add a new entry to that index, and an update in PostgreSQL creates a new row version, which may need new entries in every index unless the change qualifies for a heap-only tuple update. A write-heavy table with ten indexes can spend most of its write time maintaining them.</p>
+<p>Create indexes for the queries you actually run, check with EXPLAIN that they are used, and drop the ones that are not. The statistics view pg_stat_user_indexes counts how often each index has been scanned since the counters were last reset.</p>
+
+<h2>Summary</h2>
+<ul>
+<li>A sequential scan reads every page; an index lets the system go to the matching rows.</li>
+<li>B-trees support equality, ranges and ordering; other index types serve special cases.</li>
+<li>Composite index column order matters; the leading column must be constrained.</li>
+<li>The planner chooses plans from estimated costs that depend on statistics.</li>
+<li>Index foreign keys, index for real queries, and remove unused indexes.</li>
+</ul>
+</body>
+</html>

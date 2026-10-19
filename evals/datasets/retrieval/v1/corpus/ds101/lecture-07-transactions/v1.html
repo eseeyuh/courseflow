@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DS101 Lecture 7: Transactions and concurrency control</title>
+</head>
+<body>
+<h1>DS101 Data Systems - Lecture 7: Transactions and concurrency control</h1>
+<p>Quillmere Institute is a fictional institution. This material was written for the CourseFlow retrieval benchmark and describes no real course.</p>
+
+<h2>The problem</h2>
+<p>A database serves many users at once. Two volunteers at different desks may issue the last copy of the same book within the same second; a nightly job may recalculate fines while members are returning items. Each of these activities consists of several reads and writes that only make sense together. Issuing a book means checking that a copy is available, recording the loan and marking the copy as out. If another activity runs between those steps, or if the system crashes halfway, the data can end up in a state that no correct sequence of events could have produced.</p>
+<p>A transaction is a group of operations that the database treats as a single unit. In SQL a transaction starts with BEGIN and ends with COMMIT, which makes its changes permanent, or ROLLBACK, which discards them. Statements issued outside an explicit transaction run as transactions of their own.</p>
+
+<h2>ACID</h2>
+<p>The guarantees a transaction offers are summarised as ACID. Atomicity means that either all of a transaction's changes take effect or none do; a crash in the middle leaves no partial loan behind. Consistency means that a transaction moves the database from one state that satisfies every declared constraint to another; the constraints themselves come from the schema. Isolation means that concurrent transactions do not see each other's intermediate states, to a degree set by the isolation level. Durability means that once COMMIT returns, the changes survive a crash, because they have been written to the write-ahead log on stable storage.</p>
+<p>Atomicity and durability are provided by the write-ahead log: every change is recorded in the log before the data pages are modified, so that after a crash the system can redo committed work and ignore uncommitted work. Isolation is the hard part, and the rest of this lecture is about it.</p>
+
+<h2>What can go wrong without isolation</h2>
+<p>A dirty read occurs when a transaction reads data written by another transaction that has not committed yet. If the writer later rolls back, the reader has acted on data that never officially existed.</p>
+<p>A non-repeatable read occurs when a transaction reads the same row twice and gets different values, because another transaction committed an update in between. A report that reads a member's fines at the start and again at the end may find that the two totals disagree.</p>
+<p>A phantom read occurs when a transaction runs the same query twice and the second run returns additional or missing rows, because another transaction inserted or deleted rows that match the condition. Counting the open loans twice in one transaction and getting two different counts is a phantom.</p>
+<p>A lost update occurs when two transactions read the same value, both compute a new value from it, and both write it back; the second write silently overwrites the first. Two volunteers both reading that three copies are available and both writing back two is a lost update, and the library now believes a copy is on the shelf that is not.</p>
+
+<h2>Isolation levels</h2>
+<p>The SQL standard defines four isolation levels by the anomalies they permit. READ UNCOMMITTED permits dirty reads. READ COMMITTED forbids dirty reads but permits non-repeatable reads and phantoms. REPEATABLE READ forbids non-repeatable reads. SERIALIZABLE forbids every anomaly: the outcome must equal some serial execution of the transactions, one after another.</p>
+<p>Under the SQL standard, REPEATABLE READ still permits phantom reads, whereas PostgreSQL's REPEATABLE READ is implemented with snapshot isolation and does not show phantoms. PostgreSQL treats READ UNCOMMITTED as READ COMMITTED, so it never shows dirty reads at all. READ COMMITTED is the default.</p>
+
+<h2>Multiversion concurrency control</h2>
+<p>PostgreSQL implements isolation with multiversion concurrency control. An update does not overwrite a row; it creates a new row version and marks the old one as superseded by the updating transaction. Each transaction reads from a snapshot, a description of which transactions had committed at a certain moment, and sees only the row versions that were committed according to that snapshot. Readers therefore never block writers, and writers never block readers.</p>
+<p>Under READ COMMITTED each statement takes a fresh snapshot, so two statements in the same transaction can see different data. Under REPEATABLE READ the snapshot is taken at the first statement and kept for the whole transaction, so every statement sees the database as it was at that moment. Old row versions that no snapshot can see any longer are removed later by VACUUM.</p>
+
+<h2>Write skew and serializable snapshot isolation</h2>
+<p>Snapshot isolation prevents dirty reads, non-repeatable reads and phantoms, but it is not serializable. The anomaly it allows is write skew. Suppose the rule is that at least one volunteer must be on duty. Two volunteers each check, in their own transaction, that the other is on duty, and each then signs off. Neither transaction modified the row the other read, so no conflict is detected, and both commit; nobody is on duty.</p>
+<p>PostgreSQL's SERIALIZABLE level detects such patterns. It tracks which transactions read data that others wrote and aborts one transaction when the dependencies could form a cycle that no serial order explains. Applications using SERIALIZABLE must be prepared to retry transactions that fail with a serialization error; the retry will usually succeed because the conflicting transaction has finished.</p>
+
+<h2>Locks</h2>
+<p>Alongside snapshots, PostgreSQL uses locks to stop conflicting writes. Two transactions that try to update the same row are serialised: the second waits until the first commits or rolls back. Under READ COMMITTED the waiting transaction then re-reads the row and applies its update to the new version; under REPEATABLE READ it fails with a serialization error instead, because applying the update would break its snapshot.</p>
+<p>An application can take row locks explicitly with SELECT ... FOR UPDATE, which is the usual way to prevent lost updates: read the available copies with FOR UPDATE, and any concurrent transaction that wants to issue the same item must wait until the first has finished. Table-level locks are taken implicitly by DDL statements, which is why altering a busy table can stall an application.</p>
+<p>When two transactions each wait for a lock the other holds, PostgreSQL detects the cycle after deadlock_timeout and aborts one of them with a deadlock error so that the other can continue. The aborted transaction should be retried. Deadlocks are avoided most reliably by making every transaction acquire its locks in the same order, for example by always updating items in ascending item number.</p>
+
+<h2>Worked example: issuing the last copy</h2>
+<p>The library holds two copies of a popular novel, and one is already on loan. Two volunteers, at the front desk and at the mobile library terminal, each start issuing the remaining copy to a different member at almost the same moment. Each transaction first counts the open loans of the title, finds one, concludes that a copy is available, and inserts a new loan.</p>
+<p>Under READ COMMITTED with no explicit locking, both transactions can see one open loan, both insert, and both commit. The library has now lent three copies of a book it owns two of. No row was updated twice, so there was no write conflict for the database to detect; each transaction's decision was based on a read that the other made obsolete.</p>
+<p>There are three common repairs. The first is to lock something both transactions must touch: if issuing a copy first runs SELECT ... FOR UPDATE on the row of the title, the second volunteer's transaction waits at that statement until the first commits, then sees two open loans and refuses. The second is to model the copies individually and put a unique constraint on open loans per copy, so that the second insert fails with a constraint violation. The third is to run the transaction at SERIALIZABLE and retry on serialization failure, letting the database detect that the two transactions read and wrote overlapping data.</p>
+<p>The constraint-based repair is the most robust, because it holds no matter which application or code path performs the insert. In general, prefer to state an invariant as a constraint that the database enforces on every write, and use locking or SERIALIZABLE for invariants that no single constraint can express.</p>
+
+<h2>Savepoints and partial rollback</h2>
+<p>Inside a transaction, a savepoint marks a point to which the transaction can later roll back without abandoning everything. SAVEPOINT before_fines, followed by ROLLBACK TO SAVEPOINT before_fines, undoes the work done since the savepoint while keeping the earlier work and the transaction itself. Savepoints are useful for batch jobs that should skip a bad record and continue. They are not free: each one adds bookkeeping, and very large numbers of them in one transaction slow it down.</p>
+
+<h2>Choosing a level</h2>
+<p>READ COMMITTED is adequate for most short transactions that read and then write a single row with appropriate locking. REPEATABLE READ suits reports that must see one consistent state across many queries. SERIALIZABLE is the simplest way to be correct when invariants span several rows, at the cost of retries. Whatever level you choose, keep transactions short: a transaction left open holds its snapshot, keeps old row versions from being vacuumed, and may hold locks that block others.</p>
+
+<h2>Summary</h2>
+<ul>
+<li>Transactions group operations into atomic, isolated, durable units.</li>
+<li>Dirty reads, non-repeatable reads, phantoms and lost updates are the classic anomalies.</li>
+<li>PostgreSQL uses MVCC snapshots; its REPEATABLE READ is snapshot isolation.</li>
+<li>Write skew needs SERIALIZABLE or explicit locking; serialization failures must be retried.</li>
+<li>Deadlocks are detected and broken by aborting a transaction; consistent lock ordering avoids them.</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DS101 Lab 4: Reading query plans</title>
+</head>
+<body>
+<h1>DS101 Data Systems - Lab 4: Reading query plans</h1>
+<p>Quillmere Institute is a fictional institution. This material was written for the CourseFlow retrieval benchmark and describes no real course.</p>
+
+<h2>Purpose</h2>
+<p>In Lecture 5 we saw that the planner chooses between sequential scans, index scans and bitmap scans from estimated costs. In this lab you will watch it do so. You will load a larger version of the library database, run the same queries before and after creating indexes, and read the plans PostgreSQL produces. By the end you should be able to look at a plan and say which part of it is expensive and why.</p>
+
+<h2>Setup</h2>
+<p>Run lab04_setup.sql. It creates the library tables and fills loans with two million generated rows spread over ten years, members with fifty thousand rows and items with two hundred thousand rows. Loading takes a few minutes. When it has finished, run ANALYZE on every table so that the planner has fresh statistics; without this step your plans will not match the ones discussed in the lab.</p>
+<p>Turn on timing in psql with \timing so that every statement reports how long it took. Run each query twice and use the second timing, because the first run also pays for reading pages from disk into the cache.</p>
+
+<h2>Exercise 4.1: A sequential scan</h2>
+<p>Run EXPLAIN on a query that finds the loans of one member by member number. The plan has a single node, Seq Scan on loans, with a filter on member_no. Read the estimated cost: the first number is the cost before the first row can be returned and the second is the total. Read the estimated number of rows and compare it with the number the query actually returns.</p>
+<p>Now create an index on loans(member_no) and run EXPLAIN again. The plan should change to an index scan or a bitmap heap scan with a bitmap index scan below it. Note the new estimated cost and the timing of the query itself.</p>
+
+<h2>Exercise 4.2: When the index is ignored</h2>
+<p>Write a query for all loans made in the last ten years. Even with an index on loaned_on, the planner chooses a sequential scan. Explain why using the estimated row count: nearly every row matches, so visiting the table through the index would read every page anyway, in random order. Change the condition to the last seven days and check that the index is now used.</p>
+<p>Then search for members by lower(email) and observe that a plain index on email is not used. Create an expression index on lower(email) and run the query again.</p>
+
+<h2>Exercise 4.3: Measuring real work</h2>
+<p>EXPLAIN shows estimates. To see what actually happened, add the ANALYZE option, which runs the query and reports the real number of rows and the real time spent in each node next to the estimates.</p>
+<p>Exercise 4.3: run EXPLAIN (ANALYZE, BUFFERS) on the overdue-loans query and record how many shared buffers were hit and read. A buffer hit means the page was already in PostgreSQL's shared memory; a read means it had to be fetched from the operating system or the disk. Run the query again and compare: on the second run almost everything should be a hit.</p>
+<p>Next, create the partial index on loans(due_on) WHERE returned_on IS NULL from Lecture 5, run EXPLAIN (ANALYZE, BUFFERS) once more, and compare the number of buffers touched. Record both plans in your lab notebook with a sentence explaining the difference.</p>
+
+<h2>Exercise 4.4: Joins in plans</h2>
+<p>Run EXPLAIN ANALYZE on the query from Lab 2 that lists every member with the number of loans in the current year. Identify the join node and its type: nested loop, hash join or merge join. A hash join builds a hash table from the smaller input and probes it with the larger; a nested loop runs the inner side once for each outer row and is efficient only when the inner side is cheap, usually because of an index; a merge join walks two inputs sorted on the join key.</p>
+<p>Compare the estimated and actual row counts at each node. Where they differ by more than a factor of ten, the planner was misled, and a different plan might have been better. Write down which node was misestimated and suggest a reason.</p>
+
+<h2>Exercise 4.5: Cost of writes</h2>
+<p>Time an insert of ten thousand loans with no secondary indexes on loans. Then create indexes on member_no, item_no, loaned_on and due_on and time the same insert again. Explain the difference in terms of the work each index adds to every insert.</p>
+
+<h2>Exercise 4.6: Statistics and misestimates</h2>
+<p>Create a copy of the loans table with CREATE TABLE ... AS SELECT, and do not run ANALYZE on it. Run EXPLAIN on a query that filters the copy by member_no and note the estimated row count. Then run ANALYZE on the copy and run EXPLAIN again. The estimate changes, sometimes by a large factor, because the planner previously had no statistics and fell back on default assumptions.</p>
+<p>Look at the statistics PostgreSQL collected by querying the pg_stats view for the copy. Find the most common values of member_no and their frequencies, and the histogram bounds of loaned_on. Explain in one sentence how the planner would use the histogram to estimate the number of loans made in a given month.</p>
+<p>Finally, insert one hundred thousand loans for a single member into the copy and run the member query again without running ANALYZE. The planner still believes that member has few loans and may choose an index scan that now visits a hundred thousand scattered rows. Run ANALYZE and compare the new plan. Write down what this tells you about bulk loads in production systems.</p>
+
+<h2>Common plan nodes</h2>
+<p>Seq Scan reads the whole table. Index Scan walks an index and fetches each matching row from the table. Index Only Scan answers from the index alone, visiting the table only for pages whose visibility is uncertain. Bitmap Index Scan collects matching row locations into a bitmap, and Bitmap Heap Scan then reads the marked pages in physical order. Sort, Hash, Aggregate and Limit do what their names suggest, and Gather appears when parallel workers are used.</p>
+<p>When a node shows Rows Removed by Filter, the scan below it read rows that the condition then discarded. A large number there, compared with the rows returned, usually means a missing or unusable index for that condition.</p>
+
+<h2>Sign-off</h2>
+<p>Your demonstrator must sign off Exercises 4.1 to 4.4 during your timetabled lab session no later than week 6. Bring your lab notebook with the recorded plans; the demonstrator will ask you to explain one of them. Exercise 4.5 is optional and is not part of the sign-off.</p>
+<p>Lab sign-offs are not marked, but the module handbook requires them for access to the January examination resit opportunity, so do not leave them until the last session.</p>
+
+<h2>Reference: reading a plan</h2>
+<ul>
+<li>Plans are trees; read them from the innermost, most indented node outwards.</li>
+<li>cost=a..b gives the estimated start-up and total cost in arbitrary units.</li>
+<li>rows= is the planner's estimate; actual rows comes only with ANALYZE.</li>
+<li>loops= tells you how many times a node ran; multiply its time by it.</li>
+<li>Buffers: shared hit and read count pages found in memory and pages fetched.</li>
+</ul>
+</body>
+</html>

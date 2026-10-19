@@ -1,0 +1,204 @@
+{
+  "schema_version": "retrieval-manifest/v1",
+  "dataset": "courseflow-retrieval",
+  "dataset_version": "v1",
+  "case_schema_version": "retrieval-case/v1",
+  "description": "Synthetic retrieval benchmark: two fictional courses, a superseded coursework brief, labelled distractors and two hard-invariant probes.",
+  "synthetic": true,
+  "institution": "Quillmere Institute (fictional)",
+  "licence": "MPL-2.0",
+  "frozen_on": "2026-10-19",
+  "expected_chunker": "span-pack/v1",
+  "expected_chunks": {
+    "current_versions": 39,
+    "all_versions": 41
+  },
+  "relevance_rule": "full-target-containment/v1",
+  "target_span_rule": "single-source-span/v1",
+  "dataset_hash_scheme": "sha256-path-and-bytes/v1",
+  "definitions": {
+    "full-target-containment/v1": "A target is the absolute range [T_start, T_end) of its quote in one resource version's extracted text. A retrieved chunk of that same resource version with range [C_start, C_end) satisfies the target if and only if C_start <= T_start and C_end >= T_end. Partial overlap does not count. A target group is satisfied when any one of its alternatives is satisfied.",
+    "single-source-span/v1": "Every labelled quote lies wholly inside exactly one SourceSpan of its resource version: S_start <= T_start and S_end >= T_end.",
+    "sha256-path-and-bytes/v1": "SHA-256 over the ASCII line 'sha256-path-and-bytes/v1' and a LF, then, for each input file in ascending bytewise order of its relative POSIX path encoded as UTF-8: the path bytes, one NUL byte, the file's byte length as ASCII decimal digits with no leading zeros, one NUL byte, then the file bytes. Inputs are manifest.json, cases.jsonl and every corpus file the manifest lists; dataset.sha256 and README.md are not inputs. The result is written to dataset.sha256 as 64 lowercase hexadecimal digits and a LF."
+  },
+  "invariant_rule": "A run fails if any hit, in any case, comes from a course other than the case's course or from a non-current resource version. An invariant case additionally fails if any hit comes from a version listed in its forbidden references. Invariant cases have no positive targets and are excluded from Recall@k and MRR denominators.",
+  "courses": [
+    {
+      "key": "ds101",
+      "code": "DS101",
+      "title": "Data Systems",
+      "resources": [
+        {
+          "key": "careers-fair-notice",
+          "type": "page",
+          "title": "Autumn careers fair and CV clinic",
+          "versions": [
+            {
+              "version": 1,
+              "file": "corpus/ds101/careers-fair-notice/v1.html"
+            }
+          ]
+        },
+        {
+          "key": "coursework-brief",
+          "type": "brief",
+          "title": "Coursework 1: The Riverside Community Library Loans Database",
+          "versions": [
+            {
+              "version": 1,
+              "file": "corpus/ds101/coursework-brief/v1.html"
+            },
+            {
+              "version": 2,
+              "file": "corpus/ds101/coursework-brief/v2.html"
+            }
+          ]
+        },
+        {
+          "key": "lab-02-sql-joins",
+          "type": "lab",
+          "title": "Lab 2: Joins, grouping and missing data",
+          "versions": [
+            {
+              "version": 1,
+              "file": "corpus/ds101/lab-02-sql-joins/v1.html"
+            }
+          ]
+        },
+        {
+          "key": "lab-04-query-plans",
+          "type": "lab",
+          "title": "Lab 4: Reading query plans",
+          "versions": [
+            {
+              "version": 1,
+              "file": "corpus/ds101/lab-04-query-plans/v1.html"
+            }
+          ]
+        },
+        {
+          "key": "lecture-01-relational-model",
+          "type": "lecture",
+          "title": "Lecture 1: The relational model",
+          "versions": [
+            {
+              "version": 1,
+              "file": "corpus/ds101/lecture-01-relational-model/v1.html"
+            }
+          ]
+        },
+        {
+          "key": "lecture-03-normal-forms",
+          "type": "lecture",
+          "title": "Lecture 3: Functional dependencies and normalisation",
+          "versions": [
+            {
+              "version": 1,
+              "file": "corpus/ds101/lecture-03-normal-forms/v1.html"
+            }
+          ]
+        },
+        {
+          "key": "lecture-05-indexing",
+          "type": "lecture",
+          "title": "Lecture 5: Indexes and access paths",
+          "versions": [
+            {
+              "version": 1,
+              "file": "corpus/ds101/lecture-05-indexing/v1.html"
+            }
+          ]
+        },
+        {
+          "key": "lecture-07-transactions",
+          "type": "lecture",
+          "title": "Lecture 7: Transactions and concurrency control",
+          "versions": [
+            {
+              "version": 1,
+              "file": "corpus/ds101/lecture-07-transactions/v1.html"
+            }
+          ]
+        },
+        {
+          "key": "module-handbook",
+          "type": "handbook",
+          "title": "DS101 module handbook 2026-27",
+          "versions": [
+            {
+              "version": 1,
+              "file": "corpus/ds101/module-handbook/v1.html"
+            }
+          ]
+        },
+        {
+          "key": "reading-document-stores",
+          "type": "reading",
+          "title": "Supplementary reading: Document stores and denormalised design",
+          "versions": [
+            {
+              "version": 1,
+              "file": "corpus/ds101/reading-document-stores/v1.html"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "snd210",
+      "code": "SND210",
+      "title": "Sound Design for Media",
+      "resources": [
+        {
+          "key": "lecture-04-loudness-targets",
+          "type": "lecture",
+          "title": "Lecture 4: Loudness and normalisation",
+          "versions": [
+            {
+              "version": 1,
+              "file": "corpus/snd210/lecture-04-loudness-targets/v1.html"
+            }
+          ]
+        },
+        {
+          "key": "portfolio-brief",
+          "type": "brief",
+          "title": "Coursework 1: Podcast mix portfolio",
+          "versions": [
+            {
+              "version": 1,
+              "file": "corpus/snd210/portfolio-brief/v1.html"
+            }
+          ]
+        },
+        {
+          "key": "studio-handbook",
+          "type": "handbook",
+          "title": "SND210 studio and module handbook 2026-27",
+          "versions": [
+            {
+              "version": 1,
+              "file": "corpus/snd210/studio-handbook/v1.html"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "cases_file": "cases.jsonl",
+  "case_count": 14,
+  "category_counts": {
+    "keyword": 4,
+    "paraphrase": 5,
+    "mixed": 3,
+    "stale_version_invariant": 1,
+    "cross_course_invariant": 1
+  },
+  "positive_case_count": 12,
+  "invariant_case_count": 2,
+  "critical_case": {
+    "case_id": "ds101-mixed-cw1-deadline",
+    "reason": "A deadline is the most consequential fact a student acts on, and this one is surrounded by the strongest traps in the corpus: the superseded brief's earlier date, another course's near-identical sentence, and handbook text about deadlines that gives none. If retrieval cannot surface the current deadline near the top, deadline extraction cannot be grounded in the right source.",
+    "rule": "In the selected default retrieval mode, at least one acceptable alternative of this case must be satisfied within the top 3 hits. Chosen before any retrieval score was computed."
+  }
+}

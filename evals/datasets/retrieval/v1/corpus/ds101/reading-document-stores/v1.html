@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DS101 Supplementary reading: Document stores and denormalised design</title>
+</head>
+<body>
+<h1>DS101 Data Systems - Supplementary reading: Document stores and denormalised design</h1>
+<p>Quillmere Institute is a fictional institution. This material was written for the CourseFlow retrieval benchmark and describes no real course.</p>
+<p>This reading is optional. It is not examined, and it is not needed for Coursework 1. It is here because students regularly ask how the relational ideas in this module relate to the document databases they meet in web development.</p>
+
+<h2>What a document store is</h2>
+<p>A document store keeps data as self-contained documents, usually in a JSON-like format, grouped into collections. A document can contain nested objects and arrays, so a single document can hold an order together with all of its order lines, or a customer together with a list of delivery addresses. There is no fixed schema at the level of the collection: two documents in the same collection may have different fields.</p>
+<p>The appeal is that the shape of the stored data can match the shape of the objects in the application. Reading an order with its lines is one lookup by key, with no joins, and the result arrives already assembled. For applications whose main access pattern is fetching and saving whole aggregates by their identifier, this is both simple and fast.</p>
+
+<h2>Embedding versus referencing</h2>
+<p>The central design decision in a document store is whether related data is embedded in a document or referenced by an identifier. Embedding puts the related data inside the parent document. Referencing stores only the identifier of another document, which the application must then fetch separately, because most document stores offer limited or no joins.</p>
+<p>Embedding works well when the related data belongs to the parent and is read with it: the lines of an order, the steps of a recipe. It works poorly when the related data is shared by many parents or changes independently of them. An author embedded in every book document must be updated in every book when the author's details change.</p>
+<p>Copying a customer's address into every order document means a change of address must be applied to many documents, a cost that document stores accept in exchange for reading an order without joins. Sometimes this is exactly right. The address on an order should be the address the order was delivered to, which must not change when the customer moves; copying it into the order records a historical fact rather than duplicating a current one.</p>
+
+<h2>Denormalisation as a deliberate choice</h2>
+<p>Relational designers denormalise too, but they treat it as an optimisation with a cost. A reporting table that stores each member's total number of loans avoids recomputing the total for every report, at the price of keeping the stored total in step with the loans table. If something updates loans without updating the total, the report is wrong and nothing warns you.</p>
+<p>The difference between the two worlds is the default. A relational design starts normalised and adds redundancy where measurements justify it, with a mechanism, such as a trigger or a scheduled rebuild, that keeps each copy correct. A document design starts from the access patterns and embeds by default, accepting redundancy, and has to think carefully about every piece of data that is shared or that changes.</p>
+
+<h2>Consistency in distributed stores</h2>
+<p>Many document stores are designed to run on several machines, with each document stored on more than one of them. Keeping the copies in step costs coordination between machines, and when the network between them fails, a system must choose between refusing some requests and answering with data that may be out of date. Systems that choose availability offer eventual consistency: if no new writes arrive, all copies will eventually agree, but a read straight after a write may return the old value.</p>
+<p>This is a different use of the word consistency from the C in ACID. ACID consistency means that a transaction preserves the declared integrity constraints. Replica consistency means that copies of the same data on different machines agree. A system can offer one without the other, and confusing the two is a common source of misunderstanding in design discussions.</p>
+<p>Modern document stores increasingly offer multi-document transactions and configurable read and write guarantees, narrowing the gap with relational systems. The trade-off has not disappeared, though: the stronger the guarantee requested, the more coordination each operation needs, and the more latency it adds.</p>
+
+<h2>Indexes in document stores</h2>
+<p>Document stores index fields inside documents, including fields of nested objects and the elements of arrays. A secondary index on a field such as customer.city lets queries find documents by that field without scanning the collection, with the same trade-off as in a relational system: faster reads, slower writes and more storage. Compound indexes follow the same left-to-right rules as composite B-tree indexes, because many document stores use B-trees underneath.</p>
+
+<h2>When to choose which</h2>
+<p>A relational database is the safer default when the data is shared between many parts of an application, when integrity rules matter, and when questions about the data are not all known in advance. A document store fits when the application reads and writes self-contained aggregates by key, when the structure of those aggregates varies, and when the team accepts responsibility for keeping duplicated data correct in application code.</p>
+<p>Many systems use both: a relational database as the system of record, and a document store or search index fed from it for particular read-heavy features. The rule from Lecture 3 still applies in such systems. Know where every copy of each fact lives, why it is there, and what keeps it correct.</p>
+
+<h2>Questions to think about</h2>
+<ul>
+<li>Which data in the library loans domain would you embed, and which would you reference?</li>
+<li>Is the address on a loan record a current fact or a historical one?</li>
+<li>What would eventual consistency mean for the number of copies of a book shown as available?</li>
+</ul>
+</body>
+</html>

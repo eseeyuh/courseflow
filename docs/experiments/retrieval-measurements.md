@@ -9,6 +9,8 @@
 
 All inputs were synthetic: generated word sequences, or invented sample documents. No course material, source text or query text was sent for these measurements or is recorded here.
 
+These measurements cover speed and plumbing, not retrieval quality. Retrieval quality is measured separately on a frozen benchmark: see [evals/README.md](../../evals/README.md).
+
 ## Environment
 
 | | |

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DS101 Coursework 1 brief (version 1)</title>
+</head>
+<body>
+<h1>DS101 Data Systems - Coursework 1: The Riverside Community Library Loans Database</h1>
+<p>Quillmere Institute is a fictional institution. This material was written for the CourseFlow retrieval benchmark and describes no real course.</p>
+
+<h2>Overview</h2>
+<p>Coursework 1 asks you to design and partly implement the database behind the loans desk of the Riverside Community Library, a small lending library run by volunteers. The library currently keeps its records in a single shared spreadsheet with one row per loan. Each row repeats the member's name, postal address and telephone number, the title, author and shelf mark of the item, and the dates on which the item was borrowed, due back and returned. Volunteers have reported that addresses are out of date in some rows but not in others, that some items appear twice with slightly different titles, and that nobody can say with confidence how many items are on loan at any moment.</p>
+<p>Your task is to replace the spreadsheet with a relational design that removes these problems, to implement that design in PostgreSQL, and to show that it answers the questions the volunteers care about. The coursework draws on the lectures on the relational model, entity-relationship modelling and normalisation, and on the first two labs.</p>
+<p>Coursework 1 is worth 40 percent of the module mark. The remaining 60 percent comes from the written examination in January.</p>
+
+<h2>Submission</h2>
+<p>Submit Coursework 1 through the module's coursework portal by 14:00 (UK time) on Friday 6 November 2026.</p>
+<p>Coursework 1 may be completed in groups of up to three students, with one submission per group and a short statement of each member's contribution.</p>
+<p>The submission is a single PDF report together with one SQL script. Name the script with your group number, for example group07_schema.sql. The script must run without errors on a fresh PostgreSQL 16 database, because the markers will run it exactly as submitted.</p>
+<p>The report has a limit of 2,000 words, excluding the diagrams, tables, the SQL listings in the appendix and the reference list. Text beyond the limit will not be read.</p>
+
+<h2>What you must produce</h2>
+<ol>
+<li>An entity-relationship diagram of the library's loans domain in crow's-foot notation, showing every entity, its attributes, its primary key and the cardinality and optionality of every relationship.</li>
+<li>A relational schema derived from the diagram, with every primary key, foreign key, NOT NULL and CHECK constraint written out.</li>
+<li>A normalisation analysis that starts from the spreadsheet as a single relation, lists the functional dependencies you identified, and decomposes the relation step by step. Explain why your final schema is in third normal form.</li>
+<li>An SQL script that creates the schema, inserts a small set of realistic test data (at least ten members, twenty items and thirty loans) and runs the five queries listed below.</li>
+<li>A short reflection on one design decision you would revisit if the library grew to several branches.</li>
+</ol>
+
+<h2>The five queries</h2>
+<p>Your script must include one query for each of the following questions. Each query must be preceded by a comment that restates the question it answers.</p>
+<ol>
+<li>Which items are currently on loan, and to whom?</li>
+<li>Which loans are overdue today, ordered by the number of days overdue, longest first?</li>
+<li>How many loans has each member made in the current calendar year, including members who have made none?</li>
+<li>Which authors have more than three different titles in the collection?</li>
+<li>Which items have never been borrowed?</li>
+</ol>
+<p>Queries that return the correct rows for the test data but would return wrong rows for other reasonable data, for example because they compare dates as text, will lose marks.</p>
+
+<h2>Use of tools</h2>
+<p>Generative AI tools must not be used for any part of this coursework. Diagramming tools, spell checkers and the PostgreSQL documentation may be used freely.</p>
+
+<h2>Marking scheme</h2>
+<table>
+<tr><th>Component</th><th>Weight</th><th>What earns high marks</th></tr>
+<tr><td>Entity-relationship diagram</td><td>20%</td><td>Complete, consistent with the schema, correct cardinalities and optionality.</td></tr>
+<tr><td>Relational schema and constraints</td><td>20%</td><td>Keys and constraints that make invalid states impossible rather than merely unlikely.</td></tr>
+<tr><td>Normalisation analysis</td><td>25%</td><td>Dependencies identified correctly, decomposition explained, final normal form argued.</td></tr>
+<tr><td>SQL script and queries</td><td>25%</td><td>Runs cleanly, realistic test data, every query correct in general and not only for the sample.</td></tr>
+<tr><td>Reflection</td><td>10%</td><td>A specific, well-argued design change with its costs as well as its benefits.</td></tr>
+</table>
+
+<h2>Advice</h2>
+<p>Start from the questions the volunteers ask rather than from the spreadsheet columns. A design that stores every fact once is easier to keep correct, but you still need to be able to answer each of the five questions with a query that a volunteer could understand when it is explained to them.</p>
+<p>Keep the diagram and the schema in step. Markers check that every entity in the diagram appears as a table, that every relationship appears as a foreign key or a linking table, and that nothing appears in the schema that the diagram does not explain. If you change one, change the other in the same sitting.</p>
+<p>Write the test data so that it exercises the awkward cases: a member with no loans, an item that has never been borrowed, a loan returned on its due date, a loan returned late, and an item borrowed more than once by the same member. Data that only contains tidy cases will not reveal a wrong query.</p>
+<p>Extension requests follow the process in the module handbook. Questions about this brief should be posted on the module discussion board so that every student sees the answer.</p>
+
+<h2>Learning outcomes assessed</h2>
+<ul>
+<li>LO1: model a realistic domain with entities, attributes and relationships.</li>
+<li>LO2: derive a relational schema with appropriate keys and integrity constraints.</li>
+<li>LO3: use functional dependencies to evaluate and improve a schema.</li>
+<li>LO4: write correct SQL queries for realistic information needs.</li>
+</ul>
+<p>Brief version 1, published 21 September 2026.</p>
+</body>
+</html>

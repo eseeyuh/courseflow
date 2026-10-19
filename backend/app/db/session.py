@@ -9,6 +9,10 @@ application lifespan. One ``AsyncSession`` per request, created from the
 factory by the ``get_session`` dependency.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -38,3 +42,23 @@ def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSessi
     # expire_on_commit=False: attributes stay readable after commit. Reloading
     # expired attributes would be implicit I/O, which async SQLAlchemy forbids.
     return async_sessionmaker(engine, expire_on_commit=False)
+
+
+@asynccontextmanager
+async def read_only_snapshot(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[AsyncSession]:
+    """One read-only REPEATABLE READ transaction: every statement in it reads
+    the same snapshot, so what was verified is exactly what is read next.
+    Always rolled back (it writes nothing). Keep it short, and never hold it
+    across an external call."""
+    async with session_factory() as session:
+        # Isolation must be chosen before the transaction starts. asyncpg's
+        # read-only flag needs SERIALIZABLE in SQLAlchemy, so READ ONLY is
+        # set by the transaction's first statement instead.
+        await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+        await session.execute(text("SET TRANSACTION READ ONLY"))
+        try:
+            yield session
+        finally:
+            await session.rollback()

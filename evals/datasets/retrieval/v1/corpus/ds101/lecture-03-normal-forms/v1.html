@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DS101 Lecture 3: Functional dependencies and normalisation</title>
+</head>
+<body>
+<h1>DS101 Data Systems - Lecture 3: Functional dependencies and normalisation</h1>
+<p>Quillmere Institute is a fictional institution. This material was written for the CourseFlow retrieval benchmark and describes no real course.</p>
+
+<h2>Where redundancy comes from</h2>
+<p>Most poor designs start as a list. Someone records events as they happen, one row per event, and copies into each row whatever details are needed to make sense of it. The library's spreadsheet is a typical example: each loan row carries the member's name and address and the item's title and author. Nothing about this is wrong on the first day. The trouble begins when the details change, because the same detail now lives in many places.</p>
+<p>Redundancy is not merely a waste of space. Storage is cheap; inconsistency is expensive. A design that stores a fact more than once creates the possibility that the copies disagree, and a database that allows two answers to the same question cannot be trusted to give either of them.</p>
+
+<h2>Three kinds of anomaly</h2>
+<p>An update anomaly arises when one fact is stored redundantly in several rows, so changing a single copy leaves the remaining copies contradicting it. If a member moves house and a volunteer corrects the address on the most recent loan row only, the spreadsheet now holds two addresses for the same person, and a letter about an overdue item may go to the old one.</p>
+<p>An insertion anomaly arises when a fact cannot be recorded without also recording an unrelated fact. In a one-row-per-loan design there is nowhere to record a new member who has not yet borrowed anything, or a newly catalogued item that is still on the shelf, without inventing a placeholder loan.</p>
+<p>A deletion anomaly arises when removing one fact removes another that should have survived. If the only loan of a rarely borrowed item is deleted because the loan record is no longer needed, the library also loses the only record that the item exists.</p>
+<p>All three anomalies have the same cause: the relation describes more than one kind of thing, and the attributes of each thing depend on different keys. Normalisation is the systematic way to find those dependencies and separate the things.</p>
+
+<h2>Functional dependencies</h2>
+<p>A functional dependency X -&gt; Y holds in a relation when any two tuples that agree on the attributes X also agree on the attributes Y. In the loan spreadsheet, member_no -&gt; member_name, member_address holds, because the library issues each membership number to exactly one person. item_no -&gt; title, author, shelf_mark holds for the same reason. The loan itself is identified by the item and the moment it was borrowed, so item_no, loaned_at -&gt; member_no, due_on, returned_on.</p>
+<p>A dependency is a statement about the real world, not about the data you happen to have. If the sample spreadsheet contains no two members with the same name, the data is consistent with member_name -&gt; member_no, but the dependency does not hold, because the library could register a second person with the same name tomorrow. Dependencies come from asking domain experts what is always true, not from inspecting rows.</p>
+<p>A dependency is trivial when Y is a subset of X, as in member_no, member_name -&gt; member_name. Trivial dependencies hold in every relation and play no part in normalisation. Dependencies can also be derived from others: if X -&gt; Y and Y -&gt; Z then X -&gt; Z. The closure of a set of attributes is everything it determines through such derivations, and computing closures is how we find candidate keys. A set of attributes is a superkey exactly when its closure contains every attribute of the relation.</p>
+
+<h2>First and second normal form</h2>
+<p>A relation is in first normal form when every attribute holds a single value from its domain. A column holding a comma-separated list of authors violates first normal form, because the database cannot enforce anything about the individual authors and queries must take the list apart as text. The repair is to move the repeating values into a separate relation with one row per value.</p>
+<p>Second normal form concerns relations whose key has several attributes. A relation is in second normal form when no non-key attribute depends on only part of a candidate key. In a relation keyed by item_no and loaned_at, the attribute title depends on item_no alone, so the relation is not in second normal form. Moving title, author and shelf_mark into an items relation keyed by item_no removes the partial dependency.</p>
+
+<h2>Third normal form</h2>
+<p>Third normal form removes transitive dependencies of non-key attributes on the key. A relation is in third normal form when, for every non-trivial functional dependency X -&gt; A that holds in it, either X is a superkey or A is part of some candidate key. In a loans relation that still carries member_address, the dependency member_no -&gt; member_address holds while member_no is not a superkey of the loans relation, so the relation is not in third normal form. Moving member details into a members relation keyed by member_no removes the transitive dependency.</p>
+<p>The practical test for third normal form is a question you can ask of every non-key column: does this column describe the thing the key identifies, and only that thing? A loan has a due date. A loan does not have an address; its borrower does.</p>
+
+<h2>Boyce-Codd normal form</h2>
+<p>A relation is in Boyce-Codd normal form (BCNF) when, for every non-trivial functional dependency X -&gt; Y that holds in it, X is a superkey. BCNF is slightly stronger than third normal form: it drops the exception for attributes that belong to a candidate key. The difference shows up only when a relation has overlapping candidate keys.</p>
+<p>Consider a relation recording which volunteer staffs which desk in which session, where each volunteer works at only one desk and each desk has one volunteer per session. The dependencies are session, desk -&gt; volunteer and volunteer -&gt; desk. The relation is in third normal form, because desk is part of a candidate key, but it is not in BCNF, because volunteer is not a superkey. Decomposing it into BCNF loses the ability to enforce session, desk -&gt; volunteer with a key on a single table. This is the classic trade-off: BCNF removes every redundancy caused by functional dependencies, but it is not always dependency preserving.</p>
+
+<h2>Decomposition</h2>
+<p>We normalise by decomposition: replacing one relation with several smaller ones whose natural join gives back the original. A decomposition must be lossless. Splitting loans(item_no, loaned_at, member_no, member_name) into loans(item_no, loaned_at, member_no) and members(member_no, member_name) is lossless because the common attribute member_no is a key of members. Splitting it on member_name instead would be lossy: joining the pieces back together would pair loans with every member who happens to share a name, producing tuples that never existed.</p>
+<p>The rule to remember is that the attributes shared by the two pieces must functionally determine all the attributes of at least one of them. When that holds, the join reconstructs exactly the original relation. A decomposition should also preserve dependencies where possible, so that every dependency can still be checked within a single relation, usually by a key.</p>
+
+<h2>Worked example: the loans spreadsheet</h2>
+<p>Start with the spreadsheet as one relation: loans_sheet(member_no, member_name, member_address, item_no, title, author, shelf_mark, loaned_at, due_on, returned_on). The dependencies agreed with the volunteers are: member_no determines member_name and member_address; item_no determines title, author and shelf_mark; and item_no together with loaned_at determines member_no, due_on and returned_on, because an item can only be lent to one person at a time.</p>
+<p>Compute the closure of {item_no, loaned_at}. It contains member_no, due_on and returned_on directly, then member_name and member_address through member_no, and title, author and shelf_mark through item_no: every attribute. So {item_no, loaned_at} is a superkey, and since neither attribute alone determines everything, it is a candidate key. It is the only one.</p>
+<p>The relation is in first normal form, assuming one author per item for now. It is not in second normal form, because title, author and shelf_mark depend on item_no, which is only part of the key. Decompose into items(item_no, title, author, shelf_mark) and loans_2(item_no, loaned_at, member_no, member_name, member_address, due_on, returned_on). Both pieces share item_no, which is the key of items, so the decomposition is lossless.</p>
+<p>loans_2 is in second normal form but not third, because member_name and member_address depend on member_no, which is not a superkey of loans_2. Decompose again into members(member_no, member_name, member_address) and loans(item_no, loaned_at, member_no, due_on, returned_on). The shared attribute member_no is the key of members, so this step is lossless too, and every dependency can now be enforced by a key: items by item_no, members by member_no, loans by (item_no, loaned_at).</p>
+<p>Now remove the simplifying assumption. An item can have several authors, and an author can have several items. Author is not determined by item_no after all, and storing several authors in one column would break first normal form. The repair is a relation item_authors(item_no, author_id) with a key on both attributes, and an authors relation for the details of each author. The final design has five relations, each describing one kind of thing, and each fact in the original spreadsheet is stored exactly once.</p>
+
+<h2>When not to normalise further</h2>
+<p>Normalisation removes redundancy that the database would otherwise have to keep consistent. It is not a goal in itself. Reporting systems often store derived, denormalised copies of data deliberately, because they are read far more often than they are written and their contents are rebuilt from a normalised source rather than edited in place. The skill is to know which copies exist, why, and what keeps them correct.</p>
+<p>For a system of record, such as the loans database in Coursework 1, the default is the opposite: store each fact once, in the relation that the fact describes, and derive everything else with queries.</p>
+
+<h2>Summary</h2>
+<ul>
+<li>Redundancy causes update, insertion and deletion anomalies.</li>
+<li>Functional dependencies describe what is always true in the domain.</li>
+<li>2NF removes partial dependencies, 3NF transitive ones, and BCNF requires every determinant to be a superkey.</li>
+<li>Decompositions must be lossless and should preserve dependencies.</li>
+</ul>
+<p>Practice sheet 3 contains six relations to normalise; worked answers will be released after the lab.</p>
+</body>
+</html>
