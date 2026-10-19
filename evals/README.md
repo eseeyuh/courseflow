@@ -57,7 +57,7 @@ The benchmark is small, so the differences are not claimed to be statistically s
 
 ### Running it
 
-The evaluation drops and recreates a dedicated database on every run. It must be set explicitly, never derived from `DATABASE_URL`. The name must be `courseflow_eval` and the host must be loopback or the Compose `db` service:
+The evaluation drops and recreates a dedicated database on every run. It must be set explicitly, never derived from `DATABASE_URL`. The name must be `courseflow_eval`, the host must be loopback or the Compose `db` service, and the URL may have no query parameters (a driver could apply them over the checked host or database):
 
 ```bash
 export COURSEFLOW_EVAL_DATABASE_URL=postgresql+asyncpg://courseflow:<password>@127.0.0.1:5432/courseflow_eval

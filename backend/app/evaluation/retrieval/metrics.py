@@ -47,7 +47,7 @@ class Hit:
     end: int
     ordinal: int = 0  # the chunk's ordinal in its version
     # The mode's ordering score (distance, ts_rank_cd or exact RRF sum): used
-    # only to find ties, whose order the rankers break by row IDs.
+    # only to find ties, which the rankers break by natural identity.
     score: object = None
 
 
@@ -66,7 +66,7 @@ class CaseResult:
     critical: bool
     first_relevant_rank: int | None
     # Ranks of the hits sharing the first relevant hit's exact score: when
-    # wider than one rank, the rank depends on the rankers' row-ID tie-break.
+    # wider than one rank, the rank was decided by the natural-identity tie-break.
     first_relevant_tie: tuple[int, int] | None
     # Per rank: "course/resource/vN#ordinal" ("unknown" if not ingested).
     hits: tuple[str, ...]

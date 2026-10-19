@@ -99,6 +99,11 @@ def test_any_database_but_courseflow_eval_is_refused(name: str) -> None:
         ("postgresql+asyncpg://u:p@10.0.0.5/courseflow_eval", "is not loopback"),
         ("postgresql+asyncpg://u:p@dbserver/courseflow_eval", "is not loopback"),
         ("postgresql+asyncpg:///courseflow_eval", "is not loopback"),
+        # Driver-applied query parameters override the checked URL fields.
+        ("postgresql+asyncpg://u:p@127.0.0.1/courseflow_eval?host=prod.example.com", "no query"),
+        ("postgresql+asyncpg://u:p@127.0.0.1/courseflow_eval?database=courseflow", "no query"),
+        ("postgresql+asyncpg://u:p@127.0.0.1/courseflow_eval?port=6543", "no query"),
+        ("postgresql+asyncpg://u:p@127.0.0.1/courseflow_eval?ssl=disable", "no query"),
     ],
 )
 def test_unsafe_evaluation_urls_are_refused(url: str | None, message: str) -> None:
@@ -130,6 +135,16 @@ def test_the_application_database_is_refused_even_when_named_courseflow_eval(app
 )
 def test_a_local_courseflow_eval_database_is_accepted(url: str) -> None:
     assert guard(url).url.database == "courseflow_eval"
+
+
+def test_a_guarded_url_never_carries_overriding_query_parameters() -> None:
+    database = guard(EVAL_URL)
+    assert not database.url.query
+    tampered = EvalDatabase.__new__(EvalDatabase)
+    object.__setattr__(tampered, "url", database.url.update_query_dict({"host": "x"}))
+    object.__setattr__(tampered, "_token", database._token)
+    with pytest.raises(EvalDatabaseRefused, match="not a guarded"):
+        recreate_eval_database(tampered)
 
 
 def test_destructive_helpers_accept_only_a_guarded_database() -> None:

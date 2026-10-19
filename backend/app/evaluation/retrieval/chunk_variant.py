@@ -356,7 +356,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             m: v["lexical"][m] for m in ("recall@1", "recall@3", "recall@5", "mrr@10",
                                          "critical_rank", "invariant_failures")},
             "missing": v["document_inputs"]} for k, v in configs.items()}}, indent=1))  # fmt: skip
-    return 0 if matches else 6
+    sound = all(
+        c["stale_lifecycle_ok"] and c["lexical"]["invariant_failures"] == 0
+        for c in configs.values()
+    )
+    return 0 if matches and sound else 6
 
 
 if __name__ == "__main__":

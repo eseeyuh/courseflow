@@ -24,8 +24,9 @@ Each run, from zero:
 database, and requires byte-identical ``results``: every ordered hit list,
 rank, metric and the selection (only ``run`` metadata such as timestamps may
 differ). Reports (JSON and Markdown) go to a timestamped directory under
-``evals/runs/`` (ignored by git) and, as the latest curated copy, to
-``evals/reports/``. No chunk or source text is written anywhere.
+``evals/runs/`` (ignored by git) and, only for a passing and identical
+run, as the latest curated copy to ``evals/reports/``. No chunk or source
+text is written anywhere.
 
 Exit codes: 0 ok; 1 unexpected error; 3 invalid input; 6 evaluation failed
 (invariant failure, no eligible default, or the critical rule not met);
@@ -167,8 +168,8 @@ def _selection_json(selection: Selection) -> dict[str, Any]:
 
 
 def _ordering_score(mode: str, hit: Any) -> object:
-    """The part of each mode's order that is not a row-ID tie-break: hits equal
-    on it are ordered by resource version ID, which differs between seeds."""
+    """The part of each mode's order before its tie-break: hits equal on it
+    are ordered by natural identity (source URI, version, chunk ordinal)."""
     if mode == "vector":
         return hit.vector_distance
     if mode == "lexical":
@@ -513,7 +514,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             "selection_rule": SELECTION_RULE,
         }
         stamp = started.strftime("%Y%m%dT%H%M%SZ")
-        written = write_reports(outputs[0], meta, [args.runs_dir / stamp, args.reports_dir])
+        # The curated copy is replaced only by a passing, identical run.
+        targets = [args.runs_dir / stamp]
+        if identical and not failures(outputs[0]):
+            targets.append(args.reports_dir)
+        written = write_reports(outputs[0], meta, targets)
     except (DatasetError, SnapshotError) as exc:
         _emit({"status": "error", "error": "invalid", "problems": list(exc.problems)})
         return EXIT_INVALID

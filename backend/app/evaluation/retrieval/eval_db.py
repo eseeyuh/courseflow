@@ -12,6 +12,8 @@ nothing else. It requires:
 - ``COURSEFLOW_EVAL_DATABASE_URL`` to be set (it is never derived);
 - a PostgreSQL URL whose database name is exactly ``courseflow_eval``;
 - a host that is loopback or the Compose ``db`` service;
+- no query string: drivers apply query parameters such as ``?host=`` or
+  ``?database=`` over the URL's own fields, which would bypass these checks;
 - that it is not the application's own ``DATABASE_URL`` (compared after
   normalised parsing: driver family, host, port, database, user).
 
@@ -90,6 +92,11 @@ def require_eval_database(
     if not raw:
         raise EvalDatabaseRefused(f"{EVAL_DATABASE_ENV} is not set")
     url = _parse(raw, EVAL_DATABASE_ENV)
+    if url.query:
+        raise EvalDatabaseRefused(
+            f"{EVAL_DATABASE_ENV} must have no query parameters (they can override host, "
+            "port or database)"
+        )
     if url.get_backend_name() != "postgresql":
         raise EvalDatabaseRefused("the evaluation database must be PostgreSQL")
     if url.database != EVAL_DATABASE_NAME:
@@ -108,7 +115,11 @@ def require_eval_database(
 
 def _checked(database: EvalDatabase) -> URL:
     # Defence in depth: re-check what the destructive statement will name.
-    if not isinstance(database, EvalDatabase) or database.url.database != EVAL_DATABASE_NAME:
+    if (
+        not isinstance(database, EvalDatabase)
+        or database.url.database != EVAL_DATABASE_NAME
+        or database.url.query
+    ):
         raise EvalDatabaseRefused("not a guarded evaluation database")
     return database.url
 
