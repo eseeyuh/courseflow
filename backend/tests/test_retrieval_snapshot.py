@@ -770,3 +770,27 @@ async def test_replay_refuses_a_snapshot_for_another_active_space(
             max_batch_items=64,
             inputs=inputs,
         )
+
+
+# --- the committed snapshot ---------------------------------------------------------------
+
+COMMITTED = (
+    DATASET_DIR.parents[2]
+    / "snapshots"
+    / "retrieval"
+    / "v1"
+    / "nebius-qwen3-embedding-8b-d4096-sv1.jsonl"
+)
+
+
+async def test_the_committed_snapshot_replays_every_frozen_input(
+    dataset: Dataset, inputs: ExpectedInputs
+) -> None:
+    provider = load_replay_provider(
+        COMMITTED, dataset=dataset, active_space=SPACE, max_batch_items=64, inputs=inputs
+    )
+    assert provider.snapshot_sha256 == file_sha256(COMMITTED.read_bytes())
+    result = await provider.embed(list(inputs.documents))
+    assert len(result.vectors) == 41
+    result = await provider.embed(list(inputs.queries))
+    assert len(result.vectors) == 14 and all(len(v) == 4096 for v in result.vectors)
