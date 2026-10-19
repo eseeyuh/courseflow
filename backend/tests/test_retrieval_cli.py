@@ -31,7 +31,7 @@ from app.db.models import (
 )
 from app.domain.enums import BlockKind, ModelCallErrorCategory
 from app.retrieval import cli
-from app.retrieval.search import SpanEvidence
+from app.retrieval.search import DEFAULT_SEARCH_MODE, SpanEvidence
 from tests.embedding_fakes import FakeEmbeddingProvider
 from tests.retrieval_seed import paragraphs, seed_course, seed_version
 
@@ -606,7 +606,7 @@ async def test_lexical_human_output_names_the_mode_and_its_score(
     _assert_safe_logs(err)
 
 
-async def test_vector_remains_the_default_mode(
+async def test_hybrid_is_the_default_mode(
     provider: FakeEmbeddingProvider,
     session_factory: async_sessionmaker[AsyncSession],
     capsys: pytest.CaptureFixture[str],
@@ -616,6 +616,24 @@ async def test_vector_remains_the_default_mode(
     code, result, _ = await _run(
         capsys, "search", "--course-id", str(course), "--query", MARKER, "--json"
     )
+
+    assert code == cli.EXIT_OK
+    assert result["mode"] == "hybrid" == DEFAULT_SEARCH_MODE.value
+    assert result["score_kind"] == "rrf" and result["fusion_version"] == "rrf-k60-depth50/v2"
+    assert result["query_format"] == "query/v1" and result["query_model_call_id"] is not None
+
+
+async def test_vector_stays_explicitly_selectable(
+    provider: FakeEmbeddingProvider,
+    session_factory: async_sessionmaker[AsyncSession],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    course = await _indexed_course(session_factory, capsys)
+
+    code, result, _ = await _run(
+        capsys, "search", "--course-id", str(course), "--query", MARKER, "--mode", "vector",
+        "--json",
+    )  # fmt: skip
 
     assert code == cli.EXIT_OK
     assert result["mode"] == "vector" and result["score_kind"] == "cosine_similarity"

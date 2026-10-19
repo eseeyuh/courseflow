@@ -21,12 +21,13 @@ EMBEDDING_DIMENSIONS, EMBEDDING_SPACE_VERSION), no API key, no provider
 client and no network, and it writes nothing. ``stats`` reports chunk and
 token-budget statistics of the course's current versions, also offline and
 read-only (it does not even need the embedding settings). ``search`` ranks the course's
-verified, current chunks: ``--mode vector`` (the default) embeds the question (one
-recorded provider call); ``--mode lexical`` matches its normalised words with PostgreSQL
-full-text search, offline like ``status`` (the embedding space settings, no API key, no
-provider client, no network); ``--mode hybrid`` runs both and fuses their rankings by
-reciprocal rank fusion (one recorded provider call, like vector; it fails rather than fall
-back to lexical when that call fails). All modes search the same verified corpus.
+verified, current chunks: ``--mode hybrid`` (the default, ``search.DEFAULT_SEARCH_MODE``)
+runs vector and lexical ranking and fuses them by reciprocal rank fusion (one recorded
+provider call; it fails rather than fall back to lexical when that call fails);
+``--mode vector`` embeds the question (one recorded provider call); ``--mode lexical``
+matches its normalised words with PostgreSQL full-text search, offline like ``status``
+(the embedding space settings, no API key, no provider client, no network). All modes
+search the same verified corpus.
 
 ``index`` and ``status`` print one JSON object on stdout. ``stats`` and
 ``search`` print readable text, or one JSON object with ``--json``; ``search`` it deliberately shows
@@ -68,6 +69,7 @@ from app.retrieval.indexing import (
 )
 from app.retrieval.search import (
     DEFAULT_K,
+    DEFAULT_SEARCH_MODE,
     IndexStateError,
     InvalidSearchRequest,
     ProvenanceError,
@@ -451,10 +453,11 @@ def _parser() -> argparse.ArgumentParser:
     search.add_argument(
         "--mode",
         choices=[m.value for m in SearchMode],
-        default=SearchMode.VECTOR.value,
+        default=DEFAULT_SEARCH_MODE.value,
         help=(
-            "vector (default; embeds the query), lexical (offline full-text match) "
-            "or hybrid (both, fused by reciprocal rank fusion; embeds the query)"
+            f"hybrid (vector and lexical fused by reciprocal rank fusion; embeds the query), "
+            f"vector (embeds the query) or lexical (offline full-text match); "
+            f"default {DEFAULT_SEARCH_MODE.value}"
         ),
     )
     search.add_argument("--json", action="store_true", help="one JSON object instead of text")

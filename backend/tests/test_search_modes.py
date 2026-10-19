@@ -51,6 +51,7 @@ from app.retrieval.rankers import (
     rank_vector,
 )
 from app.retrieval.search import (
+    DEFAULT_SEARCH_MODE,
     IndexStateError,
     InvalidSearchRequest,
     SearchHit,
@@ -438,7 +439,9 @@ async def test_vector_search_without_a_provider_is_a_configuration_error(
     service = SearchService(session_factory, _provider().space, params=SMALL)
 
     with pytest.raises(AIConfigurationError):
-        await service.search_course(SearchRequest.build(course_id=course, query=MARKER))
+        await service.search_course(
+            SearchRequest.build(course_id=course, query=MARKER, mode=SearchMode.VECTOR)
+        )
 
     assert await _count(session_factory, ModelCall) == 0
 
@@ -450,8 +453,11 @@ def test_the_provider_must_embed_in_the_search_space() -> None:
         SearchService(None, _provider().space, other)  # type: ignore[arg-type]
 
 
-def test_vector_is_the_default_mode_and_only_implemented_modes_validate() -> None:
-    assert SearchRequest.build(course_id=uuid.uuid4(), query="q").mode is SearchMode.VECTOR
+def test_hybrid_is_the_default_mode_and_only_implemented_modes_validate() -> None:
+    assert DEFAULT_SEARCH_MODE is SearchMode.HYBRID
+    assert SearchRequest.build(course_id=uuid.uuid4(), query="q").mode is DEFAULT_SEARCH_MODE
+    for mode in SearchMode:  # every mode stays explicitly selectable
+        assert SearchRequest.build(course_id=uuid.uuid4(), query="q", mode=mode).mode is mode
     assert [m.value for m in SearchMode] == ["vector", "lexical", "hybrid"]
     with pytest.raises(InvalidSearchRequest) as caught:
         SearchRequest.build(course_id=uuid.uuid4(), query="q", mode="rrf")

@@ -58,7 +58,7 @@ from app.ingestion.service import ingest_file
 from app.ingestion.storage import LocalRawObjectStore, RawObjectStore, RawStoreError
 from app.retrieval.chunking import SPAN_PACK_V1, ChunkingParams
 from app.retrieval.indexing import IndexingService
-from app.retrieval.search import SearchRequest, SearchService
+from app.retrieval.search import SearchMode, SearchRequest, SearchService
 
 EXPECTED_MODEL = "Qwen/Qwen3-Embedding-8B"
 EXPECTED_DIMENSIONS = 4096
@@ -236,7 +236,8 @@ async def run_smoke(
     for label, (question, marker) in QUERIES.items():
         started = time.perf_counter()
         result = await searcher.search_course(
-            SearchRequest.build(course_id=course_a, query=question, k=TOP_K)
+            # Vector explicitly: the checks below (and their history) are vector's.
+            SearchRequest.build(course_id=course_a, query=question, k=TOP_K, mode=SearchMode.VECTOR)
         )
         latency = round((time.perf_counter() - started) * 1000)
         hit_versions = {hit.version.id for hit in result.hits}

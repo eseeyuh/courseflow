@@ -21,7 +21,7 @@ from app.ingestion.schemas import RawSource
 from app.ingestion.service import ingest_file
 from app.ingestion.storage import LocalRawObjectStore
 from app.retrieval.indexing import IndexingService
-from app.retrieval.search import SearchRequest, SearchResult, SearchService
+from app.retrieval.search import SearchMode, SearchRequest, SearchResult, SearchService
 from tests.embedding_fakes import FakeEmbeddingProvider
 
 pytestmark = pytest.mark.anyio
@@ -99,7 +99,7 @@ async def _search(
     course: uuid.UUID,
     k: int = 5,
 ) -> SearchResult:
-    request = SearchRequest.build(course_id=course, query=QUERY, k=k)
+    request = SearchRequest.build(course_id=course, query=QUERY, k=k, mode=SearchMode.VECTOR)
     return await SearchService(sf, provider.space, provider).search_course(request)
 
 

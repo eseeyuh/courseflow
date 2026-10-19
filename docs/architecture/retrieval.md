@@ -107,7 +107,9 @@ Stored once in `workflow_runs.summary`; a change to these meanings needs a new w
 
 ## Search
 
-`python -m app.retrieval.cli search --course-id <id> --query "<question>" [-k 5] [--type brief] [--json]` (or `--query -` to read the question from stdin, which keeps it out of shell history). Code: `app/retrieval/search.py`.
+`python -m app.retrieval.cli search --course-id <id> --query "<question>" [-k 5] [--type brief] [--mode hybrid|vector|lexical] [--json]` (or `--query -` to read the question from stdin, which keeps it out of shell history). Code: `app/retrieval/search.py`.
+
+**Default mode: hybrid** (`DEFAULT_SEARCH_MODE`, the one place it is set), used by any request that names no mode, including the CLI. It was chosen by the pre-declared `default-selection/v1` rule on retrieval benchmark v1 ([report](../../evals/reports/retrieval-v1.md)). Vector and lexical stay explicitly selectable.
 
 **Search runs only on complete, verified index states.** It verifies the corpus twice, never holding a lock across the provider call. The first verification, before any paid call, avoids paying for a search that cannot run and fails obvious corrupt state early. The second, after the question is embedded and before ranking, makes sure the corpus actually ranked is still trusted and current; it never triggers a second provider request. Only the versions verified the second time are ranked. Both check that the course exists and classify every *current* version with the same derived state `status` reports:
 

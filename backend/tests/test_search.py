@@ -41,6 +41,7 @@ from app.retrieval.search import (
     IndexStateError,
     InvalidSearchRequest,
     ProvenanceError,
+    SearchMode,
     SearchProviderError,
     SearchRequest,
     SearchResult,
@@ -96,6 +97,7 @@ async def _search(
     query: str = MARKER,
     **kwargs: Any,
 ) -> SearchResult:
+    kwargs.setdefault("mode", SearchMode.VECTOR)  # this suite is about vector search
     request = SearchRequest.build(course_id=course, query=query, **kwargs)
     return await SearchService(sf, provider.space, provider, params=SMALL).search_course(request)
 

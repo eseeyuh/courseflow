@@ -182,6 +182,12 @@ class SearchMode(enum.StrEnum):
     HYBRID = "hybrid"  # RRF of vector and lexical
 
 
+# The runtime default when a request names no mode: the one canonical place.
+# Chosen by default-selection/v1 on retrieval benchmark v1 (replayed
+# embeddings; evals/reports/retrieval-v1.md). Change it only with a new
+# evaluation that selects another mode. Every mode stays explicitly selectable.
+DEFAULT_SEARCH_MODE = SearchMode.HYBRID
+
 # What ``SearchHit.score`` means in each mode: retriever-specific, never a
 # confidence, never comparable across modes.
 SCORE_KINDS: dict[SearchMode, str] = {
@@ -199,7 +205,7 @@ class SearchRequest(BaseModel):
     query: str
     k: int = Field(default=DEFAULT_K, ge=1, le=MAX_K)
     resource_types: frozenset[ResourceType] | None = None
-    mode: SearchMode = SearchMode.VECTOR
+    mode: SearchMode = DEFAULT_SEARCH_MODE
 
     @field_validator("query")
     @classmethod
