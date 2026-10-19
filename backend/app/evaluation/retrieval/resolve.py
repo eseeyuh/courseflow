@@ -135,10 +135,30 @@ async def ingest_dataset(
     """Create the dataset's institution and courses and ingest every version
     in order, in the caller's transaction (never committed here)."""
     limits = limits or production_limits()
+    courses = await create_courses(session, dataset)
+    ingested: dict[VersionKey, IngestedVersion] = {}
+    for entry in dataset.manifest.courses:
+        for resource in entry.resources:
+            for version in resource.versions:
+                item = await ingest_version(
+                    session,
+                    raw_store,
+                    dataset,
+                    (entry.key, resource.key, version.version),
+                    course_id=courses[entry.key],
+                    limits=limits,
+                )
+                ingested[item.key] = item
+    await _check_current_versions(session, ingested)
+    return ingested
+
+
+async def create_courses(session: AsyncSession, dataset: Dataset) -> dict[str, uuid.UUID]:
+    """The dataset's institution and one course per dataset course, by key."""
     manifest = dataset.manifest
     institution = Institution(name=manifest.institution, lms_type=LmsType.DEMO)
     session.add(institution)
-    ingested: dict[VersionKey, IngestedVersion] = {}
+    ids = {}
     for entry in manifest.courses:
         course = Course(
             institution=institution,
@@ -147,38 +167,49 @@ async def ingest_dataset(
         )
         session.add(course)
         await session.flush()
-        for resource in entry.resources:
-            for version in resource.versions:
-                content = dataset.corpus_file(entry.key, resource.key, version.version).read_bytes()
-                result = await ingest_file(
-                    session,
-                    raw_store,
-                    course_id=course.id,
-                    resource_type=resource.type,
-                    source=RawSource(
-                        content=content,
-                        display_name=f"{resource.key}-v{version.version}.html",
-                        source_uri=source_uri(dataset, entry.key, resource.key),
-                    ),
-                    limits=limits,
-                    title=resource.title,
-                )
-                if not result.created or result.version_number != version.version:
-                    problem = (
-                        f"{entry.key}/{resource.key} v{version.version}: ingestion produced "
-                        f"version {result.version_number} (created={result.created})"
-                    )
-                    raise DatasetError([problem])
-                key = (entry.key, resource.key, version.version)
-                ingested[key] = IngestedVersion(
-                    key=key,
-                    course_id=course.id,
-                    resource_id=result.resource_id,
-                    version_id=result.version_id,
-                    current=version.version == resource.latest,
-                )
-    await _check_current_versions(session, ingested)
-    return ingested
+        ids[entry.key] = course.id
+    return ids
+
+
+async def ingest_version(
+    session: AsyncSession,
+    raw_store: RawObjectStore,
+    dataset: Dataset,
+    key: VersionKey,
+    *,
+    course_id: uuid.UUID,
+    limits: IngestionLimits,
+) -> IngestedVersion:
+    """Ingest one corpus file as the next version of its resource. ``current``
+    says whether it is the resource's last version in the dataset."""
+    course_key, resource_key, number = key
+    resource = dataset.resource(course_key, resource_key)
+    result = await ingest_file(
+        session,
+        raw_store,
+        course_id=course_id,
+        resource_type=resource.type,
+        source=RawSource(
+            content=dataset.corpus_file(course_key, resource_key, number).read_bytes(),
+            display_name=f"{resource_key}-v{number}.html",
+            source_uri=source_uri(dataset, course_key, resource_key),
+        ),
+        limits=limits,
+        title=resource.title,
+    )
+    if not result.created or result.version_number != number:
+        problem = (
+            f"{course_key}/{resource_key} v{number}: ingestion produced "
+            f"version {result.version_number} (created={result.created})"
+        )
+        raise DatasetError([problem])
+    return IngestedVersion(
+        key=key,
+        course_id=course_id,
+        resource_id=result.resource_id,
+        version_id=result.version_id,
+        current=number == resource.latest,
+    )
 
 
 async def _check_current_versions(

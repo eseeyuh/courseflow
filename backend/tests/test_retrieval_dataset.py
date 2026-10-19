@@ -167,11 +167,12 @@ def test_loading_makes_no_network_call(monkeypatch: pytest.MonkeyPatch) -> None:
     assert load_dataset(DATASET).sha256
 
 
-def test_evaluation_code_cannot_rank_embed_or_fuse() -> None:
-    """Until a dataset is frozen nothing may score it, so the evaluation
-    package does not even import the retrieval entry points."""
-    names = ("rank_vector", "rank_lexical", "SearchService", "fuse_rrf", "EmbeddingProvider",
-             "call_embeddings", "query_input")  # fmt: skip
+def test_evaluation_code_cannot_rank_search_or_fuse() -> None:
+    """The dataset is frozen, and the snapshot tooling may embed its inputs,
+    but nothing in the evaluation package ranks, searches or fuses yet: no
+    retrieval score can be computed by it."""
+    names = ("rank_vector", "rank_lexical", "SearchService", "fuse_rrf", "app.retrieval.search",
+             "app.retrieval.fusion")  # fmt: skip
     for source in EVALUATION_SOURCES.rglob("*.py"):
         content = source.read_text("utf-8")
         assert not [name for name in names if name in content], source.name
