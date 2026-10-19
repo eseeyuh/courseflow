@@ -168,12 +168,13 @@ def test_loading_makes_no_network_call(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_only_the_evaluation_runner_searches() -> None:
-    """Scoring happens in one place: the runner, through the production
-    SearchService. No other evaluation module ranks, searches or fuses."""
+    """Scoring happens only in the evaluation runner and the chunk-variant
+    experiment, through the production SearchService. No other evaluation
+    module ranks, searches or fuses."""
     names = ("rank_vector", "rank_lexical", "SearchService", "fuse_rrf", "app.retrieval.search",
              "app.retrieval.fusion")  # fmt: skip
     for source in EVALUATION_SOURCES.rglob("*.py"):
-        if source.name == "runner.py":
+        if source.name in {"runner.py", "chunk_variant.py"}:  # the two scoring entry points
             continue
         content = source.read_text("utf-8")
         assert not [name for name in names if name in content], source.name

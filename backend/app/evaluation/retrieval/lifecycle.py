@@ -50,7 +50,7 @@ from app.evaluation.retrieval.resolve import (
 from app.evaluation.retrieval.snapshot import ExpectedInputs
 from app.ingestion.storage import RawObjectStore
 from app.retrieval import store
-from app.retrieval.chunking import SPAN_PACK_V1
+from app.retrieval.chunking import SPAN_PACK_V1, ChunkingParams
 from app.retrieval.indexing import IndexingService, IndexRunSummary
 
 
@@ -93,13 +93,15 @@ async def seed_and_index(
     *,
     batch_max_items: int,
     batch_max_estimated_tokens: int,
+    params: ChunkingParams = SPAN_PACK_V1,
 ) -> SeedResult:
+    """``params`` other than the dataset's chunker is for chunking experiments."""
     indexer = IndexingService(
         session_factory,
         provider,
         batch_max_items=batch_max_items,
         batch_max_estimated_tokens=batch_max_estimated_tokens,
-        params=SPAN_PACK_V1,
+        params=params,
     )
     limits = production_limits()
     async with session_factory() as session, session.begin():
@@ -131,7 +133,7 @@ async def seed_and_index(
         superseded_later = [k for k in keys if not versions[k].current]
         async with session_factory() as session:
             states = await version_states(
-                session, [versions[k] for k in superseded_later], provider.space
+                session, [versions[k] for k in superseded_later], provider.space, params
             )
         not_ready = [s for s in states if not (s.current and s.fully_linked)]
         if not_ready:
@@ -144,7 +146,10 @@ async def seed_and_index(
 
 
 async def version_states(
-    session: AsyncSession, versions: Sequence[IngestedVersion], space: EmbeddingSpace
+    session: AsyncSession,
+    versions: Sequence[IngestedVersion],
+    space: EmbeddingSpace,
+    params: ChunkingParams = SPAN_PACK_V1,
 ) -> list[VersionState]:
     space_ref = await store.find_space(session, space)
     states = []
@@ -154,7 +159,7 @@ async def version_states(
         )
         chunk_ids = select(Chunk.id).where(
             Chunk.resource_version_id == version.version_id,
-            Chunk.chunker_version == SPAN_PACK_V1.version,
+            Chunk.chunker_version == params.version,
         )
         chunks = await session.scalar(select(func.count()).select_from(chunk_ids.subquery()))
         linked = 0
