@@ -67,6 +67,7 @@ from app.evaluation.retrieval.snapshot import (
     SnapshotHeader,
     SnapshotRecording,
     SnapshotSpace,
+    SnapshotSubject,
     encode_vector,
     expected_inputs,
     file_sha256,
@@ -76,6 +77,7 @@ from app.evaluation.retrieval.snapshot import (
     serialize,
     sidecar_bytes,
     sidecar_path,
+    subject_of,
 )
 from app.retrieval.batching import plan_batches
 from app.retrieval.chunking import estimate_tokens
@@ -125,7 +127,7 @@ class PlannedBatch:
 
 @dataclass(frozen=True, slots=True)
 class RecordingPlan:
-    dataset: Dataset
+    dataset: Dataset | SnapshotSubject
     space: EmbeddingSpace
     inputs: ExpectedInputs
     batches: tuple[PlannedBatch, ...]
@@ -183,9 +185,9 @@ class RecordingPlan:
         counts = self.inputs.counts()
         return {
             "dataset": {
-                "name": self.dataset.manifest.dataset,
-                "version": self.dataset.manifest.dataset_version,
-                "sha256": self.dataset.sha256,
+                "name": subject_of(self.dataset).name,
+                "version": subject_of(self.dataset).version,
+                "sha256": subject_of(self.dataset).sha256,
             },
             "embedding_space": SnapshotSpace.of(self.space).model_dump(),
             "inputs": {
@@ -226,7 +228,7 @@ class RecordingPlan:
 
 
 def plan_recording(
-    dataset: Dataset,
+    dataset: Dataset | SnapshotSubject,
     space: EmbeddingSpace,
     *,
     batch_max_items: int,
@@ -241,7 +243,10 @@ def plan_recording(
         raise ValueError("attempts_per_request must be >= 1")
     if not price_usd_per_million.is_finite() or price_usd_per_million < 0:
         raise ValueError("price must be a finite, non-negative number")
-    inputs = inputs or expected_inputs(dataset)
+    if inputs is None:
+        if isinstance(dataset, SnapshotSubject):
+            raise ValueError("a SnapshotSubject needs its expected inputs")
+        inputs = expected_inputs(dataset)
     batches: list[PlannedBatch] = []
     for group in (inputs.documents, inputs.queries):
         for batch in plan_batches(
@@ -335,7 +340,7 @@ async def record_snapshot(
         problems.append("the provider's space is not the planned space")
     if any(len(batch.items) > provider.max_batch_items for batch in plan.batches):
         problems.append("a planned batch exceeds the provider's batch limit")
-    problems.extend(_existing(plan.output))
+    problems.extend(existing_outputs(plan.output))
     if problems:
         raise RecordingRefused(problems)
 
@@ -380,16 +385,16 @@ async def record_snapshot(
 
 
 def _header(plan: RecordingPlan, progress: _Progress, when: datetime) -> SnapshotHeader:
-    manifest = plan.dataset.manifest
+    subject = subject_of(plan.dataset)
     return SnapshotHeader(
         schema_version=SNAPSHOT_SCHEMA_VERSION,
         dataset=SnapshotDataset(
-            name=manifest.dataset,
-            version=manifest.dataset_version,
-            sha256=plan.dataset.sha256,
-            hash_scheme=manifest.dataset_hash_scheme,
+            name=subject.name,
+            version=subject.version,
+            sha256=subject.sha256,
+            hash_scheme=subject.hash_scheme,
         ),
-        chunker=manifest.expected_chunker,
+        chunker=subject.chunker,
         space=SnapshotSpace.of(plan.space),
         vector_encoding=VECTOR_ENCODING,
         inputs_hash_scheme="sha256-input-keys/v1",
@@ -409,7 +414,7 @@ def _header(plan: RecordingPlan, progress: _Progress, when: datetime) -> Snapsho
 # --- publication --------------------------------------------------------------------------
 
 
-def _existing(path: Path) -> list[str]:
+def existing_outputs(path: Path) -> list[str]:
     return [
         f"{p.as_posix()} already exists; re-recording is not supported"
         for p in (path, sidecar_path(path))
@@ -440,7 +445,7 @@ def publish(
         temps.append(_write_temp(path.parent, sidecar.name, sidecar_bytes(sha)))
         if file_sha256(temps[0].read_bytes()) != sha:
             raise RecordingFailed("the written snapshot does not hash to the recorded SHA")
-        existing = _existing(path)
+        existing = existing_outputs(path)
         if existing:
             raise RecordingRefused(existing)
         replace(temps[0], path)
@@ -469,7 +474,7 @@ class _ArgumentParser(argparse.ArgumentParser):
         raise SystemExit(EXIT_USAGE)
 
 
-def _price(value: str) -> Decimal:
+def parse_price(value: str) -> Decimal:
     try:
         price = Decimal(value)
     except InvalidOperation:
@@ -486,7 +491,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--expect-dataset-sha", required=True)
     parser.add_argument(
         "--price-usd-per-million",
-        type=_price,
+        type=parse_price,
         required=True,
         help="current catalog input price, verified before a live run",
     )
@@ -521,7 +526,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             output=args.snapshot,
         )
         report = plan.describe()
-        report["existing_output"] = _existing(args.snapshot)
+        report["existing_output"] = existing_outputs(args.snapshot)
         if not args.live:
             refused = bool(report["problems"] or report["existing_output"])
             _emit({"status": "refused" if refused else "planned", "live": False, "plan": report})

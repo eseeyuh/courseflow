@@ -115,12 +115,9 @@ def input_key(item: EmbeddingInput) -> InputKey:
     return (item.input_format, item.input_hash)
 
 
-def version_chunk_texts(
-    dataset: Dataset, course: str, resource: str, version: int, params: ChunkingParams
-) -> list[str]:
-    """The chunk texts indexing derives for one corpus file: the production
+def file_chunk_texts(path: Path, params: ChunkingParams, where: str) -> list[str]:
+    """The chunk texts indexing derives for one source file: the production
     parser and span rows, then ``derive_chunks`` exactly as indexing calls it."""
-    path = dataset.corpus_file(course, resource, version)
     document = parse_source(
         RawSource(content=path.read_bytes(), display_name=path.name, source_uri="eval:snapshot"),
         production_limits(),
@@ -129,8 +126,15 @@ def version_chunk_texts(
     source = store.VersionSource(_UNSET_VERSION_ID, document.extracted_text, spans)
     content, drafts = derive_chunks(source, params)
     if content is not SourceContent.CHUNKABLE:
-        raise SnapshotError([f"{course}/{resource} v{version}: not chunkable ({content.value})"])
+        raise SnapshotError([f"{where}: not chunkable ({content.value})"])
     return [draft.text for draft in drafts]
+
+
+def version_chunk_texts(
+    dataset: Dataset, course: str, resource: str, version: int, params: ChunkingParams
+) -> list[str]:
+    path = dataset.corpus_file(course, resource, version)
+    return file_chunk_texts(path, params, f"{course}/{resource} v{version}")
 
 
 def expected_inputs(dataset: Dataset, params: ChunkingParams = SPAN_PACK_V1) -> ExpectedInputs:
@@ -152,6 +156,32 @@ def expected_inputs(dataset: Dataset, params: ChunkingParams = SPAN_PACK_V1) -> 
         item = query_input(case.query)
         queries.setdefault(input_key(item), item)
     return ExpectedInputs(tuple(documents.values()), tuple(queries.values()))
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotSubject:
+    """What a snapshot is recorded for: a frozen dataset's identity and the
+    chunker its document inputs come from. A retrieval ``Dataset`` is one;
+    any other frozen corpus states its own."""
+
+    name: str
+    version: str
+    sha256: str
+    hash_scheme: str
+    chunker: str
+
+
+def subject_of(dataset: Dataset | SnapshotSubject) -> SnapshotSubject:
+    if isinstance(dataset, SnapshotSubject):
+        return dataset
+    manifest = dataset.manifest
+    return SnapshotSubject(
+        name=manifest.dataset,
+        version=manifest.dataset_version,
+        sha256=dataset.sha256,
+        hash_scheme=manifest.dataset_hash_scheme,
+        chunker=manifest.expected_chunker,
+    )
 
 
 # --- hashes -------------------------------------------------------------------------------
@@ -333,17 +363,20 @@ class Snapshot:
 
 
 def expected_header_problems(
-    header: SnapshotHeader, dataset: Dataset, space: EmbeddingSpace, inputs: ExpectedInputs
+    header: SnapshotHeader,
+    dataset: Dataset | SnapshotSubject,
+    space: EmbeddingSpace,
+    inputs: ExpectedInputs,
 ) -> list[str]:
     """How ``header`` disagrees with the frozen dataset, the active space and
     the expected input set."""
-    manifest = dataset.manifest
+    subject = subject_of(dataset)
     problems = []
     expected_dataset = SnapshotDataset(
-        name=manifest.dataset,
-        version=manifest.dataset_version,
-        sha256=dataset.sha256,
-        hash_scheme=manifest.dataset_hash_scheme,
+        name=subject.name,
+        version=subject.version,
+        sha256=subject.sha256,
+        hash_scheme=subject.hash_scheme,
     )
     if header.dataset != expected_dataset:
         problems.append(
@@ -351,8 +384,8 @@ def expected_header_problems(
             f"sha256 {header.dataset.sha256}, not {expected_dataset.name} "
             f"{expected_dataset.version} sha256 {expected_dataset.sha256}"
         )
-    if header.chunker != manifest.expected_chunker:
-        problems.append(f"snapshot chunker {header.chunker} != {manifest.expected_chunker}")
+    if header.chunker != subject.chunker:
+        problems.append(f"snapshot chunker {header.chunker} != {subject.chunker}")
     if header.space != SnapshotSpace.of(space):
         problems.append(
             f"snapshot space {header.space.model_dump()} != active space "
@@ -366,7 +399,7 @@ def expected_header_problems(
 
 
 def load_snapshot(
-    path: Path, *, dataset: Dataset, space: EmbeddingSpace, inputs: ExpectedInputs
+    path: Path, *, dataset: Dataset | SnapshotSubject, space: EmbeddingSpace, inputs: ExpectedInputs
 ) -> Snapshot:
     """Validate and load a snapshot; SnapshotError lists every problem.
 
@@ -397,7 +430,7 @@ def parse_snapshot_bytes(
     sha: str,
     data: bytes,
     *,
-    dataset: Dataset,
+    dataset: Dataset | SnapshotSubject,
     space: EmbeddingSpace,
     inputs: ExpectedInputs,
 ) -> Snapshot:

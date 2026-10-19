@@ -37,6 +37,7 @@ from app.evaluation.retrieval.dataset import Dataset
 from app.evaluation.retrieval.snapshot import (
     ExpectedInputs,
     Snapshot,
+    SnapshotSubject,
     expected_inputs,
     input_key,
     load_snapshot,
@@ -108,13 +109,16 @@ class ReplayEmbeddingProvider:
 def load_replay_provider(
     path: Path,
     *,
-    dataset: Dataset,
+    dataset: Dataset | SnapshotSubject,
     active_space: EmbeddingSpace,
     max_batch_items: int,
     inputs: ExpectedInputs | None = None,
 ) -> ReplayEmbeddingProvider:
     """A replay provider for the frozen ``dataset``, after full snapshot
     validation against it and the application's active embedding space."""
-    inputs = inputs or expected_inputs(dataset)
+    if inputs is None:
+        if isinstance(dataset, SnapshotSubject):
+            raise ValueError("a SnapshotSubject needs its expected inputs")
+        inputs = expected_inputs(dataset)
     snapshot = load_snapshot(path, dataset=dataset, space=active_space, inputs=inputs)
     return ReplayEmbeddingProvider(snapshot, max_batch_items=max_batch_items)
