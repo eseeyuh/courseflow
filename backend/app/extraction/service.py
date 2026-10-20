@@ -34,7 +34,7 @@ from app.ai.prompts import load_prompt
 from app.ai.provider import AIProvider
 from app.db.models import Course, Institution, WorkflowRun, workflow_run_inputs
 from app.domain.enums import ModelRole, WorkflowRunStatus
-from app.extraction.gate import GateResult, gate
+from app.extraction.gate import GATE_VERSION, GateResult, gate
 from app.extraction.persist import Lineage, PersistCounts, persist_unit
 from app.extraction.schema import AssessmentExtraction
 from app.extraction.units import ExtractionUnit, build_messages, load_units
@@ -53,6 +53,7 @@ class ExtractionSummary(BaseModel):
 
     workflow_version: Literal["assessment-extraction/v1"] = WORKFLOW_VERSION
     prompt_version: str
+    gate_version: str = GATE_VERSION
     model_role: str
     thinking: bool | None = None  # None: the model's default
     versions: int = 0

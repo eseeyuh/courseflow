@@ -207,20 +207,19 @@ def test_supported_facts_pass_with_exact_offsets() -> None:
     (gated,) = result.assessments
     assert (gated.canonical_key, gated.title) == ("coursework 1", BRIEF_TITLE)
     title_span, brief_span = UNIT.spans
-    assert gated.title_evidence.span_id == title_span.span_id
-    assert (gated.title_evidence.quote_start, gated.title_evidence.quote_end) == (
-        0,
-        len(BRIEF_TITLE),
-    )
+    (title,) = gated.title_evidence.locations
+    assert title.span_id == title_span.span_id
+    assert (title.quote_start, title.quote_end) == (0, len(BRIEF_TITLE))
+    assert gated.title_evidence.status is V.VERIFIED
     assert gated.weighting is not None and gated.weighting.percent == 40
     assert gated.deadline is not None
-    evidence = gated.deadline.evidence
+    (evidence,) = gated.deadline.evidence.locations
     assert evidence.span_id == brief_span.span_id
     assert brief_span.excerpt[evidence.quote_start : evidence.quote_end] == (
         "Thursday 12 November 2026, 14:00 (UK time)"
     )
-    assert gated.deadline.value.status is V.VERIFIED
-    assert not result.rejected and not result.abstained
+    assert gated.deadline.status is V.VERIFIED and gated.weighting.status is V.VERIFIED
+    assert not result.rejected and not result.abstained and not result.review_reasons
 
 
 @pytest.mark.parametrize(
@@ -236,17 +235,6 @@ def test_supported_facts_pass_with_exact_offsets() -> None:
         (
             {"weighting": {"percent": 60, "evidence": {"span": "S2", "quote": "Weighting: 40%"}}},
             "weighting:weighting_unsupported",
-        ),
-        (
-            {
-                "deadline": {
-                    "status": "stated",
-                    "due_date": "2026-11-12",
-                    "due_time": None,
-                    "evidence": {"span": "S2", "quote": "Late work is capped."},
-                }
-            },
-            "deadline:quote_not_unique",
         ),
         (
             {
@@ -490,10 +478,10 @@ def test_injection_cannot_alter_unrelated_facts_in_the_same_span() -> None:
     assert a.deadline is not None and b.deadline is not None
     assert a.deadline.value == b.deadline.value  # verified, 2027-05-04, unchanged
     assert a.deadline.value.status is V.VERIFIED
-    assert (a.deadline.evidence.quote_start, a.deadline.evidence.quote_end) == (
-        b.deadline.evidence.quote_start,
-        b.deadline.evidence.quote_end,
-    )
+    offsets = [
+        [(e.quote_start, e.quote_end) for e in x.deadline.evidence.locations] for x in (a, b)
+    ]
+    assert offsets[0] == offsets[1]  # the same exact location (the units' span IDs differ)
 
 
 @pytest.mark.parametrize(
@@ -510,3 +498,82 @@ def test_ordinary_instructional_wording_is_not_flagged(ordinary: str) -> None:
     result = _gate_cw1(ordinary, _deadline_claim("4 May 2027"))
     assert not result.rejected
     assert result.assessments[0].deadline is not None
+
+
+# --- fact-level gating ----------------------------------------------------------------------
+
+SPEC_PAGE = (
+    "MSD7000 MSc Dissertation\nProject Specification\nKey information\n"
+    "Weighting: 10% of the dissertation module mark.\n"
+    "Deadline: Monday 30 November 2026, 12:00 (UK time).\n"
+    "Submit your Project Specification through the module page."
+)
+
+
+def _spec(**changes: Any) -> Any:
+    proposed: dict[str, Any] = {
+        "title": "Project Specification",
+        "title_evidence": {"span": "S1", "quote": "Project Specification"},  # occurs twice
+        "weighting": {
+            "percent": 10,
+            "evidence": {"span": "S1", "quote": "Weighting: 10% of the dissertation module mark."},
+        },
+        "deadline": {
+            "status": "stated",
+            "due_date": "2026-11-30",
+            "due_time": "12:00",
+            "evidence": {
+                "span": "S1",
+                "quote": "Deadline: Monday 30 November 2026, 12:00 (UK time).",
+            },
+        },
+    }
+    extraction = AssessmentExtraction.model_validate({"assessments": [proposed | changes]})
+    return gate(_unit(SPEC_PAGE), extraction, LONDON)
+
+
+def test_an_ambiguous_title_location_does_not_discard_valid_sibling_facts() -> None:
+    """Regression: a correct title quote that occurs twice in its page span
+    used to reject the whole assessment, with its valid deadline and weighting."""
+    result = _spec()
+    assert not result.rejected
+    assert result.review_reasons == {"title:non_unique_quote_location": 1}
+    (gated,) = result.assessments
+    # Both exact occurrences are kept for review; neither is chosen.
+    assert gated.title_evidence.status is V.NEEDS_REVIEW
+    starts = [e.quote_start for e in gated.title_evidence.locations]
+    assert starts == [
+        m for m in range(len(SPEC_PAGE)) if SPEC_PAGE.startswith("Project Specification", m)
+    ]
+    assert len(starts) == 2
+    assert gated.weighting is not None and gated.weighting.status is V.VERIFIED
+    assert gated.deadline is not None and gated.deadline.status is V.VERIFIED
+    assert gated.deadline.value.due_at == datetime(2026, 11, 30, 12, 0, tzinfo=UTC)
+
+
+def test_an_ambiguous_deadline_location_needs_review_and_keeps_every_occurrence() -> None:
+    page = "Coursework 1\nDue 4 May 2027.\nReminder: Due 4 May 2027."
+    result = gate(
+        _unit(page),
+        _extraction(
+            title="Coursework 1",
+            title_evidence={"span": "S1", "quote": "Coursework 1"},
+            weighting=None,
+            deadline={
+                "status": "stated",
+                "due_date": "2027-05-04",
+                "due_time": None,
+                "evidence": {"span": "S1", "quote": "Due 4 May 2027."},
+            },
+        ),
+        LONDON,
+    )
+    (gated,) = result.assessments
+    assert gated.deadline is not None and gated.deadline.status is V.NEEDS_REVIEW
+    assert len(gated.deadline.evidence.locations) == 2
+    assert result.review_reasons == {"deadline:non_unique_quote_location": 1}
+
+
+def test_a_failed_title_still_rejects_the_candidate() -> None:
+    result = _spec(title_evidence={"span": "S1", "quote": "Specification of the project"})
+    assert result.rejected == {"assessment:quote_not_found": 1} and result.assessments == []

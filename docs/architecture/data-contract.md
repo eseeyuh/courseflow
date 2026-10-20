@@ -101,7 +101,7 @@ Rules:
 
 | Entity | Meaning | Minimum fields |
 |---|---|---|
-| `Assessment` | An assessed deliverable or milestone, once per course: sources that state it add evidence, not rows. | id, course_id, canonical_key (deterministic normal form of the title; unique per course), title, weighting_percent, status |
+| `Assessment` | An assessed deliverable or milestone, once per course: sources that state it add evidence, not rows. `status` is derived: `verified` only with a verified deadline or a verified weighting; a candidate with title evidence alone is `needs_review`. | id, course_id, canonical_key (deterministic normal form of the title; unique per course), title, weighting_percent, status |
 | `AssessmentDeadline` | One deadline value a source states for an assessment. Disagreeing sources give one row each (the disagreement is kept); agreeing sources share a row. | id, assessment_id, due_date (local), due_time (local, nullable), timezone (IANA, nullable), timezone_source, precision, due_at (instant, nullable), status |
 | `AssessmentRequirement` | One criterion or action from an assessment brief or rubric. | id, assessment_id, text, ordinal |
 | `Obligation` | A required or recommended academic action outside or alongside an assessment (for example supervisor review, ethics approval). | id, course_id, title, mandatory, status |
@@ -144,7 +144,7 @@ A `ModelCall` belongs to a `WorkflowRun` when made inside one. Per-attempt detai
 | `ResourceVersion.media_type` | `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, `application/vnd.openxmlformats-officedocument.presentationml.presentation`, `text/html` | The format of this version; a resource may change format between versions. |
 | `SourceSpan.block_kind` | `page`, `heading`, `paragraph`, `table`, `slide_text`, `slide_notes` | Structural role; determines the canonical (required) locator. |
 | Ingestion error category | `unsupported_type`, `corrupt_file`, `empty_text`, `limit_exceeded`, `parser_failure` | Why one file was not ingested. A failed file creates no rows. |
-| `verification_status` | `verified`, `needs_review`, `rejected` | Only `verified` claims are presented as fact. |
+| `verification_status` | `verified`, `needs_review`, `rejected` | Only `verified` claims are presented as fact. A quote that occurs more than once in its span has no single location: every occurrence is linked, exactly, as `needs_review`. |
 | `AssessmentDeadline.precision` | `datetime`, `date` | `date`: no time of day was stated; none is invented and there is no `due_at`. A month, week or term is not a deadline: no row. |
 | `AssessmentDeadline.timezone_source` | `explicit_source`, `institution_default`, `unknown` | `explicit_source`: the cited quote names the timezone. `institution_default`: it names none, so the institution's own was applied (the quote is not claimed to state it). `unknown`: neither; no instant, and a local time cannot be verified. |
 | `StudyState.state` | `NOT_STARTED`, `STUDYING`, `STUDIED` | Opening a document never changes state automatically. |

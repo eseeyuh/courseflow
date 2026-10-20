@@ -4,22 +4,26 @@
 
 """The evidence gate: deterministic decisions over a model's proposals.
 
-For every proposed fact:
+Every proposed fact (an assessment's title, its weighting, its deadline) is
+validated on its own:
 
 1. its local span ID must have been issued for this unit (so the span is
    one of this current version's spans, of this course);
-2. its quote must occur exactly once in that span's excerpt, giving exact
-   code-point offsets (a repeated quote has no unique location), and must
-   not overlap a detected injection fragment (``injection_fragments``);
+2. its quote must occur in that span's excerpt, and no occurrence may
+   overlap a detected injection fragment (``injection_fragments``);
 3. the quote must support the value: the title's designator words, the
    stated percentage, or the deadline parsed from the quote itself (the
    model's date must equal it).
 
-A fact that fails is rejected and not persisted; an assessment whose title
-evidence fails is rejected with all its facts. A deadline that passes is
-verified or needs_review as ``dates.normalise`` decides. Abstentions
-(not_stated, ambiguous) are counted, never turned into a date. Reason codes
-are stable; they are counted in the run summary.
+A fact that fails is rejected and not persisted. A quote that occurs more
+than once has no single location: every occurrence is kept, exactly, as
+needs_review evidence (``non_unique_quote_location``); none is chosen. A
+problem with one fact never discards its siblings, except that a candidate
+whose title fails is not an assessment at all. A deadline's status is also
+bounded by ``dates.normalise``. Abstentions (not_stated, ambiguous) are
+counted, never turned into a date. Whether a candidate is a verified
+assessment is decided later, from its verified facts (``persist``).
+Reason codes are stable ("<fact>:<reason>") and counted in the run summary.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, time
 
+from app.domain.enums import VerificationStatus
 from app.extraction.dates import (
     DeadlineRejected,
     NormalisedDeadline,
@@ -84,6 +89,11 @@ class _Rejected(Exception):
         self.reason = reason
 
 
+GATE_VERSION = "assessment-gate/v2"  # v2: fact-level gating, derived assessment status
+
+V = VerificationStatus
+
+
 @dataclass(frozen=True, slots=True)
 class GatedEvidence:
     span_id: uuid.UUID
@@ -92,22 +102,45 @@ class GatedEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class Located:
+    """Every exact occurrence of a quote in its span: one when its location is
+    unique (verified), several when it is not (needs_review)."""
+
+    locations: tuple[GatedEvidence, ...]
+
+    @property
+    def status(self) -> VerificationStatus:
+        return V.VERIFIED if len(self.locations) == 1 else V.NEEDS_REVIEW
+
+
+@dataclass(frozen=True, slots=True)
 class GatedWeighting:
     percent: int
-    evidence: GatedEvidence
+    evidence: Located
+
+    @property
+    def status(self) -> VerificationStatus:
+        return self.evidence.status
 
 
 @dataclass(frozen=True, slots=True)
 class GatedDeadline:
     value: NormalisedDeadline
-    evidence: GatedEvidence
+    evidence: Located
+
+    @property
+    def status(self) -> VerificationStatus:
+        verified = self.value.status is V.VERIFIED and self.evidence.status is V.VERIFIED
+        return V.VERIFIED if verified else V.NEEDS_REVIEW
 
 
 @dataclass(frozen=True, slots=True)
 class GatedAssessment:
+    """A candidate: its title evidence passed; its status is derived later."""
+
     title: str
     canonical_key: str
-    title_evidence: GatedEvidence
+    title_evidence: Located
     weighting: GatedWeighting | None
     deadline: GatedDeadline | None
 
@@ -117,7 +150,7 @@ class GateResult:
     assessments: list[GatedAssessment] = field(default_factory=list)
     rejected: Counter[str] = field(default_factory=Counter)  # "<fact>:<reason>"
     abstained: Counter[str] = field(default_factory=Counter)  # "deadline:<status>"
-    review_reasons: Counter[str] = field(default_factory=Counter)
+    review_reasons: Counter[str] = field(default_factory=Counter)  # "<fact>:<reason>"
 
 
 def _words(text: str) -> list[str]:
@@ -138,23 +171,22 @@ def canonical_key(title: str) -> str:
     return " ".join(words)
 
 
-def locate(unit: ExtractionUnit, ref: EvidenceRef) -> tuple[GatedEvidence, str]:
+def locate(unit: ExtractionUnit, ref: EvidenceRef) -> tuple[Located, str]:
     span = unit.resolve(ref.span)
     if span is None:
         raise _Rejected("span_unknown")
     starts = [m.start() for m in re.finditer(f"(?={re.escape(ref.quote)})", span.excerpt)]
     if not starts:
         raise _Rejected("quote_not_found")
-    if len(starts) > 1:
-        raise _Rejected("quote_not_unique")
-    start, end = starts[0], starts[0] + len(ref.quote)
+    locations = tuple(GatedEvidence(span.span_id, a, a + len(ref.quote)) for a in starts)
+    fragments = injection_fragments(span.excerpt)
     # Injection text is inert content: it can never support a claim.
-    if any(a < end and start < b for a, b in injection_fragments(span.excerpt)):
+    if any(a < e.quote_end and e.quote_start < b for e in locations for a, b in fragments):
         raise _Rejected("quote_overlaps_injection")
-    return GatedEvidence(span.span_id, start, end), ref.quote
+    return Located(locations), ref.quote
 
 
-def _title(unit: ExtractionUnit, proposed: AssessmentOut) -> tuple[str, GatedEvidence]:
+def _title(unit: ExtractionUnit, proposed: AssessmentOut) -> tuple[str, Located]:
     evidence, quote = locate(unit, proposed.title_evidence)
     key = canonical_key(proposed.title)
     if not key or not set(key.split()) <= set(_words(quote)):
@@ -197,6 +229,11 @@ def _deadline(
     return GatedDeadline(value, evidence)
 
 
+def _note_location(result: GateResult, fact: str, evidence: Located) -> None:
+    if evidence.status is not V.VERIFIED:
+        result.review_reasons[f"{fact}:non_unique_quote_location"] += 1
+
+
 def gate(
     unit: ExtractionUnit, extraction: AssessmentExtraction, institution_timezone: str | None
 ) -> GateResult:
@@ -207,11 +244,14 @@ def gate(
         except _Rejected as rejected:
             result.rejected[f"assessment:{rejected.reason}"] += 1
             continue
+        _note_location(result, "title", title_evidence)
         try:
             weighting = _weighting(unit, proposed)
         except _Rejected as rejected:
             result.rejected[f"weighting:{rejected.reason}"] += 1
             weighting = None
+        if weighting is not None:
+            _note_location(result, "weighting", weighting.evidence)
         deadline = None
         if proposed.deadline.status != "stated":
             result.abstained[f"deadline:{proposed.deadline.status}"] += 1
@@ -221,7 +261,10 @@ def gate(
             except _Rejected as rejected:
                 result.rejected[f"deadline:{rejected.reason}"] += 1
             else:
-                result.review_reasons.update(deadline.value.review_reasons)
+                _note_location(result, "deadline", deadline.evidence)
+                result.review_reasons.update(
+                    f"deadline:{reason}" for reason in deadline.value.review_reasons
+                )
         result.assessments.append(
             GatedAssessment(proposed.title.strip(), key, title_evidence, weighting, deadline)
         )

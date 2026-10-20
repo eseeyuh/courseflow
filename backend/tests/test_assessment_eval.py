@@ -116,3 +116,23 @@ async def test_the_thinking_switch_reaches_the_request(thinking: bool | None, se
     )
     (body,) = server.bodies()
     assert body.get("chat_template_kwargs") == sent
+
+
+def test_replay_finds_each_recorded_output_its_unit() -> None:
+    from app.ai.prompts import load_prompt
+    from app.evaluation.assessments.run import (
+        ReplayAmbiguous,
+        assign_outputs,
+        material_of,
+    )
+    from app.extraction.units import build_messages, render_material
+
+    planned = plan_units(load_golden())
+    (_, user) = build_messages(load_prompt("assessment-extraction/v1"), planned[0].unit)
+    assert material_of(user.content) == render_material(planned[0].unit)  # nonce-free
+
+    empty: dict[str, Any] = {"output": {"assessments": []}}
+    assigned = assign_outputs([empty] * len(planned), planned)
+    assert len(assigned) == len({render_material(p.unit) for p in planned})
+    with pytest.raises(ReplayAmbiguous, match="outputs for"):
+        assign_outputs([empty], planned)

@@ -411,3 +411,102 @@ async def test_the_thinking_option_reaches_the_model(
     )
     assert default.thinking is None and off.thinking is False
     assert result.summary.thinking is False
+
+
+SPEC = _page(
+    "Module page",
+    "Project Specification. Weighting: 10% of the dissertation module mark. "
+    "Deadline: Monday 30 November 2026, 12:00 (UK time). "
+    "Submit your Project Specification through the module page.",
+)
+EXERCISES = _page(
+    "Workshop 2", "Exercise 1: Metrics from a confusion matrix", "Welcome to the module"
+)
+WORTH_50 = _page("Coursework FAQ", "Coursework 1 is worth 50% of the module.")
+
+
+def _spec_script(user: str) -> dict[str, Any]:
+    if "Module page" in user:
+        return {
+            "assessments": [
+                _assessment(
+                    "Project Specification",
+                    _ref("S2", "Project Specification"),  # occurs twice in S2
+                    weighting={"percent": 10, "evidence": _ref("S2", "Weighting: 10%")},
+                    deadline=_stated(
+                        "2026-11-30",
+                        "12:00",
+                        _ref("S2", "Monday 30 November 2026, 12:00 (UK time)"),
+                    ),
+                )
+            ]
+        }
+    if "Workshop 2" in user:
+        return {
+            "assessments": [
+                _assessment(
+                    "Exercise 1", _ref("S2", "Exercise 1: Metrics from a confusion matrix")
+                ),
+                _assessment("Welcome to the module", _ref("S3", "Welcome to the module")),
+            ]
+        }
+    if "Coursework FAQ" in user:
+        return {
+            "assessments": [
+                _assessment(
+                    "Coursework 1",
+                    _ref("S2", "Coursework 1"),
+                    weighting={"percent": 50, "evidence": _ref("S2", "worth 50%")},
+                )
+            ]
+        }
+    return script(user)
+
+
+async def test_an_ambiguous_title_keeps_the_assessment_and_its_verified_facts(
+    sessions: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    """Regression (live run, assessment-gate/v1): the Project Specification was
+    rejected whole because its title quote occurs twice in its span."""
+    course_id, _ = await _course(sessions, tmp_path, {"spec": SPEC})
+    result = await AssessmentExtractionService(sessions, FakeModel(_spec_script)).extract_course(
+        course_id
+    )
+    assert result.summary.review_reasons == {"title:non_unique_quote_location": 1}
+    (assessment,) = await _rows(sessions, Assessment)
+    assert assessment.status is V.VERIFIED and assessment.weighting_percent == 10
+    (deadline,) = await _rows(sessions, AssessmentDeadline)
+    assert deadline.status is V.VERIFIED and deadline.due_at is not None
+    links = await _rows(sessions, EvidenceLink)
+    titles = [x for x in links if x.field is EvidenceField.TITLE]
+    assert len(titles) == 2 and {x.verification_status for x in titles} == {V.NEEDS_REVIEW}
+    assert {x.verification_status for x in links if x.field is not EvidenceField.TITLE} == {
+        V.VERIFIED
+    }
+
+
+async def test_a_candidate_without_a_verified_deadline_or_weighting_needs_review(
+    sessions: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    """Regression: ungraded exercises and notices were verified on their title alone."""
+    course_id, _ = await _course(sessions, tmp_path, {"workshop": EXERCISES})
+    await AssessmentExtractionService(sessions, FakeModel(_spec_script)).extract_course(course_id)
+    statuses = {a.canonical_key: a.status for a in await _rows(sessions, Assessment)}
+    assert statuses == {"exercise 1": V.NEEDS_REVIEW, "welcome to the module": V.NEEDS_REVIEW}
+
+
+async def test_disagreeing_weightings_become_unknown_and_all_need_review(
+    sessions: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    course_id, _ = await _course(sessions, tmp_path, {"brief": BRIEF, "faq": WORTH_50})
+    result = await AssessmentExtractionService(sessions, FakeModel(_spec_script)).extract_course(
+        course_id
+    )
+    assert result.summary.weighting_disagreements == 1
+    (assessment,) = await _rows(sessions, Assessment)
+    assert assessment.weighting_percent is None
+    weightings = [
+        x for x in await _rows(sessions, EvidenceLink) if x.field is EvidenceField.WEIGHTING
+    ]
+    assert len(weightings) == 2 and {x.verification_status for x in weightings} == {V.NEEDS_REVIEW}
+    assert assessment.status is V.VERIFIED  # still: its brief deadline is verified

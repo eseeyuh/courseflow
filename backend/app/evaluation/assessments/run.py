@@ -17,8 +17,14 @@ no model call. With ``--live``, in the disposable evaluation database
 3. call the prompt-injection unit once more without its injection span, as
    a control: the gated result must be identical;
 4. score the persisted claims against the golden labels and write the
-   report (``evals/reports/assessment-extraction-v1-<role>.{json,md}``) and
-   the validated model outputs (``evals/runs/assessment-extraction/``).
+   report (``evals/reports/assessment-extraction-v1-<role>-thinking-<mode>``)
+   and the validated model outputs (``evals/runs/assessment-extraction/``).
+
+``--replay-outputs <file>`` runs the same pipeline with no model at all: the
+validated outputs a live run recorded are replayed through the current gate
+and persistence, each to the unit it was made for (matched by where its
+exact quotes resolve; an ambiguous match stops the replay). The result goes
+to ``evals/runs/`` only: a replay is a regression check, not a measurement.
 
 Spend is bounded twice: the plan is refused if its expected spend is not
 below ``MAX_SPEND_USD``, and before every call the spend so far (provider-
@@ -52,7 +58,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.ai.errors import AIProviderError
 from app.ai.model_calls import RecordedCallError, call_structured_recorded
 from app.ai.prompts import load_prompt
-from app.ai.provider import AIProvider, ChatMessage, ModelInfo, StructuredResult
+from app.ai.provider import AIProvider, ChatMessage, ModelInfo, StructuredResult, TokenUsage
 from app.db.models import (
     Assessment,
     AssessmentDeadline,
@@ -67,10 +73,17 @@ from app.db.models import (
 from app.domain.enums import EvidenceField, ModelCallKind, ModelRole, VerificationStatus
 from app.evaluation.northbridge.labels import REPO_ROOT, GoldenDataset, load_golden, version_texts
 from app.extraction.dates import DeadlineRejected, parse_deadline_quote
-from app.extraction.gate import GateResult, canonical_key, gate
+from app.extraction.gate import GATE_VERSION, GateResult, canonical_key, gate
 from app.extraction.schema import AssessmentExtraction
 from app.extraction.service import PROMPT_VERSION, WORKFLOW_VERSION, AssessmentExtractionService
-from app.extraction.units import ExtractionUnit, UnitSpan, build_messages, load_units, pack_units
+from app.extraction.units import (
+    ExtractionUnit,
+    UnitSpan,
+    build_messages,
+    load_units,
+    pack_units,
+    render_material,
+)
 from app.retrieval.chunking import estimate_tokens
 
 MAX_SPEND_USD = Decimal("0.01")
@@ -262,6 +275,7 @@ class BudgetedProvider:
             raise
         self._charge(result.usage.prompt_tokens, result.usage.completion_tokens, worst)
         self.outputs.append((messages[-1].content, result.output.model_dump(mode="json")))
+
         return result
 
     def _charge(self, tokens_in: int | None, tokens_out: int | None, worst: Decimal) -> None:
@@ -272,6 +286,136 @@ class BudgetedProvider:
             tokens_in * _price(self.info.input_usd_per_million)
             + tokens_out * _price(self.info.output_usd_per_million)
         ) / _M
+
+
+def material_of(user: str) -> str:
+    """The course material of a user message, without the per-call nonce."""
+    begin = user.index(">>>\n", user.index("<<<COURSE_MATERIAL ")) + 4
+    return user[begin : user.index("\n<<<END_COURSE_MATERIAL ")]
+
+
+# --- replay ---------------------------------------------------------------------------------
+
+
+class ReplayAmbiguous(RuntimeError):
+    pass
+
+
+def _refs(output: dict[str, Any]) -> list[tuple[str, str]]:
+    refs = []
+    for a in output["assessments"]:
+        refs.append((a["title_evidence"]["span"], a["title_evidence"]["quote"]))
+        if a["weighting"]:
+            refs.append((a["weighting"]["evidence"]["span"], a["weighting"]["evidence"]["quote"]))
+        if a["deadline"]["evidence"]:
+            refs.append((a["deadline"]["evidence"]["span"], a["deadline"]["evidence"]["quote"]))
+    return refs
+
+
+def _resolves(unit: ExtractionUnit, output: dict[str, Any]) -> int:
+    hits = 0
+    for local_id, quote in _refs(output):
+        span = unit.resolve(local_id)
+        hits += span is not None and quote in span.excerpt
+    return hits
+
+
+def assign_outputs(
+    recorded: Sequence[dict[str, Any]], planned: Sequence[PlannedUnit]
+) -> dict[str, dict[str, Any]]:
+    """Each recorded output to the one unit it was made for.
+
+    A live run calls in plan order, group by group: each (version number,
+    course) in turn, then the control. Within a group, the call order is not
+    fixed (resource IDs order it), so each output goes to the one unit of
+    its group its exact quotes resolve in.
+
+    Recorded with a material key: matched exactly. Otherwise an output with
+    evidence must resolve best in exactly one unit; outputs whose quotes
+    resolve nowhere and empty outputs fill the remaining units (their gated
+    result cannot depend on the unit: nothing of theirs can pass).
+    """
+    if len(recorded) != len(planned):
+        raise ReplayAmbiguous(f"{len(recorded)} outputs for {len(planned)} units")
+    groups: list[list[int]] = []
+    for i, unit in enumerate(planned):
+        key = (unit.where[2], unit.where[0]) if i < len(planned) - 1 else ("control",)
+        if not groups or _group_key(planned, groups[-1][0], len(planned)) != key:
+            groups.append([i])
+        else:
+            groups[-1].append(i)
+    assigned: dict[str, dict[str, Any]] = {}
+    for group in groups:
+        units = [planned[i].unit for i in group]
+        assigned |= _assign_group([recorded[i] for i in group], units)
+    return assigned
+
+
+def _group_key(planned: Sequence[PlannedUnit], i: int, n: int) -> tuple[Any, ...]:
+    return (planned[i].where[2], planned[i].where[0]) if i < n - 1 else ("control",)
+
+
+def _assign_group(
+    recorded: Sequence[dict[str, Any]], units: Sequence[ExtractionUnit]
+) -> dict[str, dict[str, Any]]:
+    materials = [render_material(u) for u in units]
+    assigned: dict[str, dict[str, Any]] = {}
+    rest = []
+    for item in recorded:
+        if "material_key" in item:
+            match = [m for m in materials if _sha(m) == item["material_key"]]
+            if len(match) != 1:
+                raise ReplayAmbiguous("a material key matches no single unit")
+            assigned[match[0]] = item["output"]
+            continue
+        scores = [_resolves(u, item["output"]) for u in units]
+        best = max(scores)
+        if best == 0:
+            rest.append(item["output"])
+            continue
+        winners = [m for m, score in zip(materials, scores, strict=True) if score == best]
+        if len(winners) != 1 or winners[0] in assigned:
+            raise ReplayAmbiguous("an output's quotes resolve equally well in several units")
+        assigned[winners[0]] = item["output"]
+    for material in materials:
+        if material not in assigned:
+            assigned[material] = rest.pop()
+    return assigned
+
+
+@dataclass(slots=True)
+class ReplayProvider:
+    """Answers each call with the recorded output for its material. No network."""
+
+    by_material: dict[str, dict[str, Any]]
+    model: str
+    outputs: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    name: str = "replay"
+
+    def model_for(self, role: ModelRole) -> str:
+        return self.model
+
+    async def list_models(self) -> list[ModelInfo]:
+        return []
+
+    async def chat_structured[T: BaseModel](
+        self,
+        messages: Sequence[ChatMessage],
+        schema: type[T],
+        *,
+        role: ModelRole,
+        temperature: float | None = None,
+        thinking: bool | None = None,
+    ) -> StructuredResult[T]:
+        user = messages[-1].content
+        output = self.by_material[material_of(user)]
+        self.outputs.append((user, output))
+        return StructuredResult(
+            output=schema.model_validate(output),
+            model=self.model,
+            usage=TokenUsage(prompt_tokens=0, completion_tokens=0, reasoning_tokens=0),
+            attempts=1,
+        )
 
 
 # --- scoring ------------------------------------------------------------------------------
@@ -400,6 +544,22 @@ async def score(
             "expected": sorted(f"{c}/{k}" for c, k in golden_assessments),
             "found": sorted(f"{c}/{k}" for c, k in stored),
             "missing": sorted(f"{c}/{k}" for c, k in set(golden_assessments) - set(stored)),
+            "verified": sorted(
+                f"{c}/{k}" for (c, k), a in stored.items() if a.status.value == "verified"
+            ),
+            "false_verified": sorted(
+                f"{c}/{k}"
+                for (c, k), a in stored.items()
+                if a.status.value == "verified" and (c, k) not in golden_assessments
+            ),
+            "golden_not_verified": sorted(
+                f"{c}/{k}"
+                for (c, k) in golden_assessments
+                if (c, k) not in stored or stored[(c, k)].status.value != "verified"
+            ),
+            "needs_review": sorted(
+                f"{c}/{k}" for (c, k), a in stored.items() if a.status.value == "needs_review"
+            ),
             "extra": sorted(f"{c}/{k}" for c, k in set(stored) - set(golden_assessments)),
             "weighting": {
                 f"{c}/{k}": {
@@ -448,8 +608,14 @@ def _semantics(result: GateResult) -> list[Any]:
 
 
 async def run_live(
-    role: ModelRole, info: ModelInfo, settings: Any, golden: GoldenDataset, thinking: bool | None
+    role: ModelRole,
+    info: ModelInfo,
+    settings: Any,
+    golden: GoldenDataset,
+    thinking: bool | None,
+    replay: ReplayProvider | None = None,
 ) -> dict[str, Any]:
+    """The live run, or, given ``replay``, the same pipeline with no model."""
     from app.ai.nebius import NebiusTokenFactoryProvider
     from app.ai.nebius_embeddings import embedding_space_from_settings
     from app.demo.seed import NORTHBRIDGE_TIMEZONE, seed
@@ -469,8 +635,12 @@ async def run_live(
     await asyncio.to_thread(recreate_eval_database, database)
     await asyncio.to_thread(migrate_eval_database, database)
     engine = create_async_engine(database.url)
-    inner = NebiusTokenFactoryProvider.from_settings(settings, max_output_tokens=OUTPUT_TOKEN_CAP)
-    provider = BudgetedProvider(
+    inner = (
+        None
+        if replay is not None
+        else NebiusTokenFactoryProvider.from_settings(settings, max_output_tokens=OUTPUT_TOKEN_CAP)
+    )
+    provider: Any = replay or BudgetedProvider(
         inner, info, settings.ai_max_attempts, settings.ai_max_repair_attempts
     )
     started = datetime.now(UTC)
@@ -511,15 +681,17 @@ async def run_live(
         return await _assemble(
             sessions, golden, info, role, thinking, started, injection,
             [r.summary.model_dump(mode="json") | {"status": r.status.value} for r in runs],
-            [{"material_sha256": _sha(user), "output": out} for user, out in provider.outputs],
+            [{"material_key": _sha(material_of(user)), "output": out}
+             for user, out in provider.outputs],
         )  # fmt: skip
     finally:
-        await inner.aclose()
+        if inner is not None:
+            await inner.aclose()
         await engine.dispose()
 
 
 async def _injection_control(
-    provider: BudgetedProvider,
+    provider: Any,
     sessions: async_sessionmaker[AsyncSession],
     course_id: uuid.UUID,
     role: ModelRole,
@@ -586,6 +758,7 @@ async def _assemble(
         "dataset": {"name": golden.manifest.dataset, "version": golden.manifest.dataset_version,
                     "sha256": golden.sha256},
         "prompt_version": PROMPT_VERSION,
+        "gate_version": GATE_VERSION,
         "model_role": role.value,
         "model": info.id,
         "temperature": 0.0,
@@ -707,6 +880,7 @@ def _markdown(r: dict[str, Any]) -> str:
         (
             f"Frozen dataset `{m['dataset']['name']}` {m['dataset']['version']} "
             f"(sha256 `{m['dataset']['sha256'][:12]}…`), prompt `{m['prompt_version']}`, "
+            f"gate `{m.get('gate_version', 'assessment-gate/v1')}`, "
             f"model `{m['model']}`, thinking {m['thinking']}, temperature {m['temperature']}, "
             f"output cap {m['output_token_cap_per_request']} tokens per request, "
             f"spend cap ${m['spend_cap_usd']}, run {m['run_at']}. "
@@ -739,6 +913,11 @@ def _markdown(r: dict[str, Any]) -> str:
         "",
         f"- Expected: {', '.join(a['expected'])}",
         f"- Missing: {', '.join(a['missing']) or 'none'}; extra: {', '.join(a['extra']) or 'none'}",
+        (
+            f"- Verified assessments not in golden (false verified): **{len(a['false_verified'])}**"
+            f" {a['false_verified'] or ''}; golden not verified: {a['golden_not_verified'] or 'none'}"
+        ),
+        f"- Needs review (no verified deadline or weighting): {a['needs_review'] or 'none'}",
         f"- Title evidence from distinct versions: {a['title_evidence_versions']}",
         f"- Weighting (golden vs extracted): {a['weighting']}",
         "",
@@ -785,6 +964,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--live", action="store_true", help="make the paid model calls")
     mode.add_argument(
+        "--replay-outputs",
+        type=Path,
+        help="replay a live run's recorded outputs through the current gate (no model call)",
+    )
+    mode.add_argument(
         "--report-existing",
         action="store_true",
         help="score the last live run left in the evaluation database (no model call)",
@@ -810,6 +994,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(json.dumps({"plan": plan}, indent=2))
     if plan["problems"]:
         return 4
+    if args.replay_outputs:
+        recorded = json.loads(args.replay_outputs.read_text(encoding="utf-8"))
+        replay = ReplayProvider(assign_outputs(recorded, plan_units(golden)), info.id)
+        result = asyncio.run(run_live(role, info, settings, golden, thinking, replay))
+        result.pop("outputs")
+        RUNS.mkdir(parents=True, exist_ok=True)
+        out = RUNS / f"{args.replay_outputs.stem}-replay-{GATE_VERSION.replace('/', '-')}.json"
+        out.write_text(
+            json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+        )
+        print(json.dumps({"status": "replayed", "result": out.as_posix(),
+                          "deadlines": {k: result["deadlines"][k] for k in ("expected", "exact_match", "missed", "verified_not_in_golden")},
+                          "assessments": result["assessments"], "abstention": result["abstention"],
+                          "injection": result["injection"]}, indent=2, default=str))  # fmt: skip
+        return 0
     if args.report_existing:
         result = asyncio.run(report_existing(role, info, settings, golden, thinking))
     elif args.live:
