@@ -31,7 +31,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from app.ai.embeddings import EmbeddingInput, document_input
+from app.ai.embeddings import EmbeddingInput, EmbeddingSpace, document_input
 from app.connectors.demo import DemoManifest
 from app.evaluation.northbridge.labels import (
     CORPUS_DIR,
@@ -47,6 +47,7 @@ from app.evaluation.retrieval.record import (
     plan_recording,
     record_snapshot,
 )
+from app.evaluation.retrieval.replay import ReplayEmbeddingProvider, load_replay_provider
 from app.evaluation.retrieval.snapshot import (
     ExpectedInputs,
     SnapshotError,
@@ -87,6 +88,22 @@ def corpus_inputs(corpus: DemoManifest) -> ExpectedInputs:
                     item = document_input(text)
                     documents.setdefault(input_key(item), item)
     return ExpectedInputs(tuple(documents.values()), ())
+
+
+def load_demo_replay(
+    active_space: EmbeddingSpace, *, max_batch_items: int, path: Path = SNAPSHOT_PATH
+) -> ReplayEmbeddingProvider:
+    """The offline provider a seed indexes with: the committed snapshot, fully
+    validated against the frozen golden dataset (so the current corpus), the
+    production inputs and the active space. SnapshotError if any differs."""
+    golden = load_golden()
+    return load_replay_provider(
+        path,
+        dataset=snapshot_subject(golden),
+        active_space=active_space,
+        max_batch_items=max_batch_items,
+        inputs=corpus_inputs(golden.corpus),
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

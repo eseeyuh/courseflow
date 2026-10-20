@@ -3,12 +3,14 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """Course import from the demo connector, change application and the scoped
-reset, on the committed Northbridge institution (no indexing, no provider)."""
+reset, on the committed Northbridge institution. Seeds index with the
+offline fake provider; replay is covered by test_demo_seed_acceptance."""
 
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 from sqlalchemy import func, select
@@ -23,6 +25,8 @@ from app.demo.seed import seed
 from app.domain.enums import LmsType
 from app.evaluation.retrieval.resolve import production_limits
 from app.ingestion.storage import LocalRawObjectStore
+from app.retrieval.indexing import IndexingService
+from tests.embedding_fakes import FakeEmbeddingProvider
 
 pytestmark = pytest.mark.anyio
 
@@ -37,6 +41,14 @@ def store(tmp_path: Path) -> LocalRawObjectStore:
     root = tmp_path / "raw"
     root.mkdir()
     return LocalRawObjectStore(root)
+
+
+@pytest.fixture
+def limits_and_indexer(sessions: async_sessionmaker[AsyncSession]) -> dict[str, Any]:
+    indexer = IndexingService(
+        sessions, FakeEmbeddingProvider(), batch_max_items=64, batch_max_estimated_tokens=32_000
+    )
+    return {"limits": production_limits(), "indexer": indexer}
 
 
 async def _count(sessions: async_sessionmaker[AsyncSession], model: object) -> int:
@@ -55,33 +67,40 @@ async def _current_numbers(sessions: async_sessionmaker[AsyncSession]) -> dict[s
 
 
 async def test_seed_initial_then_final_is_idempotent_at_every_step(
-    sessions: async_sessionmaker[AsyncSession], store: LocalRawObjectStore
+    sessions: async_sessionmaker[AsyncSession],
+    store: LocalRawObjectStore,
+    limits_and_indexer: dict[str, Any],
 ) -> None:
-    first = await seed(sessions, store, limits=production_limits())
+    opts = limits_and_indexer
+    first = await seed(sessions, store, **opts)
     assert [c["initial_versions_created"] for c in first["courses"]] == [6, 4]
     assert (await _count(sessions, Course), await _count(sessions, ResourceVersion)) == (2, 10)
     assert await _count(sessions, SourceSpan) > 0
 
-    again = await seed(sessions, store, limits=production_limits())
+    again = await seed(sessions, store, **opts)
     assert [c["initial_versions_created"] for c in again["courses"]] == [0, 0]
 
-    final = await seed(sessions, store, limits=production_limits(), state="final")
+    final = await seed(sessions, store, **opts, state="final")
     assert [c["change_versions_created"] for c in final["courses"]] == [1, 1]
     current = await _current_numbers(sessions)
     assert current["announcements"] == current["dissertation-handbook"] == 2
     assert sum(current.values()) == 12  # 10 resources, two of them at v2
 
     # Re-importing the initial (v1) sources after v2 must not create a v3.
-    replay = await seed(sessions, store, limits=production_limits(), state="final")
+    replay = await seed(sessions, store, **opts, state="final")
     assert [c["initial_versions_created"] for c in replay["courses"]] == [0, 0]
     assert [c["change_versions_created"] for c in replay["courses"]] == [0, 0]
     assert await _count(sessions, ResourceVersion) == 12
 
 
 async def test_stored_content_that_disagrees_with_the_connector_is_a_conflict(
-    sessions: async_sessionmaker[AsyncSession], store: LocalRawObjectStore, tmp_path: Path
+    sessions: async_sessionmaker[AsyncSession],
+    store: LocalRawObjectStore,
+    tmp_path: Path,
+    limits_and_indexer: dict[str, Any],
 ) -> None:
-    await seed(sessions, store, limits=production_limits())
+    opts = limits_and_indexer
+    await seed(sessions, store, **opts)
     altered = tmp_path / "northbridge"
     shutil.copytree(DATA_ROOT, altered)
     brief = altered / "courses/aml7001/AML_Assignment_Brief_v1.pdf"
@@ -96,25 +115,28 @@ async def test_stored_content_that_disagrees_with_the_connector_is_a_conflict(
             stub,
             institution_name="Northbridge University",
             lms_type=LmsType.DEMO,
-            limits=production_limits(),
+            limits=opts["limits"],
         )
 
 
 async def test_reset_removes_only_the_northbridge_institution(
-    sessions: async_sessionmaker[AsyncSession], store: LocalRawObjectStore
+    sessions: async_sessionmaker[AsyncSession],
+    store: LocalRawObjectStore,
+    limits_and_indexer: dict[str, Any],
 ) -> None:
+    opts = limits_and_indexer
     async with sessions() as session, session.begin():
         await ensure_institution(session, "Other University", LmsType.DEMO)
         await ensure_institution(session, "Northbridge University", LmsType.UPLOAD)
-    await seed(sessions, store, limits=production_limits(), state="final")
+    await seed(sessions, store, **opts, state="final")
 
-    summary = await seed(sessions, store, limits=production_limits(), reset=True)
+    summary = await seed(sessions, store, **opts, reset=True)
     assert summary["reset"] == {
         "institutions": 1,
         "courses": 2,
         "resources": 10,
         "versions": 12,
-        "workflow_runs": 0,
+        "workflow_runs": 4,
     }
     async with sessions() as session:
         names = sorted(

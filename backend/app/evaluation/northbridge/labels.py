@@ -299,7 +299,19 @@ def version_texts(
     return out
 
 
-def _check_evidence(
+def evidence_refs(label: Any) -> list[tuple[str, Evidence]]:
+    """Every evidence reference a label makes, with where it is in the label."""
+    where = label.label_id
+    refs: list[tuple[str, Evidence]] = []
+    for name in ("evidence", "materials"):
+        refs += [(f"{where} {name}[{i}]", r) for i, r in enumerate(getattr(label, name, ()))]
+    for name in ("before", "after"):
+        if getattr(label, name, None) is not None:
+            refs.append((f"{where} {name}", getattr(label, name)))
+    return refs
+
+
+def check_evidence(
     course: str, ref: Evidence, texts: dict[tuple[str, str, int], Any], where: str
 ) -> str | None:
     key = (course, ref.resource, ref.version)
@@ -348,14 +360,8 @@ def check_labels(corpus: DemoManifest, labels: Sequence[Any]) -> list[str]:
         if label.course not in courses:
             problems.append(f"{where}: unknown course {label.course!r}")
             continue
-        refs: list[tuple[str, Evidence]] = []
-        for name in ("evidence", "materials"):
-            refs += [(f"{where} {name}[{i}]", r) for i, r in enumerate(getattr(label, name, ()))]
-        for name in ("before", "after"):
-            if getattr(label, name, None) is not None:
-                refs.append((f"{where} {name}", getattr(label, name)))
-        for ref_where, ref in refs:
-            problem = _check_evidence(label.course, ref, texts, ref_where)
+        for ref_where, ref in evidence_refs(label):
+            problem = check_evidence(label.course, ref, texts, ref_where)
             if problem:
                 problems.append(problem)
 

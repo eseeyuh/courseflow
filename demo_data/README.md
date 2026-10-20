@@ -39,3 +39,16 @@ Two resources change after the initial import, and each keeps its identity as th
 `backend/app/connectors/demo.py` (`DemoConnector`) serves this institution through the same `LMSConnector` interface a real LMS connector will implement.
 
 The documents are deliberately not phrased to make extraction easy. Evaluation labels are kept separately, under `evals/datasets/`.
+
+## Seeding
+
+One command imports both courses through `DemoConnector` and indexes them, inside the API container (which owns the raw-source store):
+
+```bash
+docker compose run --rm api python -m app.demo.seed --reset                 # initial state
+docker compose run --rm api python -m app.demo.seed --state final           # apply the v2 changes
+```
+
+`--reset` removes the Northbridge institution and everything it owns, and nothing else. Indexing replays the committed embedding snapshot (`evals/snapshots/northbridge/v1/`), so seeding needs no API key, makes no network call and costs nothing. The snapshot is pinned to the frozen golden labels, whose hash covers these documents: if any document changes, seeding refuses the snapshot rather than mixing vectors.
+
+In the final state only the two changed versions are new indexing work. The snapshot holds document vectors only, so lexical search works over a replayed seed; vector and hybrid search need a live query embedding.

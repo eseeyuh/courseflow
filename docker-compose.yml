@@ -77,6 +77,11 @@ services:
       EMBEDDING_SPACE_VERSION: ${EMBEDDING_SPACE_VERSION:-v1}
     volumes:
       - rawdata:/var/lib/courseflow/raw
+      # Read-only synthetic demo sources and their frozen labels and embedding
+      # snapshot, for `docker compose run --rm api python -m app.demo.seed`.
+      # The image (build context backend/) contains neither.
+      - ./demo_data:/demo_data:ro
+      - ./evals:/evals:ro
     ports:
       - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
     depends_on:
