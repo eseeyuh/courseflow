@@ -149,10 +149,14 @@ async def _indexed_versions(sessions: async_sessionmaker[AsyncSession]) -> set[u
         )
 
 
-def _manifest_versions() -> dict[tuple[str, str], list[int]]:
+def _manifest() -> dict[tuple[str, str], tuple[list[int], int]]:
+    """(course ref, resource key) -> (version numbers, intended active version)."""
     connector = DemoConnector(DATA_ROOT)
     return {
-        (course.ref, resource.key): [v.version for v in resource.versions]
+        (course.ref, resource.key): (
+            [v.version for v in resource.versions],
+            resource.active_version,
+        )
         for course in connector.manifest.courses
         for resource in course.resources
     }
@@ -229,7 +233,7 @@ async def test_initial_state_has_every_intended_version_at_v1(
 ) -> None:
     await _seed(sessions, store, replay_indexer)
     versions = await _versions(sessions)
-    assert {(c, r) for c, r, *_ in versions} == set(_manifest_versions())
+    assert {(c, r) for c, r, *_ in versions} == set(_manifest())
     assert all(n == 1 and current for _, _, n, _, current, _ in versions)
     async with sessions() as session:
         assert await session.scalar(select(func.count()).select_from(Course)) == 2
@@ -251,13 +255,12 @@ async def test_final_state_applies_exactly_the_fetched_changes(
 
     await _seed(sessions, store, replay_indexer, state="final")
     versions = await _versions(sessions)
-    # Every intended version exists, and the active one is the latest.
-    assert {
-        (c, r): [n for cc, rr, n, *_ in versions if (cc, rr) == (c, r)] for c, r, *_ in versions
-    } == _manifest_versions()
+    # Every intended version exists, and the current one is the manifest's active one.
+    seeded: dict[tuple[str, str], tuple[list[int], int]] = {}
     for course, key, number, _, current, _ in versions:
-        changed = CHANGED.get(course) == key
-        assert current == (number == (2 if changed else 1)), (course, key, number)
+        numbers, active = seeded.get((course, key), ([], 0))
+        seeded[(course, key)] = ([*numbers, number], number if current else active)
+    assert seeded == _manifest()
     # v1 and v2 keep one resource identity and differ in content hash.
     for course, key in CHANGED.items():
         (v1, v2) = [v for v in versions if v[:2] == (course, key)]
