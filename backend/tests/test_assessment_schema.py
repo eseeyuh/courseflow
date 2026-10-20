@@ -98,7 +98,7 @@ def _deadline(assessment_id: uuid.UUID, **values: Any) -> AssessmentDeadline:
         "due_date": date(2026, 11, 12),
         "due_time": time(14, 0),
         "timezone": LONDON,
-        "timezone_source": TimezoneSource.STATED,
+        "timezone_source": TimezoneSource.EXPLICIT_SOURCE,
         "precision": DeadlinePrecision.DATETIME,
         "due_at": datetime(2026, 11, 12, 14, 0, tzinfo=UTC),  # GMT in November
         "status": V.VERIFIED,
@@ -210,7 +210,7 @@ async def test_the_deadline_shapes_the_contract_allows(
             assessment_id,
             due_date=date(2026, 12, 2),
             timezone=None,
-            timezone_source=None,
+            timezone_source=TimezoneSource.UNKNOWN,
             due_at=None,
             status=V.NEEDS_REVIEW,
         ),
@@ -230,11 +230,11 @@ async def test_the_deadline_shapes_the_contract_allows(
     [
         ({"precision": DeadlinePrecision.DATE, "due_at": None}, "time_fits_precision"),
         ({"due_time": None, "due_at": None, "status": V.NEEDS_REVIEW}, "time_fits_precision"),
-        ({"timezone_source": None}, "timezone_sourced"),
+        ({"timezone_source": TimezoneSource.UNKNOWN}, "timezone_sourced"),
         ({"timezone": None, "due_at": None, "status": V.NEEDS_REVIEW}, "timezone_sourced"),
         ({"timezone": " "}, "timezone_nonblank"),
         (
-            {"timezone": None, "timezone_source": None, "status": V.NEEDS_REVIEW},
+            {"timezone": None, "timezone_source": TimezoneSource.UNKNOWN, "status": V.NEEDS_REVIEW},
             "instant_needs_time_and_timezone",
         ),
         ({"due_at": None}, "verified_datetime_has_instant"),

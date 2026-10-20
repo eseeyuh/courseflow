@@ -55,6 +55,9 @@ from app.ingestion.storage import RawObjectStore, RawStoreError
 from app.retrieval.indexing import IndexingService
 
 DEMO_USER = "demo-student"
+# Set here, not in the manifest: the manifest is part of the frozen golden
+# dataset hash. A deadline whose source names no timezone uses this one.
+NORTHBRIDGE_TIMEZONE = "Europe/London"
 
 
 class IndexingIncomplete(RuntimeError):
@@ -103,6 +106,7 @@ async def seed(
             institution_name=institution,
             lms_type=LmsType.DEMO,
             limits=limits,
+            institution_timezone=NORTHBRIDGE_TIMEZONE,
         )
         entry: dict[str, Any] = {
             "course": stub.course_ref,

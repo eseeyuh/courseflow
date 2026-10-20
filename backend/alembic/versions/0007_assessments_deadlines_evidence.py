@@ -11,8 +11,8 @@ Create Date: 2026-10-20
 
 - assessments: one canonical row per (course, canonical_key).
 - assessment_deadlines: one row per deadline value a source states, as a
-  local date, an optional local time and an IANA timezone; ``due_at`` only
-  when all three are known. Disagreeing sources give separate rows.
+  local date, an optional local time and an IANA timezone, with how the
+  timezone was obtained; ``due_at`` only when all three are known. Disagreeing sources give separate rows.
 - evidence_links: one row per (fact, span, quote range) supporting an
   assessment or a deadline, with its verification status and ModelCall /
   WorkflowRun lineage. No cascade from spans, calls or runs: evidence must
@@ -97,7 +97,7 @@ def upgrade() -> None:
         sa.Column("due_date", sa.Date(), nullable=False),
         sa.Column("due_time", sa.Time(), nullable=True),
         sa.Column("timezone", sa.Text(), nullable=True),
-        sa.Column("timezone_source", sa.String(length=32), nullable=True),
+        sa.Column("timezone_source", sa.String(length=32), nullable=False),
         sa.Column("precision", sa.String(length=32), nullable=False),
         sa.Column("due_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("status", sa.String(length=32), nullable=False),
@@ -106,7 +106,7 @@ def upgrade() -> None:
             f"status {_STATUS}", name=op.f("ck_assessment_deadlines_verification_status")
         ),
         sa.CheckConstraint(
-            "timezone_source IN ('stated', 'institution_default')",
+            "timezone_source IN ('explicit_source', 'institution_default', 'unknown')",
             name=op.f("ck_assessment_deadlines_timezone_source"),
         ),
         sa.CheckConstraint(
@@ -118,7 +118,7 @@ def upgrade() -> None:
             name=op.f("ck_assessment_deadlines_time_fits_precision"),
         ),
         sa.CheckConstraint(
-            "(timezone IS NULL) = (timezone_source IS NULL)",
+            "(timezone IS NULL) = (timezone_source = 'unknown')",
             name=op.f("ck_assessment_deadlines_timezone_sourced"),
         ),
         sa.CheckConstraint(

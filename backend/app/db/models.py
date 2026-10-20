@@ -648,7 +648,9 @@ class AssessmentDeadline(UUIDPrimaryKey, Timestamps, Base):
             postgresql_nulls_not_distinct=True,
         ),
         CheckConstraint("(precision = 'date') = (due_time IS NULL)", name="time_fits_precision"),
-        CheckConstraint("(timezone IS NULL) = (timezone_source IS NULL)", name="timezone_sourced"),
+        CheckConstraint(
+            "(timezone IS NULL) = (timezone_source = 'unknown')", name="timezone_sourced"
+        ),
         CheckConstraint("length(btrim(timezone)) > 0", name="timezone_nonblank"),
         CheckConstraint(
             "due_at IS NULL OR (precision = 'datetime' AND timezone IS NOT NULL)",
@@ -666,7 +668,7 @@ class AssessmentDeadline(UUIDPrimaryKey, Timestamps, Base):
     due_date: Mapped[date]
     due_time: Mapped[time | None]
     timezone: Mapped[str | None] = mapped_column(Text)
-    timezone_source: Mapped[TimezoneSource | None] = mapped_column(
+    timezone_source: Mapped[TimezoneSource] = mapped_column(
         str_enum(TimezoneSource, "timezone_source")
     )
     precision: Mapped[DeadlinePrecision] = mapped_column(

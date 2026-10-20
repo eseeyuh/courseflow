@@ -129,10 +129,12 @@ class DeadlinePrecision(StrEnum):
 
 
 class TimezoneSource(StrEnum):
-    """Where a deadline's timezone came from."""
+    """How a deadline's timezone was obtained. Never more than the evidence says."""
 
-    STATED = "stated"  # the cited text names it (e.g. "UK time")
-    INSTITUTION_DEFAULT = "institution_default"  # not stated; the institution's own timezone
+    EXPLICIT_SOURCE = "explicit_source"  # the cited quote itself names it (e.g. "UK time")
+    # The quote names none; the institution's own timezone was applied.
+    INSTITUTION_DEFAULT = "institution_default"
+    UNKNOWN = "unknown"  # neither: no instant can be derived
 
 
 class EvidenceSubject(StrEnum):

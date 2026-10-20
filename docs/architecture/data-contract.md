@@ -146,7 +146,7 @@ A `ModelCall` belongs to a `WorkflowRun` when made inside one. Per-attempt detai
 | Ingestion error category | `unsupported_type`, `corrupt_file`, `empty_text`, `limit_exceeded`, `parser_failure` | Why one file was not ingested. A failed file creates no rows. |
 | `verification_status` | `verified`, `needs_review`, `rejected` | Only `verified` claims are presented as fact. |
 | `AssessmentDeadline.precision` | `datetime`, `date` | `date`: no time of day was stated; none is invented and there is no `due_at`. A month, week or term is not a deadline: no row. |
-| `AssessmentDeadline.timezone_source` | `stated`, `institution_default` | `institution_default`: the source names no timezone, so the institution's own applies; with neither, a local time cannot be verified. |
+| `AssessmentDeadline.timezone_source` | `explicit_source`, `institution_default`, `unknown` | `explicit_source`: the cited quote names the timezone. `institution_default`: it names none, so the institution's own was applied (the quote is not claimed to state it). `unknown`: neither; no instant, and a local time cannot be verified. |
 | `StudyState.state` | `NOT_STARTED`, `STUDYING`, `STUDIED` | Opening a document never changes state automatically. |
 | `DependencyEdge.relation` | `BEFORE`, `REQUIRED_FOR`, `SUPPORTED_BY` | Extended only via a documented contract change. |
 | `Conflict.status` | `open`, `acknowledged`, `resolved_by_source` | "Resolved" only when a newer authoritative source settles it, never by silent choice. |
