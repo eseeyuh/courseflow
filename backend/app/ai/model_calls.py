@@ -73,6 +73,7 @@ async def call_structured_recorded[T: BaseModel](
     prompt_version: str,
     workflow_run_id: uuid.UUID | None = None,
     temperature: float | None = None,
+    thinking: bool | None = None,
 ) -> RecordedResult[T]:
     started_at = datetime.now(UTC)
     # Monotonic clock for duration; finished_at is derived from it so a wall
@@ -89,8 +90,10 @@ async def call_structured_recorded[T: BaseModel](
         started_at=started_at,
     )
     try:
+        # Passed only when set, so providers without the option keep working.
+        options = {} if thinking is None else {"thinking": thinking}
         result = await provider.chat_structured(
-            messages, schema, role=role, temperature=temperature
+            messages, schema, role=role, temperature=temperature, **options
         )
         if not isinstance(result.output, schema):
             raise TypeError(

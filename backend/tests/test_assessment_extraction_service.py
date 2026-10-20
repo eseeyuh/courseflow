@@ -74,8 +74,10 @@ class FakeModel:
         *,
         role: ModelRole,
         temperature: float | None = None,
+        thinking: bool | None = None,
     ) -> StructuredResult[T]:
         self.calls.append(list(messages))
+        self.thinking = thinking
         user = messages[-1].content
         if self.fail_on and self.fail_on in user:
             raise AIProviderError(

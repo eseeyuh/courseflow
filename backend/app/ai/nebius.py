@@ -124,6 +124,7 @@ class NebiusTokenFactoryProvider:
         *,
         role: ModelRole,
         temperature: float | None = None,
+        thinking: bool | None = None,
     ) -> StructuredResult[T]:
         spend = Spend(model=self.model_for(role))
         conversation: list[dict[str, str]] = [
@@ -143,6 +144,10 @@ class NebiusTokenFactoryProvider:
         }
         if temperature is not None:
             request["temperature"] = temperature
+        if thinking is not None:
+            # Nemotron's chat-template switch (docs/experiments/model-catalog.md):
+            # not part of the OpenAI API, so it travels in extra_body.
+            request["extra_body"] = {"chat_template_kwargs": {"enable_thinking": thinking}}
 
         for repair_round in range(self._max_repair_attempts + 1):
             spend.repair_rounds = repair_round

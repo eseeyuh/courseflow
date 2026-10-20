@@ -85,6 +85,7 @@ Approximate cost per call from these token counts at the listed prices: about **
 4. **`finish_reason=length` means "do not parse".** Because reasoning shares the token budget, truncated `content` can be thinking prose. The provider classifies this as `truncated` and does not try to repair it.
 5. **Reasoning dominates latency and cost.** Disabling thinking cut latency by about 3–6×. Whether routine extraction keeps its quality without thinking is an evaluation question for the golden dataset, not something to assume.
 6. **Errors are classified by status and exception class**, because error bodies are not OpenAI-shaped.
+7. **On real extraction units, Lightning's default thinking exhausts the output budget.** First assessment-extraction evaluation (20 Oct 2026; `evals/reports/assessment-extraction-v1-fast-thinking-default.md`): with thinking at the model default and a 2,048-token output cap, 9 of 11 calls hit `finish_reason=length` with 2,048 reasoning tokens and no answer, and the other 2 used about 1,890 reasoning tokens to return an empty list. Spend was $0.0060, about 2.3x the plan's estimate, so the spend guard refused the remaining 2 calls unsent. Thinking is now an explicit per-call option (`thinking=False` sends `chat_template_kwargs.enable_thinking=false`); extraction quality with it off is measured on the golden dataset, not assumed.
 
 ## 4. Configuration chosen
 

@@ -1,0 +1,240 @@
+{
+  "abstention": {
+    "exam_month_only_has_no_deadline": null,
+    "not_a_deadline_quotes_extracted": []
+  },
+  "assessments": {
+    "expected": [
+      "aml7001/coursework 1",
+      "aml7001/written examination",
+      "msd7000/final dissertation",
+      "msd7000/project specification"
+    ],
+    "extra": [],
+    "found": [],
+    "missing": [
+      "aml7001/coursework 1",
+      "aml7001/written examination",
+      "msd7000/final dissertation",
+      "msd7000/project specification"
+    ],
+    "title_evidence_versions": {},
+    "weighting": {
+      "aml7001/coursework 1": {
+        "extracted": null,
+        "golden": 40
+      },
+      "aml7001/written examination": {
+        "extracted": null,
+        "golden": 60
+      },
+      "msd7000/final dissertation": {
+        "extracted": null,
+        "golden": null
+      },
+      "msd7000/project specification": {
+        "extracted": null,
+        "golden": 10
+      }
+    }
+  },
+  "deadlines": {
+    "all": [],
+    "exact_match": 0,
+    "exact_match_rate": 0.0,
+    "expected": 6,
+    "missed": [
+      [
+        "aml7001",
+        "announcements",
+        2,
+        "coursework 1",
+        "2026-11-19T14:00",
+        "Europe/London"
+      ],
+      [
+        "aml7001",
+        "coursework-1-brief",
+        1,
+        "coursework 1",
+        "2026-11-12T14:00",
+        "Europe/London"
+      ],
+      [
+        "aml7001",
+        "module-handbook",
+        1,
+        "coursework 1",
+        "2026-11-13T23:59",
+        "Europe/London"
+      ],
+      [
+        "msd7000",
+        "dissertation-handbook",
+        1,
+        "final dissertation",
+        "2027-09-03T16:00",
+        "Europe/London"
+      ],
+      [
+        "msd7000",
+        "dissertation-handbook",
+        2,
+        "final dissertation",
+        "2027-09-03T16:00",
+        "Europe/London"
+      ],
+      [
+        "msd7000",
+        "project-specification-brief",
+        1,
+        "project specification",
+        "2026-11-30T12:00",
+        "Europe/London"
+      ]
+    ],
+    "needs_review": [],
+    "verified_extracted": 0,
+    "verified_not_in_golden": []
+  },
+  "injection": {
+    "control": "not_run: refused by the spend guard (see usage.failed)",
+    "evidence_links_on_injection_span": 0
+  },
+  "meta": {
+    "dataset": {
+      "name": "northbridge-golden",
+      "sha256": "da106bd3b731e7bee5d763d59ec9cac55c80b3fa694ae9b3c1ebe25f3b14812e",
+      "version": "v1"
+    },
+    "model": "nvidia/Nemotron-3_5-Lightning",
+    "model_role": "fast",
+    "output_token_cap_per_request": 2048,
+    "prompt_version": "assessment-extraction/v1",
+    "run_at": "2026-10-20T21:26:27Z",
+    "spend_cap_usd": "0.01",
+    "temperature": 0.0,
+    "thinking": "model default"
+  },
+  "runs": [
+    {
+      "abstained": {},
+      "assessments_created": 0,
+      "assessments_merged": 0,
+      "assessments_proposed": 0,
+      "completion_tokens": 3802,
+      "deadlines_created": 0,
+      "deadlines_merged": 0,
+      "failures": {
+        "truncated": 4
+      },
+      "links_created": 0,
+      "links_existing": 0,
+      "model_role": "fast",
+      "prompt_tokens": 5975,
+      "prompt_version": "assessment-extraction/v1",
+      "rejected": {},
+      "review_reasons": {},
+      "status": "failed",
+      "units": 6,
+      "units_failed": 4,
+      "versions": 6,
+      "weighting_disagreements": 0,
+      "workflow_version": "assessment-extraction/v1"
+    },
+    {
+      "abstained": {},
+      "assessments_created": 0,
+      "assessments_merged": 0,
+      "assessments_proposed": 0,
+      "completion_tokens": 0,
+      "deadlines_created": 0,
+      "deadlines_merged": 0,
+      "failures": {
+        "truncated": 4
+      },
+      "links_created": 0,
+      "links_existing": 0,
+      "model_role": "fast",
+      "prompt_tokens": 3730,
+      "prompt_version": "assessment-extraction/v1",
+      "rejected": {},
+      "review_reasons": {},
+      "status": "failed",
+      "units": 4,
+      "units_failed": 4,
+      "versions": 4,
+      "weighting_disagreements": 0,
+      "workflow_version": "assessment-extraction/v1"
+    },
+    {
+      "abstained": {},
+      "assessments_created": 0,
+      "assessments_merged": 0,
+      "assessments_proposed": 0,
+      "completion_tokens": 0,
+      "deadlines_created": 0,
+      "deadlines_merged": 0,
+      "failures": {
+        "truncated": 1
+      },
+      "links_created": 0,
+      "links_existing": 0,
+      "model_role": "fast",
+      "prompt_tokens": 1040,
+      "prompt_version": "assessment-extraction/v1",
+      "rejected": {},
+      "review_reasons": {},
+      "status": "failed",
+      "units": 1,
+      "units_failed": 1,
+      "versions": 1,
+      "weighting_disagreements": 0,
+      "workflow_version": "assessment-extraction/v1"
+    },
+    {
+      "abstained": {},
+      "assessments_created": 0,
+      "assessments_merged": 0,
+      "assessments_proposed": 0,
+      "completion_tokens": 0,
+      "deadlines_created": 0,
+      "deadlines_merged": 0,
+      "failures": {
+        "unexpected": 1
+      },
+      "links_created": 0,
+      "links_existing": 0,
+      "model_role": "fast",
+      "prompt_tokens": null,
+      "prompt_version": "assessment-extraction/v1",
+      "rejected": {},
+      "review_reasons": {},
+      "status": "failed",
+      "units": 1,
+      "units_failed": 1,
+      "versions": 1,
+      "weighting_disagreements": 0,
+      "workflow_version": "assessment-extraction/v1"
+    }
+  ],
+  "usage": {
+    "completion_tokens": 22234,
+    "cost_usd_from_reported_tokens": "0.005981",
+    "failed": {
+      "truncated": 9,
+      "unexpected": 2
+    },
+    "http_attempts": 13,
+    "latency_ms": {
+      "max": 18183,
+      "p50": 7306
+    },
+    "model_calls": 13,
+    "prompt_tokens": 10745,
+    "reasoning_tokens": 22216,
+    "repair_rounds": 0,
+    "succeeded": 2,
+    "unreported_usage_calls": 2
+  }
+}

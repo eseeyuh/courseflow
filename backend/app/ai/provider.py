@@ -91,8 +91,14 @@ class AIProvider(Protocol):
         *,
         role: ModelRole,
         temperature: float | None = None,
+        thinking: bool | None = None,
     ) -> StructuredResult[T]:
-        """Return ``schema`` validated from the model's answer, or raise ``AIProviderError``."""
+        """Return ``schema`` validated from the model's answer, or raise ``AIProviderError``.
+
+        ``thinking``: None leaves the model's default; False asks a reasoning
+        model not to reason before answering (reasoning shares the output
+        token budget). A provider that cannot honour it must raise.
+        """
         ...
 
     async def list_models(self) -> list[ModelInfo]: ...

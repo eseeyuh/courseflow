@@ -54,6 +54,7 @@ class ExtractionSummary(BaseModel):
     workflow_version: Literal["assessment-extraction/v1"] = WORKFLOW_VERSION
     prompt_version: str
     model_role: str
+    thinking: bool | None = None  # None: the model's default
     versions: int = 0
     units: int = 0
     units_failed: int = 0
@@ -94,19 +95,24 @@ class AssessmentExtractionService:
         role: ModelRole = ModelRole.FAST,
         prompt_version: str = PROMPT_VERSION,
         temperature: float | None = 0.0,
+        thinking: bool | None = None,
     ) -> None:
         self._sessions = session_factory
         self._provider = provider
         self._role = role
         self._prompt = load_prompt(prompt_version)
         self._temperature = temperature
+        self._thinking = thinking
 
     async def extract_course(
         self, course_id: uuid.UUID, version_ids: Sequence[uuid.UUID] | None = None
     ) -> ExtractionRunResult:
         run_id, versions, zone = await self._start(course_id, version_ids)
         summary = ExtractionSummary(
-            prompt_version=self._prompt.version, model_role=self._role.value, versions=len(versions)
+            prompt_version=self._prompt.version,
+            model_role=self._role.value,
+            thinking=self._thinking,
+            versions=len(versions),
         )
         counts = PersistCounts()
         rejected: Counter[str] = Counter()
@@ -188,6 +194,7 @@ class AssessmentExtractionService:
                 prompt_version=self._prompt.version,
                 workflow_run_id=run_id,
                 temperature=self._temperature,
+                thinking=self._thinking,
             )
         except RecordedCallError as failed:
             failures[failed.error.category.value] += 1
