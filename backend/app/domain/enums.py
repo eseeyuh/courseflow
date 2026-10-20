@@ -110,3 +110,41 @@ class IngestionErrorCategory(StrEnum):
     EMPTY_TEXT = "empty_text"
     LIMIT_EXCEEDED = "limit_exceeded"
     PARSER_FAILURE = "parser_failure"
+
+
+class VerificationStatus(StrEnum):
+    """Whether a claim may be presented as fact. Only ``verified`` claims are."""
+
+    VERIFIED = "verified"
+    NEEDS_REVIEW = "needs_review"
+    REJECTED = "rejected"
+
+
+class DeadlinePrecision(StrEnum):
+    """How much of a deadline the source states. A month, a week or a term is
+    not a deadline: those are abstentions, never a row."""
+
+    DATETIME = "datetime"  # a calendar date and a local time of day
+    DATE = "date"  # a calendar date with no time of day stated
+
+
+class TimezoneSource(StrEnum):
+    """Where a deadline's timezone came from."""
+
+    STATED = "stated"  # the cited text names it (e.g. "UK time")
+    INSTITUTION_DEFAULT = "institution_default"  # not stated; the institution's own timezone
+
+
+class EvidenceSubject(StrEnum):
+    """The kind of domain object an EvidenceLink supports."""
+
+    ASSESSMENT = "assessment"
+    ASSESSMENT_DEADLINE = "assessment_deadline"
+
+
+class EvidenceField(StrEnum):
+    """Which fact of its subject an EvidenceLink supports."""
+
+    TITLE = "title"  # that the assessment exists, under this name
+    WEIGHTING = "weighting"
+    DEADLINE = "deadline"

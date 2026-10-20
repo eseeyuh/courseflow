@@ -101,7 +101,8 @@ Rules:
 
 | Entity | Meaning | Minimum fields |
 |---|---|---|
-| `Assessment` | An assessed deliverable or milestone. | id, course_id, title, deadline (nullable, may be in conflict), weight, status |
+| `Assessment` | An assessed deliverable or milestone, once per course: sources that state it add evidence, not rows. | id, course_id, canonical_key (deterministic normal form of the title; unique per course), title, weighting_percent, status |
+| `AssessmentDeadline` | One deadline value a source states for an assessment. Disagreeing sources give one row each (the disagreement is kept); agreeing sources share a row. | id, assessment_id, due_date (local), due_time (local, nullable), timezone (IANA, nullable), timezone_source, precision, due_at (instant, nullable), status |
 | `AssessmentRequirement` | One criterion or action from an assessment brief or rubric. | id, assessment_id, text, ordinal |
 | `Obligation` | A required or recommended academic action outside or alongside an assessment (for example supervisor review, ethics approval). | id, course_id, title, mandatory, status |
 | `DependencyEdge` | A directed ordering or support relationship. | id, from_ref, relation (`BEFORE`, `REQUIRED_FOR`, `SUPPORTED_BY`), to_ref |
@@ -111,7 +112,7 @@ Rules:
 
 | Entity | Meaning | Minimum fields |
 |---|---|---|
-| `EvidenceLink` | Connects a claim/object to supporting `SourceSpan`(s). | id, subject_type, subject_id, source_span_id, verification_status, workflow_run_id |
+| `EvidenceLink` | Connects one fact of a claim/object to a supporting `SourceSpan`. | id, subject_type plus one typed subject reference (assessment_id or assessment_deadline_id, exactly one), field (`title`, `weighting`, `deadline`), source_span_id, quote_start / quote_end (the supporting excerpt inside the span), verification_status, model_call_id, workflow_run_id |
 | `Conflict` | Two or more supported claims that disagree on a consequential fact. | id, conflict_type / field, subject_ref, claim_a + evidence, claim_b + evidence, status |
 | `ChangeEvent` | A detected change in source material and its downstream impact. | id, resource_id, old_version_id, new_version_id, affected_objects, detected_at |
 
@@ -144,6 +145,8 @@ A `ModelCall` belongs to a `WorkflowRun` when made inside one. Per-attempt detai
 | `SourceSpan.block_kind` | `page`, `heading`, `paragraph`, `table`, `slide_text`, `slide_notes` | Structural role; determines the canonical (required) locator. |
 | Ingestion error category | `unsupported_type`, `corrupt_file`, `empty_text`, `limit_exceeded`, `parser_failure` | Why one file was not ingested. A failed file creates no rows. |
 | `verification_status` | `verified`, `needs_review`, `rejected` | Only `verified` claims are presented as fact. |
+| `AssessmentDeadline.precision` | `datetime`, `date` | `date`: no time of day was stated; none is invented and there is no `due_at`. A month, week or term is not a deadline: no row. |
+| `AssessmentDeadline.timezone_source` | `stated`, `institution_default` | `institution_default`: the source names no timezone, so the institution's own applies; with neither, a local time cannot be verified. |
 | `StudyState.state` | `NOT_STARTED`, `STUDYING`, `STUDIED` | Opening a document never changes state automatically. |
 | `DependencyEdge.relation` | `BEFORE`, `REQUIRED_FOR`, `SUPPORTED_BY` | Extended only via a documented contract change. |
 | `Conflict.status` | `open`, `acknowledged`, `resolved_by_source` | "Resolved" only when a newer authoritative source settles it, never by silent choice. |
