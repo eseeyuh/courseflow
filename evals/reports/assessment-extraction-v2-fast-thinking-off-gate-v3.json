@@ -1,0 +1,339 @@
+{
+  "abstention": {
+    "exam_month_only_has_no_deadline": true,
+    "not_a_deadline_quotes_extracted": []
+  },
+  "assessments": {
+    "expected": [
+      "aml7001/coursework 1",
+      "aml7001/written examination",
+      "msd7000/final dissertation",
+      "msd7000/project specification"
+    ],
+    "extra": [
+      "aml7001/exercise 1",
+      "aml7001/exercise 2",
+      "aml7001/exercise 3",
+      "msd7000/interim review meeting",
+      "msd7000/specification"
+    ],
+    "false_verified": [],
+    "found": [
+      "aml7001/coursework 1",
+      "aml7001/exercise 1",
+      "aml7001/exercise 2",
+      "aml7001/exercise 3",
+      "aml7001/written examination",
+      "msd7000/final dissertation",
+      "msd7000/interim review meeting",
+      "msd7000/project specification",
+      "msd7000/specification"
+    ],
+    "golden_not_verified": [
+      "aml7001/written examination"
+    ],
+    "missing": [],
+    "needs_review": [
+      "aml7001/exercise 1: no_verified_assessment_fact",
+      "aml7001/exercise 2: no_verified_assessment_fact",
+      "aml7001/exercise 3: no_verified_assessment_fact",
+      "aml7001/written examination: no_verified_assessment_fact",
+      "msd7000/interim review meeting: no_verified_assessment_fact",
+      "msd7000/specification: no_verified_assessment_fact"
+    ],
+    "title_evidence_versions": {
+      "coursework 1": 4,
+      "exercise 1": 1,
+      "exercise 2": 1,
+      "exercise 3": 1,
+      "final dissertation": 2,
+      "interim review meeting": 1,
+      "project specification": 3,
+      "specification": 1,
+      "written examination": 1
+    },
+    "verified": [
+      "aml7001/coursework 1",
+      "msd7000/final dissertation",
+      "msd7000/project specification"
+    ],
+    "weighting": {
+      "aml7001/coursework 1": {
+        "extracted": 40,
+        "golden": 40
+      },
+      "aml7001/written examination": {
+        "extracted": null,
+        "golden": 60
+      },
+      "msd7000/final dissertation": {
+        "extracted": null,
+        "golden": null
+      },
+      "msd7000/project specification": {
+        "extracted": 10,
+        "golden": 10
+      }
+    }
+  },
+  "deadlines": {
+    "all": [
+      {
+        "assessment": "coursework 1",
+        "course": "aml7001",
+        "deadline_status": "verified",
+        "evidence_status": "verified",
+        "local": "2026-11-19T14:00",
+        "quote": "The new deadline is Thursday 19 November 2026, 14:00 (UK time). This replaces the date in the brief.",
+        "resource": "announcements",
+        "timezone": "Europe/London",
+        "timezone_source": "explicit_source",
+        "version": 2
+      },
+      {
+        "assessment": "coursework 1",
+        "course": "aml7001",
+        "deadline_status": "verified",
+        "evidence_status": "verified",
+        "local": "2026-11-12T14:00",
+        "quote": "Submission deadline: Thursday 12 November 2026, 14:00 (UK time).",
+        "resource": "coursework-1-brief",
+        "timezone": "Europe/London",
+        "timezone_source": "explicit_source",
+        "version": 1
+      },
+      {
+        "assessment": "coursework 1",
+        "course": "aml7001",
+        "deadline_status": "verified",
+        "evidence_status": "verified",
+        "local": "2026-11-13T23:59",
+        "quote": "due Friday 13 November 2026 at 23:59.",
+        "resource": "module-handbook",
+        "timezone": "Europe/London",
+        "timezone_source": "institution_default",
+        "version": 1
+      },
+      {
+        "assessment": "final dissertation",
+        "course": "msd7000",
+        "deadline_status": "verified",
+        "evidence_status": "verified",
+        "local": "2027-09-03T16:00",
+        "quote": "Final dissertation: Friday 3 September 2027, 16:00 (UK time).",
+        "resource": "dissertation-handbook",
+        "timezone": "Europe/London",
+        "timezone_source": "explicit_source",
+        "version": 1
+      },
+      {
+        "assessment": "final dissertation",
+        "course": "msd7000",
+        "deadline_status": "verified",
+        "evidence_status": "verified",
+        "local": "2027-09-03T16:00",
+        "quote": "Final dissertation: Friday 3 September 2027, 16:00 (UK time).",
+        "resource": "dissertation-handbook",
+        "timezone": "Europe/London",
+        "timezone_source": "explicit_source",
+        "version": 2
+      },
+      {
+        "assessment": "project specification",
+        "course": "msd7000",
+        "deadline_status": "verified",
+        "evidence_status": "verified",
+        "local": "2026-11-30T12:00",
+        "quote": "Deadline: Monday 30 November 2026, 12:00 (UK time).",
+        "resource": "project-specification-brief",
+        "timezone": "Europe/London",
+        "timezone_source": "explicit_source",
+        "version": 1
+      }
+    ],
+    "exact_match": 6,
+    "exact_match_rate": 1.0,
+    "expected": 6,
+    "missed": [],
+    "needs_review": [],
+    "verified_extracted": 6,
+    "verified_not_in_golden": []
+  },
+  "injection": {
+    "control": "run",
+    "evidence_links_on_injection_span": 0,
+    "rejected_with_injection": {},
+    "unchanged": true,
+    "with_injection": [],
+    "without_injection": []
+  },
+  "meta": {
+    "dataset": {
+      "name": "northbridge-golden",
+      "sha256": "da106bd3b731e7bee5d763d59ec9cac55c80b3fa694ae9b3c1ebe25f3b14812e",
+      "version": "v1"
+    },
+    "gate_version": "assessment-gate/v3",
+    "model": "nvidia/Nemotron-3_5-Lightning",
+    "model_role": "fast",
+    "output_token_cap_per_request": 2048,
+    "prompt_version": "assessment-extraction/v2",
+    "run_at": "2026-10-20T23:11:00Z",
+    "spend_cap_usd": "0.01",
+    "temperature": 0.0,
+    "thinking": "off"
+  },
+  "runs": [
+    {
+      "abstained": {
+        "deadline:ambiguous": 1,
+        "deadline:not_stated": 6
+      },
+      "assessments_created": 5,
+      "assessments_merged": 3,
+      "assessments_proposed": 11,
+      "completion_tokens": 1215,
+      "deadlines_created": 2,
+      "deadlines_merged": 0,
+      "failures": {},
+      "gate_version": "assessment-gate/v3",
+      "identity": {
+        "title": 8
+      },
+      "links_created": 11,
+      "links_existing": 0,
+      "model_role": "fast",
+      "prompt_tokens": 6340,
+      "prompt_version": "assessment-extraction/v2",
+      "rejected": {
+        "assessment:quote_not_found": 2,
+        "assessment:title_unsupported": 1,
+        "deadline:no_date": 1,
+        "deadline:non_deadline_date": 1
+      },
+      "review_reasons": {},
+      "status": "succeeded",
+      "thinking": false,
+      "units": 6,
+      "units_failed": 0,
+      "versions": 6,
+      "weighting_disagreements": 0,
+      "workflow_version": "assessment-extraction/v1"
+    },
+    {
+      "abstained": {
+        "deadline:ambiguous": 1,
+        "deadline:not_stated": 4
+      },
+      "assessments_created": 4,
+      "assessments_merged": 1,
+      "assessments_proposed": 7,
+      "completion_tokens": 789,
+      "deadlines_created": 2,
+      "deadlines_merged": 0,
+      "failures": {},
+      "gate_version": "assessment-gate/v3",
+      "identity": {
+        "title": 5
+      },
+      "links_created": 9,
+      "links_existing": 0,
+      "model_role": "fast",
+      "prompt_tokens": 3968,
+      "prompt_version": "assessment-extraction/v2",
+      "rejected": {
+        "assessment:quote_not_found": 2
+      },
+      "review_reasons": {
+        "title:non_unique_quote_location": 1
+      },
+      "status": "succeeded",
+      "thinking": false,
+      "units": 4,
+      "units_failed": 0,
+      "versions": 4,
+      "weighting_disagreements": 0,
+      "workflow_version": "assessment-extraction/v1"
+    },
+    {
+      "abstained": {
+        "deadline:not_stated": 1
+      },
+      "assessments_created": 0,
+      "assessments_merged": 2,
+      "assessments_proposed": 2,
+      "completion_tokens": 245,
+      "deadlines_created": 1,
+      "deadlines_merged": 0,
+      "failures": {},
+      "gate_version": "assessment-gate/v3",
+      "identity": {
+        "title": 2
+      },
+      "links_created": 3,
+      "links_existing": 0,
+      "model_role": "fast",
+      "prompt_tokens": 1104,
+      "prompt_version": "assessment-extraction/v2",
+      "rejected": {},
+      "review_reasons": {},
+      "status": "succeeded",
+      "thinking": false,
+      "units": 1,
+      "units_failed": 0,
+      "versions": 1,
+      "weighting_disagreements": 0,
+      "workflow_version": "assessment-extraction/v1"
+    },
+    {
+      "abstained": {
+        "deadline:ambiguous": 1,
+        "deadline:not_stated": 1
+      },
+      "assessments_created": 0,
+      "assessments_merged": 2,
+      "assessments_proposed": 3,
+      "completion_tokens": 388,
+      "deadlines_created": 0,
+      "deadlines_merged": 1,
+      "failures": {},
+      "gate_version": "assessment-gate/v3",
+      "identity": {
+        "title": 2
+      },
+      "links_created": 3,
+      "links_existing": 0,
+      "model_role": "fast",
+      "prompt_tokens": 1007,
+      "prompt_version": "assessment-extraction/v2",
+      "rejected": {
+        "assessment:quote_not_found": 1,
+        "weighting:quote_not_found": 1
+      },
+      "review_reasons": {},
+      "status": "succeeded",
+      "thinking": false,
+      "units": 1,
+      "units_failed": 0,
+      "versions": 1,
+      "weighting_disagreements": 0,
+      "workflow_version": "assessment-extraction/v1"
+    }
+  ],
+  "usage": {
+    "completion_tokens": 2645,
+    "cost_usd_from_reported_tokens": "0.001439",
+    "failed": {},
+    "http_attempts": 13,
+    "latency_ms": {
+      "max": 1872,
+      "p50": 901
+    },
+    "model_calls": 13,
+    "prompt_tokens": 13410,
+    "reasoning_tokens": 0,
+    "repair_rounds": 0,
+    "succeeded": 13,
+    "unreported_usage_calls": 0
+  }
+}
