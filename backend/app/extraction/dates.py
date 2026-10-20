@@ -162,6 +162,22 @@ def _dates(quote: str) -> set[tuple[date, int | None]]:
     return found
 
 
+def date_spans(quote: str) -> list[tuple[int, int]]:
+    """Where full calendar dates occur in the quote (character ranges)."""
+    spans = set()
+    for pattern in (_DMY, _MDY):
+        for match in pattern.finditer(quote):
+            if match["month"].lower() in _MONTHS:
+                start = (
+                    match.start("wd")
+                    if match["wd"] and match["wd"].lower() in _WEEKDAYS
+                    else (match.start("day") if pattern is _DMY else match.start("month"))
+                )
+                spans.add((start, match.end("year")))
+    spans |= {match.span() for match in _ISO.finditer(quote)}
+    return sorted(spans)
+
+
 def _time(quote: str) -> tuple[time | None, tuple[R, ...]]:
     times: list[time] = []
     for match in _TIME_24.finditer(quote):

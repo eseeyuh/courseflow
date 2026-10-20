@@ -192,3 +192,10 @@ class RejectionReason(StrEnum):
     IMPOSSIBLE_TIME = "impossible_time"
     MULTIPLE_TIMES = "multiple_times"
     LOCAL_TIME_NONEXISTENT = "local_time_nonexistent"  # skipped by a DST gap
+    # The quote's date has an explicit non-deadline role (released, published,
+    # opens, feedback...) or is a parenthesised notice date.
+    NON_DEADLINE_DATE = "non_deadline_date"
+    # Nothing in the quote establishes that its date is a deadline.
+    NO_DEADLINE_SEMANTICS = "no_deadline_semantics"
+    # No valid evidence anywhere in the candidate supports its title.
+    IDENTITY_UNSUPPORTED = "identity_unsupported"

@@ -39,11 +39,12 @@ from app.domain.enums import RejectionReason, ReviewReason, VerificationStatus
 from app.extraction.dates import (
     DeadlineRejected,
     NormalisedDeadline,
+    date_spans,
     normalise,
     parse_deadline_quote,
 )
 from app.extraction.schema import AssessmentExtraction, AssessmentOut, DeadlineOut, EvidenceRef
-from app.extraction.units import ExtractionUnit
+from app.extraction.units import ExtractionUnit, UnitSpan
 
 _WORD = re.compile(r"[^\W_]+")
 # Trigger phrases addressed to a model rather than a student. Deliberately
@@ -90,7 +91,22 @@ class _Rejected(Exception):
 
 
 # v2: fact-level gating, derived assessment status, typed review reasons.
-GATE_VERSION = "assessment-gate/v2"
+# v3: the temporal role of a deadline quote; identity from sibling evidence.
+GATE_VERSION = "assessment-gate/v3"
+
+# Temporal roles (v3, conservative). Explicit non-deadline wording overrides
+# everything; a deadline cue, or the labelled form "<assessment title>:
+# <date>", establishes a deadline; anything else does not.
+NON_DEADLINE_ROLE = re.compile(
+    r"\b(?:releas\w*|publish\w*|publication|issued|available|opens|opened|opening"
+    r"|feedback|returned)\b",
+    re.IGNORECASE,
+)
+DEADLINE_ROLE = re.compile(
+    r"\b(?:deadlines?|due|submit\w*|submission|hand(?:ed)?\s+in|no\s+later\s+than"
+    r"|closes|closing)\b",
+    re.IGNORECASE,
+)
 
 V = VerificationStatus
 
@@ -159,6 +175,9 @@ class GateResult:
     rejected: Counter[str] = field(default_factory=Counter)  # "<fact>:<reason>"
     abstained: Counter[str] = field(default_factory=Counter)  # "deadline:<status>"
     review_reasons: Counter[str] = field(default_factory=Counter)  # "<fact>:<reason>"
+    # Where each persisted candidate's identity is supported: "title" (its own
+    # title evidence) or "<fact>_quote" / "<fact>_span" / "<fact>_heading".
+    identity: Counter[str] = field(default_factory=Counter)
 
 
 def _words(text: str) -> list[str]:
@@ -202,24 +221,47 @@ def _title(unit: ExtractionUnit, proposed: AssessmentOut) -> tuple[str, Located]
     return key, evidence
 
 
-def _weighting(unit: ExtractionUnit, proposed: AssessmentOut) -> GatedWeighting | None:
+def _weighting(unit: ExtractionUnit, proposed: AssessmentOut) -> tuple[GatedWeighting, str] | None:
     if proposed.weighting is None:
         return None
     evidence, quote = locate(unit, proposed.weighting.evidence)
     stated = {int(m.group(1)) for m in _PERCENT.finditer(quote)}
     if stated != {proposed.weighting.percent}:
         raise _Rejected(RejectionReason.WEIGHTING_UNSUPPORTED)
-    return GatedWeighting(proposed.weighting.percent, evidence)
+    return GatedWeighting(proposed.weighting.percent, evidence), quote
+
+
+def _role(quote: str, key: str) -> None:
+    """Reject a quote whose date is not established as a deadline (v3)."""
+    if NON_DEADLINE_ROLE.search(quote):
+        raise _Rejected(RejectionReason.NON_DEADLINE_DATE)
+    for start, end in date_spans(quote):
+        before, after = quote[:start].rstrip(), quote[end:].lstrip()
+        if before.endswith("(") and after.startswith(")"):
+            raise _Rejected(RejectionReason.NON_DEADLINE_DATE)  # a notice's own date
+    if DEADLINE_ROLE.search(quote):
+        return
+    label, colon, rest = quote.partition(":")
+    labelled = (
+        colon
+        and key
+        and set(key.split()) <= set(_words(label))
+        and date_spans(rest)
+        and date_spans(rest)[0][0] == len(rest) - len(rest.lstrip())
+    )
+    if not labelled:
+        raise _Rejected(RejectionReason.NO_DEADLINE_SEMANTICS)
 
 
 def _deadline(
-    unit: ExtractionUnit, proposed: DeadlineOut, institution_timezone: str | None
-) -> GatedDeadline:
+    unit: ExtractionUnit, proposed: DeadlineOut, institution_timezone: str | None, key: str
+) -> tuple[GatedDeadline, str]:
     if proposed.evidence is None or proposed.due_date is None:  # the schema forbids it
         raise _Rejected(RejectionReason.SCHEMA_VIOLATION)
     evidence, quote = locate(unit, proposed.evidence)
     try:
         parsed = parse_deadline_quote(quote)
+        _role(quote, key)
         value = normalise(parsed, institution_timezone)
     except DeadlineRejected as rejected:
         raise _Rejected(rejected.reason) from None
@@ -234,7 +276,7 @@ def _deadline(
             raise _Rejected(RejectionReason.MODEL_TIME_MISMATCH)
     # A time the quote states but the model omitted is still the quote's: the
     # evidence, not the model, determines the value.
-    return GatedDeadline(value, evidence)
+    return GatedDeadline(value, evidence), quote
 
 
 def _note_location(result: GateResult, fact: str, evidence: Located) -> None:
@@ -242,37 +284,108 @@ def _note_location(result: GateResult, fact: str, evidence: Located) -> None:
         result.review_reasons[f"{fact}:{ReviewReason.NON_UNIQUE_QUOTE_LOCATION}"] += 1
 
 
+def _key_pattern(key: str) -> re.Pattern[str]:
+    return re.compile(
+        r"(?<![^\W_])" + r"[\W_]+".join(re.escape(w) for w in key.split()) + r"(?![^\W_])",
+        re.IGNORECASE,
+    )
+
+
+def _occurrences(span: UnitSpan, key: str, within: tuple[int, int] | None = None) -> Located | None:
+    start, end = within or (0, len(span.excerpt))
+    found = [
+        GatedEvidence(span.span_id, m.start(), m.end())
+        for m in _key_pattern(key).finditer(span.excerpt, start, end)
+    ]
+    return Located(tuple(found)) if found else None
+
+
+def _span_of(unit: ExtractionUnit, evidence: Located) -> UnitSpan | None:
+    span_id = evidence.locations[0].span_id
+    return next((s for s in unit.spans if s.span_id == span_id), None)
+
+
+def _identity_from(
+    unit: ExtractionUnit, key: str, fact: str, evidence: Located
+) -> tuple[Located, str] | None:
+    """The title words in a verified fact's own evidence: its quote, else its
+    span, else the heading its span's section path names (the same document
+    structure, never another part of the course). Exact offsets; None if absent."""
+    if evidence.status is not V.VERIFIED or not key:
+        return None
+    span = _span_of(unit, evidence)
+    if span is None:
+        return None
+    location = evidence.locations[0]
+    quote = _occurrences(span, key, (location.quote_start, location.quote_end))
+    if quote is not None:
+        return quote, f"{fact}_quote"
+    whole = _occurrences(span, key)
+    if whole is not None:
+        return whole, f"{fact}_span"
+    heading_text = span.locator.rsplit(" > ", 1)[-1]
+    for heading in unit.spans:
+        if heading is not span and heading.excerpt == heading_text:
+            found = _occurrences(heading, key)
+            if found is not None:
+                return found, f"{fact}_heading"
+    return None
+
+
 def gate(
     unit: ExtractionUnit, extraction: AssessmentExtraction, institution_timezone: str | None
 ) -> GateResult:
     result = GateResult()
     for proposed in extraction.assessments:
+        key = canonical_key(proposed.title)
+        title_failure: RejectionReason | None = None
         try:
             key, title_evidence = _title(unit, proposed)
         except _Rejected as rejected:
-            result.rejected[f"assessment:{rejected.reason}"] += 1
+            title_failure, title_evidence = rejected.reason, None
+        if title_failure is RejectionReason.QUOTE_OVERLAPS_INJECTION or not key:
+            result.rejected[f"assessment:{title_failure or RejectionReason.TITLE_UNSUPPORTED}"] += 1
             continue
-        _note_location(result, "title", title_evidence)
+        weighting = None
         try:
-            weighting = _weighting(unit, proposed)
+            found_weighting = _weighting(unit, proposed)
         except _Rejected as rejected:
             result.rejected[f"weighting:{rejected.reason}"] += 1
-            weighting = None
-        if weighting is not None:
-            _note_location(result, "weighting", weighting.evidence)
+        else:
+            if found_weighting is not None:
+                weighting, _ = found_weighting
         deadline = None
         if proposed.deadline.status != "stated":
             result.abstained[f"deadline:{proposed.deadline.status}"] += 1
         else:
             try:
-                deadline = _deadline(unit, proposed.deadline, institution_timezone)
+                deadline, _ = _deadline(unit, proposed.deadline, institution_timezone, key)
             except _Rejected as rejected:
                 result.rejected[f"deadline:{rejected.reason}"] += 1
-            else:
-                _note_location(result, "deadline", deadline.evidence)
-                result.review_reasons.update(
-                    f"deadline:{reason}" for reason in deadline.value.review_reasons
-                )
+        identity = "title"
+        if title_evidence is None:
+            # The dedicated title citation failed: a verified sibling fact may
+            # still support the identity, from its own evidence only.
+            support = None
+            for fact, gated in (("deadline", deadline), ("weighting", weighting)):
+                if gated is not None and gated.status is V.VERIFIED:
+                    support = _identity_from(unit, key, fact, gated.evidence)
+                    if support is not None:
+                        break
+            if support is None:
+                result.rejected[f"assessment:{title_failure}"] += 1
+                continue
+            result.rejected[f"title:{title_failure}"] += 1
+            title_evidence, identity = support
+        result.identity[identity] += 1
+        _note_location(result, "title", title_evidence)
+        if weighting is not None:
+            _note_location(result, "weighting", weighting.evidence)
+        if deadline is not None:
+            _note_location(result, "deadline", deadline.evidence)
+            result.review_reasons.update(
+                f"deadline:{reason}" for reason in deadline.value.review_reasons
+            )
         result.assessments.append(
             GatedAssessment(proposed.title.strip(), key, title_evidence, weighting, deadline)
         )

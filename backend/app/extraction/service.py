@@ -77,6 +77,9 @@ class ExtractionSummary(BaseModel):
     abstained: dict[str, int] = {}
     review_reasons: dict[str, int] = {}
     failures: dict[str, int] = {}  # model call error category -> units
+    # Where persisted candidates' identities are supported ("title",
+    # "deadline_heading", ...): see gate.GateResult.identity.
+    identity: dict[str, int] = {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +140,7 @@ class AssessmentExtractionService:
         rejected: Counter[str] = Counter()
         abstained: Counter[str] = Counter()
         reasons: Counter[str] = Counter()
+        identity: Counter[str] = Counter()
         failures: Counter[str] = Counter()
         try:
             for version_id in versions:
@@ -152,6 +156,7 @@ class AssessmentExtractionService:
                     rejected.update(result.rejected)
                     abstained.update(result.abstained)
                     reasons.update(result.review_reasons)
+                    identity.update(result.identity)
         except BaseException:
             await self._finish(run_id, WorkflowRunStatus.FAILED, summary)
             raise
@@ -159,6 +164,7 @@ class AssessmentExtractionService:
             setattr(summary, item.name, getattr(counts, item.name))
         summary.rejected, summary.abstained = dict(rejected), dict(abstained)
         summary.review_reasons, summary.failures = dict(reasons), dict(failures)
+        summary.identity = dict(identity)
         summary.units_failed = sum(failures.values())
         status = WorkflowRunStatus.FAILED if summary.units_failed else WorkflowRunStatus.SUCCEEDED
         await self._finish(run_id, status, summary)

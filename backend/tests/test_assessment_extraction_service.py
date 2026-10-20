@@ -148,7 +148,9 @@ SCRIPT: dict[str, dict[str, Any]] = {
                 _ref("S1", "Coursework 1: Model Evaluation Report"),
                 weighting={"percent": 40, "evidence": _ref("S2", "Weighting: 40%")},
                 deadline=_stated(
-                    "2026-11-12", "14:00", _ref("S3", "Thursday 12 November 2026, 14:00 (UK time)")
+                    "2026-11-12",
+                    "14:00",
+                    _ref("S3", "Submission deadline: Thursday 12 November 2026, 14:00 (UK time)"),
                 ),
             )
         ]
@@ -287,7 +289,7 @@ async def test_every_link_traces_to_its_span_version_call_and_run(
         assert quote in {
             "Coursework 1: Model Evaluation Report",
             "Weighting: 40%",
-            "Thursday 12 November 2026, 14:00 (UK time)",
+            "Submission deadline: Thursday 12 November 2026, 14:00 (UK time)",
         }
     assert run is not None and run.summary is not None
     assert run.summary["workflow_version"] == "assessment-extraction/v1"
@@ -438,7 +440,7 @@ def _spec_script(user: str) -> dict[str, Any]:
                     deadline=_stated(
                         "2026-11-30",
                         "12:00",
-                        _ref("S2", "Monday 30 November 2026, 12:00 (UK time)"),
+                        _ref("S2", "Deadline: Monday 30 November 2026, 12:00 (UK time)"),
                     ),
                 )
             ]

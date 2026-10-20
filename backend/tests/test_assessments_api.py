@@ -45,7 +45,7 @@ async def test_a_course_lists_its_assessments_with_all_evidence(
         "2026-11-13", "23:59", "institution_default",
     )  # fmt: skip
     (evidence,) = first["evidence"]
-    assert evidence["quote"] == "Thursday 12 November 2026, 14:00 (UK time)"
+    assert evidence["quote"] == "Submission deadline: Thursday 12 November 2026, 14:00 (UK time)"
     assert evidence["resource_version_id"] == str(versions["brief"])
     assert evidence["current_version"] is True and evidence["version_number"] == 1
     assert (evidence["model"], evidence["prompt_version"]) == ("fake-fast", PROMPT_VERSION)
