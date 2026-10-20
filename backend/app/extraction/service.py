@@ -24,6 +24,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, fields
 from datetime import UTC, datetime
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import insert, select
@@ -85,6 +86,21 @@ class ExtractionRunResult:
 
 def _add_tokens(current: int | None, more: int | None) -> int | None:
     return None if current is None or more is None else current + more
+
+
+def _usable_zone(zone: str | None, course_id: uuid.UUID) -> str | None:
+    """The institution's timezone if zoneinfo knows it; otherwise None, so a
+    local time without a stated zone needs review (missing_timezone)."""
+    if zone is None:
+        return None
+    try:
+        ZoneInfo(zone)
+    except (ZoneInfoNotFoundError, ValueError):
+        logger.warning(
+            "extraction.institution_timezone_unusable", extra={"course_id": str(course_id)}
+        )
+        return None
+    return zone
 
 
 class AssessmentExtractionService:
@@ -175,7 +191,7 @@ class AssessmentExtractionService:
                     insert(workflow_run_inputs),
                     [{"run_id": run.id, "resource_version_id": v} for v in versions],
                 )
-        return run.id, versions, zone
+        return run.id, versions, _usable_zone(zone, course_id)
 
     async def _unit(
         self,

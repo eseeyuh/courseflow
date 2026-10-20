@@ -14,6 +14,7 @@ the material does not contain, so text inside it cannot close the block.
 
 from __future__ import annotations
 
+import re
 import secrets
 import uuid
 from collections.abc import Sequence
@@ -139,6 +140,16 @@ def new_nonce(unit: ExtractionUnit) -> str:
             return nonce
 
 
+_UNSAFE_TITLE = re.compile(r'[\x00-\x1f\x7f"<>]+')
+
+
+def safe_title(title: str) -> str:
+    """The resource title as it may appear outside the material markers: it
+    comes from the LMS, so it is untrusted. One line, no quotes, no marker
+    characters, at most 200 characters. Ordinary titles are unchanged."""
+    return " ".join(_UNSAFE_TITLE.sub(" ", title).split())[:200]
+
+
 def build_messages(
     prompt: PromptFiles, unit: ExtractionUnit, *, nonce: str | None = None
 ) -> list[ChatMessage]:
@@ -149,7 +160,7 @@ def build_messages(
         raise ValueError("the nonce occurs in the material")
     user = prompt.user.substitute(
         resource_type=unit.resource_type,
-        resource_title=unit.resource_title,
+        resource_title=safe_title(unit.resource_title),
         nonce=nonce,
         material=material,
     )

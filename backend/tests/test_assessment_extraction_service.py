@@ -521,3 +521,15 @@ async def test_disagreeing_weightings_become_unknown_and_all_need_review(
     assert len(weightings) == 2 and {x.verification_status for x in weightings} == {V.NEEDS_REVIEW}
     assert {x.review_reason for x in weightings} == {ReviewReason.CONFLICTING_WEIGHTING}
     assert assessment.status is V.VERIFIED  # still: its brief deadline is verified
+
+
+async def test_an_unusable_institution_timezone_degrades_to_missing_timezone(
+    sessions: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    course_id, _ = await _course(sessions, tmp_path, {"handbook": HANDBOOK}, zone="Mars/Olympus")
+    result = await AssessmentExtractionService(sessions, FakeModel(script)).extract_course(
+        course_id
+    )
+    assert result.status is WorkflowRunStatus.SUCCEEDED
+    (deadline,) = await _rows(sessions, AssessmentDeadline)
+    assert deadline.timezone is None and deadline.review_reason is ReviewReason.MISSING_TIMEZONE

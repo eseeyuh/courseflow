@@ -98,8 +98,11 @@ _TIME_12 = re.compile(
 _NOON = re.compile(r"\b(?:noon|midday)\b", re.IGNORECASE)
 _MIDNIGHT = re.compile(r"\bmidnight\b", re.IGNORECASE)
 
-# A zone named right after a clock time: "14:00 CET", "14:00 (Paris time)".
-_AFTER_CLOCK = r"(?:\d:\d{2}|[ap]\.?m\.?|noon|midday)\s*\(?\s*"
+# A zone named right after a clock time: "14:00 CET", "2:00 pm (Paris time)".
+# The am/pm marker is consumed possessively, so it is never read as a zone.
+_AFTER_CLOCK = (
+    r"(?:\d:\d{2}(?:\s*[aApP]\.?[mM]\.?(?![A-Za-z]))?+|[aApP]\.?[mM]\.?|noon|midday)\s*\(?\s*"
+)
 _ZONE_WORDS = re.compile(
     _AFTER_CLOCK + r"(?P<zone>[A-Za-z]+(?:\s+[A-Za-z]+)?)\s+time\b", re.IGNORECASE
 )
