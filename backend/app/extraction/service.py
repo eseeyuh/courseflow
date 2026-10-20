@@ -44,7 +44,9 @@ from app.retrieval import store
 logger = logging.getLogger(__name__)
 
 WORKFLOW_VERSION = "assessment-extraction/v1"
-PROMPT_VERSION = "assessment-extraction/v1"
+# v2: the resource metadata (type, title) is inside the untrusted-material
+# markers, like the spans. v1 stays loadable for its measured reports.
+PROMPT_VERSION = "assessment-extraction/v2"
 
 
 class ExtractionSummary(BaseModel):

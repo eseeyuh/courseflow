@@ -136,3 +136,14 @@ def test_replay_finds_each_recorded_output_its_unit() -> None:
     assert len(assigned) == len({render_material(p.unit) for p in planned})
     with pytest.raises(ReplayAmbiguous, match="outputs for"):
         assign_outputs([empty], planned)
+
+
+def test_replay_keys_v1_and_v2_messages_alike() -> None:
+    from app.ai.prompts import load_prompt
+    from app.evaluation.assessments.run import spans_of
+    from app.extraction.units import build_messages, render_material
+
+    unit = plan_units(load_golden())[0].unit
+    for version in ("assessment-extraction/v1", "assessment-extraction/v2"):
+        (_, user) = build_messages(load_prompt(version), unit)
+        assert spans_of(user.content) == render_material(unit), version

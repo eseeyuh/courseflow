@@ -17,7 +17,7 @@ no model call. With ``--live``, in the disposable evaluation database
 3. call the prompt-injection unit once more without its injection span, as
    a control: the gated result must be identical;
 4. score the persisted claims against the golden labels and write the
-   report (``evals/reports/assessment-extraction-v1-<role>-thinking-<mode>``)
+   report (``evals/reports/assessment-extraction-v<prompt>-<role>-thinking-<mode>-gate-v<N>``)
    and the validated model outputs (``evals/runs/assessment-extraction/``).
 
 ``--replay-outputs <file>`` runs the same pipeline with no model at all: the
@@ -86,7 +86,7 @@ from app.extraction.units import (
 )
 from app.retrieval.chunking import estimate_tokens
 
-MAX_SPEND_USD = Decimal("0.01")
+MAX_SPEND_USD = Decimal("0.01")  # the default cap; --spend-cap sets a run's own
 ESTIMATE_MARGIN = Decimal("1.25")
 OUTPUT_TOKEN_CAP = 2048  # per request, for this evaluation
 EXPECTED_OUTPUT_TOKENS = 600  # per call, for the expected-spend estimate only
@@ -142,9 +142,20 @@ def without_injection(unit: ExtractionUnit) -> ExtractionUnit:
     )  # fmt: skip
 
 
-def plan_units(golden: GoldenDataset) -> list[PlannedUnit]:
+@dataclass(frozen=True, slots=True)
+class EvalConfig:
+    """What a run is pinned to, besides the frozen dataset, gate and model."""
+
+    prompt_version: str = PROMPT_VERSION
+    spend_cap_usd: Decimal = MAX_SPEND_USD
+
+
+DEFAULT_CONFIG = EvalConfig()
+
+
+def plan_units(golden: GoldenDataset, config: EvalConfig = DEFAULT_CONFIG) -> list[PlannedUnit]:
     """Initial state (each resource's v1), then each later version, then the control."""
-    prompt = load_prompt(PROMPT_VERSION)
+    prompt = load_prompt(config.prompt_version)
     packed = corpus_units(golden)
     order = sorted(packed, key=lambda w: (w[2], w[0], w[1]))
     planned = []
@@ -185,7 +196,11 @@ def _price(value: Decimal | None) -> Decimal:
 
 
 def describe_plan(
-    planned: Sequence[PlannedUnit], info: ModelInfo, attempts: int, repair_rounds: int
+    planned: Sequence[PlannedUnit],
+    info: ModelInfo,
+    attempts: int,
+    repair_rounds: int,
+    config: EvalConfig = DEFAULT_CONFIG,
 ) -> dict[str, Any]:
     tokens_in = sum(p.estimated_input_tokens for p in planned)
     tokens_out = EXPECTED_OUTPUT_TOKENS * len(planned)
@@ -215,11 +230,13 @@ def describe_plan(
         },
         "expected_spend_usd": f"{expected:.6f}",
         "unguarded_worst_case_usd": f"{worst:.6f}",
-        "spend_cap_usd": str(MAX_SPEND_USD),
-        "max_spend_usd": f"< {MAX_SPEND_USD} (runtime guard before every call)",
+        "prompt_version": config.prompt_version,
+        "spend_cap_usd": str(config.spend_cap_usd),
+        "worst_case_within_cap": worst <= config.spend_cap_usd,
+        "max_spend_usd": f"< {config.spend_cap_usd} (runtime guard before every call)",
         "output_token_cap_per_request": OUTPUT_TOKEN_CAP,
         "problems": ([f"expected spend ${expected:.6f} is not below the cap"]
-                     if expected >= MAX_SPEND_USD else []),
+                     if expected >= config.spend_cap_usd else []),
     }  # fmt: skip
 
 
@@ -239,6 +256,7 @@ class BudgetedProvider:
     info: ModelInfo
     attempts: int
     repair_rounds: int
+    spend_cap_usd: Decimal = MAX_SPEND_USD
     spent_usd: Decimal = Decimal(0)
     outputs: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
 
@@ -263,7 +281,7 @@ class BudgetedProvider:
     ) -> StructuredResult[T]:
         estimated = sum(estimate_tokens(m.content) for m in messages)
         worst = call_worst_case_usd(estimated, self.info, self.attempts, self.repair_rounds)
-        if self.spent_usd + worst >= MAX_SPEND_USD:
+        if self.spent_usd + worst >= self.spend_cap_usd:
             raise BudgetExceeded(f"spent ${self.spent_usd:.6f} + worst case ${worst:.6f}")
         try:
             options = {} if thinking is None else {"thinking": thinking}
@@ -355,6 +373,16 @@ def _group_key(planned: Sequence[PlannedUnit], i: int, n: int) -> tuple[Any, ...
     return (planned[i].where[2], planned[i].where[0]) if i < n - 1 else ("control",)
 
 
+def spans_of(user: str) -> str:
+    """The span blocks of a user message: its material without the v2 resource
+    metadata header (type, title, blank line), so recordings made with v1 and
+    v2 prompts key the same way."""
+    material = material_of(user)
+    if material.startswith("Resource type: "):
+        material = material.split("\n", 3)[3]
+    return material
+
+
 def _assign_group(
     recorded: Sequence[dict[str, Any]], units: Sequence[ExtractionUnit]
 ) -> dict[str, dict[str, Any]]:
@@ -362,10 +390,8 @@ def _assign_group(
     assigned: dict[str, dict[str, Any]] = {}
     rest = []
     for item in recorded:
-        if "nonce_free_material_sha256" in item:
-            match = [m for m in materials if _sha(m) == item["nonce_free_material_sha256"]]
-            if len(match) != 1:
-                raise ReplayAmbiguous("a material hash matches no single unit")
+        match = [m for m in materials if _sha(m) == item.get("nonce_free_material_sha256")]
+        if len(match) == 1:
             assigned[match[0]] = item["output"]
             continue
         scores = [_resolves(u, item["output"]) for u in units]
@@ -408,7 +434,7 @@ class ReplayProvider:
         thinking: bool | None = None,
     ) -> StructuredResult[T]:
         user = messages[-1].content
-        output = self.by_material[material_of(user)]
+        output = self.by_material[spans_of(user)]
         self.outputs.append((user, output))
         return StructuredResult(
             output=schema.model_validate(output),
@@ -616,6 +642,7 @@ async def run_live(
     golden: GoldenDataset,
     thinking: bool | None,
     replay: ReplayProvider | None = None,
+    config: EvalConfig = DEFAULT_CONFIG,
 ) -> dict[str, Any]:
     """The live run, or, given ``replay``, the same pipeline with no model."""
     from app.ai.nebius import NebiusTokenFactoryProvider
@@ -643,8 +670,9 @@ async def run_live(
         else NebiusTokenFactoryProvider.from_settings(settings, max_output_tokens=OUTPUT_TOKEN_CAP)
     )
     provider: Any = replay or BudgetedProvider(
-        inner, info, settings.ai_max_attempts, settings.ai_max_repair_attempts
-    )
+        inner, info, settings.ai_max_attempts, settings.ai_max_repair_attempts,
+        spend_cap_usd=config.spend_cap_usd,
+    )  # fmt: skip
     started = datetime.now(UTC)
     try:
         sessions = async_sessionmaker(engine, expire_on_commit=False)
@@ -654,7 +682,9 @@ async def run_live(
             batch_max_items=64,
             batch_max_estimated_tokens=32_000,
         )
-        service = AssessmentExtractionService(sessions, provider, role=role, thinking=thinking)
+        service = AssessmentExtractionService(
+            sessions, provider, role=role, thinking=thinking, prompt_version=config.prompt_version
+        )
         runs = []
         with tempfile.TemporaryDirectory() as raw:
             store = LocalRawObjectStore(Path(raw))
@@ -678,13 +708,15 @@ async def run_live(
                     runs.append(await service.extract_course(courses[ref], versions))
 
             injection = await _injection_control(
-                provider, sessions, courses["msd7000"], role, thinking, NORTHBRIDGE_TIMEZONE
-            )
+                provider, sessions, courses["msd7000"], role, thinking, NORTHBRIDGE_TIMEZONE,
+                config.prompt_version,
+            )  # fmt: skip
         return await _assemble(
             sessions, golden, info, role, thinking, started, injection,
             [r.summary.model_dump(mode="json") | {"status": r.status.value} for r in runs],
-            [{"nonce_free_material_sha256": _sha(material_of(user)), "output": out}
+            [{"nonce_free_material_sha256": _sha(spans_of(user)), "output": out}
              for user, out in provider.outputs],
+            config,
         )  # fmt: skip
     finally:
         if inner is not None:
@@ -699,6 +731,7 @@ async def _injection_control(
     role: ModelRole,
     thinking: bool | None,
     zone: str,
+    prompt_version: str = PROMPT_VERSION,
 ) -> dict[str, Any]:
     """The injection unit once more without its injection span: the gated
     result must not change. Reported, never raised, when it cannot run."""
@@ -718,8 +751,8 @@ async def _injection_control(
     try:
         control = await call_structured_recorded(
             provider, sessions,
-            messages=build_messages(load_prompt(PROMPT_VERSION), control_unit),
-            schema=AssessmentExtraction, role=role, prompt_version=PROMPT_VERSION,
+            messages=build_messages(load_prompt(prompt_version), control_unit),
+            schema=AssessmentExtraction, role=role, prompt_version=prompt_version,
             temperature=0.0, thinking=thinking,
         )  # fmt: skip
     except RecordedCallError as failed:
@@ -745,6 +778,7 @@ async def _assemble(
     injection: dict[str, Any],
     runs: list[dict[str, Any]],
     outputs: list[dict[str, Any]],
+    config: EvalConfig = DEFAULT_CONFIG,
 ) -> dict[str, Any]:
     result = await score(sessions, golden)
     async with sessions() as session:
@@ -759,14 +793,14 @@ async def _assemble(
     result["meta"] = {
         "dataset": {"name": golden.manifest.dataset, "version": golden.manifest.dataset_version,
                     "sha256": golden.sha256},
-        "prompt_version": PROMPT_VERSION,
+        "prompt_version": config.prompt_version,
         "gate_version": GATE_VERSION,
         "model_role": role.value,
         "model": info.id,
         "temperature": 0.0,
         "thinking": "model default" if thinking is None else ("on" if thinking else "off"),
         "output_token_cap_per_request": OUTPUT_TOKEN_CAP,
-        "spend_cap_usd": str(MAX_SPEND_USD),
+        "spend_cap_usd": str(config.spend_cap_usd),
         "run_at": started.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }  # fmt: skip
     result["outputs"] = outputs
@@ -853,7 +887,8 @@ def write_report(result: dict[str, Any], role: ModelRole) -> tuple[Path, Path, P
     outputs = result.pop("outputs")
     thinking = result["meta"]["thinking"].replace("model default", "default")
     gate_suffix = "-gate-" + GATE_VERSION.rsplit("/", 1)[1]  # earlier reports: gate v1, no suffix
-    name = f"assessment-extraction-v1-{role.value}-thinking-{thinking}{gate_suffix}"
+    prompt = result["meta"]["prompt_version"].rsplit("/", 1)[1]  # "v1", "v2"
+    name = f"assessment-extraction-{prompt}-{role.value}-thinking-{thinking}{gate_suffix}"
     REPORTS.mkdir(parents=True, exist_ok=True)
     RUNS.mkdir(parents=True, exist_ok=True)
     report_json = REPORTS / f"{name}.json"
@@ -976,8 +1011,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="score the last live run left in the evaluation database (no model call)",
     )
+    parser.add_argument("--prompt-version", default=PROMPT_VERSION)
+    parser.add_argument("--spend-cap", type=Decimal, default=MAX_SPEND_USD)
     args = parser.parse_args(argv)
     thinking = None if args.thinking == "default" else False
+    config = EvalConfig(args.prompt_version, args.spend_cap)
     role = ModelRole(args.role)
     settings = get_settings()
     golden = load_golden()
@@ -992,15 +1030,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     info = asyncio.run(catalog())
     plan = describe_plan(
-        plan_units(golden), info, settings.ai_max_attempts, settings.ai_max_repair_attempts
+        plan_units(golden, config),
+        info,
+        settings.ai_max_attempts,
+        settings.ai_max_repair_attempts,
+        config,
     )
     print(json.dumps({"plan": plan}, indent=2))
     if plan["problems"]:
         return 4
     if args.replay_outputs:
         recorded = json.loads(args.replay_outputs.read_text(encoding="utf-8"))
-        replay = ReplayProvider(assign_outputs(recorded, plan_units(golden)), info.id)
-        result = asyncio.run(run_live(role, info, settings, golden, thinking, replay))
+        replay = ReplayProvider(assign_outputs(recorded, plan_units(golden, config)), info.id)
+        result = asyncio.run(run_live(role, info, settings, golden, thinking, replay, config))
         result.pop("outputs")
         RUNS.mkdir(parents=True, exist_ok=True)
         out = RUNS / f"{args.replay_outputs.stem}-replay-{GATE_VERSION.replace('/', '-')}.json"
@@ -1015,7 +1057,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.report_existing:
         result = asyncio.run(report_existing(role, info, settings, golden, thinking))
     elif args.live:
-        result = asyncio.run(run_live(role, info, settings, golden, thinking))
+        result = asyncio.run(run_live(role, info, settings, golden, thinking, None, config))
     else:
         return 0
     paths = write_report(result, role)
