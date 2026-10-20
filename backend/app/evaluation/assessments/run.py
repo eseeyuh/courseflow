@@ -109,10 +109,20 @@ def corpus_units(golden: GoldenDataset) -> dict[tuple[str, str, int], list[Extra
 
 
 def without_injection(unit: ExtractionUnit) -> ExtractionUnit:
-    from app.extraction.gate import INSTRUCTION_LIKE
+    """The unit with every detected injection fragment removed (a span left
+    empty is dropped); everything else is unchanged."""
+    from app.extraction.gate import injection_fragments
 
-    kept = [s for s in unit.spans if not INSTRUCTION_LIKE.search(s.excerpt)]
-    spans = tuple(UnitSpan(f"S{i}", s.span_id, s.excerpt, s.locator) for i, s in enumerate(kept, 1))
+    kept = []
+    for span in unit.spans:
+        text = span.excerpt
+        for start, end in sorted(set(injection_fragments(text)), reverse=True):
+            text = text[:start] + text[end:]
+        if text.strip():
+            kept.append((span, text))
+    spans = tuple(
+        UnitSpan(f"S{i}", s.span_id, text, s.locator) for i, (s, text) in enumerate(kept, 1)
+    )
     return ExtractionUnit(
         unit.course_id, unit.resource_version_id, unit.resource_title, unit.resource_type,
         unit.ordinal, spans,

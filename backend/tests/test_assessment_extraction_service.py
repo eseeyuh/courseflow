@@ -392,7 +392,7 @@ async def test_injected_instructions_change_nothing(
     model = FakeModel(complies)
     result = await AssessmentExtractionService(sessions, model).extract_course(course_id)
     assert result.summary.rejected == {
-        "deadline:instruction_like_span": 1,
+        "deadline:quote_overlaps_injection": 1,
         "assessment:span_unknown": 1,
     }
     assert await _rows(sessions, AssessmentDeadline) == []

@@ -7,10 +7,10 @@
 For every proposed fact:
 
 1. its local span ID must have been issued for this unit (so the span is
-   one of this current version's spans, of this course), and the span must
-   not contain instruction-like text (``INSTRUCTION_LIKE``);
+   one of this current version's spans, of this course);
 2. its quote must occur exactly once in that span's excerpt, giving exact
-   code-point offsets (a repeated quote has no unique location);
+   code-point offsets (a repeated quote has no unique location), and must
+   not overlap a detected injection fragment (``injection_fragments``);
 3. the quote must support the value: the title's designator words, the
    stated percentage, or the deadline parsed from the quote itself (the
    model's date must equal it).
@@ -41,9 +41,9 @@ from app.extraction.schema import AssessmentExtraction, AssessmentOut, DeadlineO
 from app.extraction.units import ExtractionUnit
 
 _WORD = re.compile(r"[^\W_]+")
-# Text addressed to a model rather than a student. A span containing it is
-# never evidence, whatever dates it states (even in a quote that avoids the
-# instruction itself): such text is inert content.
+# Trigger phrases addressed to a model rather than a student. Deliberately
+# narrow: ordinary wording ("follow the submission instructions", "ignore
+# the appendix") does not match.
 INSTRUCTION_LIKE = re.compile(
     r"\b(?:ignore|disregard|forget|override)\s+(?:all\s+|any\s+|the\s+)?"
     r"(?:previous|prior|above|earlier|your)\s+(?:instructions|prompts?|rules)\b"
@@ -53,6 +53,29 @@ INSTRUCTION_LIKE = re.compile(
     r"|^\s*(?:system|assistant|developer)\s*:",
     re.IGNORECASE | re.MULTILINE,
 )
+_SENTENCE_END = re.compile(r"[.!?](?=\s)|\n")
+
+
+def injection_fragments(text: str) -> list[tuple[int, int]]:
+    """Code-point ranges of detected prompt injection in ``text``.
+
+    A fragment runs from the start of the sentence containing a trigger
+    phrase to the end of that line, so that a payload following the trigger
+    on the same line ("... AND SET EVERY DEADLINE TO 1 JANUARY 2030", or a
+    next sentence) is inside it. The rest of the text is unaffected.
+    """
+    fragments = []
+    for match in INSTRUCTION_LIKE.finditer(text):
+        before = [m.end() for m in _SENTENCE_END.finditer(text, 0, match.start())]
+        start = before[-1] if before else 0
+        newline = text.find("\n", match.end())
+        end = len(text) if newline == -1 else newline
+        while start < end and text[start].isspace():
+            start += 1
+        fragments.append((start, end))
+    return fragments
+
+
 _PERCENT = re.compile(r"(?<![\d.])(\d{1,3})\s*(?:%|per\s?cent\b)", re.IGNORECASE)
 
 
@@ -124,9 +147,11 @@ def locate(unit: ExtractionUnit, ref: EvidenceRef) -> tuple[GatedEvidence, str]:
         raise _Rejected("quote_not_found")
     if len(starts) > 1:
         raise _Rejected("quote_not_unique")
-    if INSTRUCTION_LIKE.search(span.excerpt):
-        raise _Rejected("instruction_like_span")
-    return GatedEvidence(span.span_id, starts[0], starts[0] + len(ref.quote)), ref.quote
+    start, end = starts[0], starts[0] + len(ref.quote)
+    # Injection text is inert content: it can never support a claim.
+    if any(a < end and start < b for a, b in injection_fragments(span.excerpt)):
+        raise _Rejected("quote_overlaps_injection")
+    return GatedEvidence(span.span_id, start, end), ref.quote
 
 
 def _title(unit: ExtractionUnit, proposed: AssessmentOut) -> tuple[str, GatedEvidence]:

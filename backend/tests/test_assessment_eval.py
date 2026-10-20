@@ -25,7 +25,7 @@ from app.evaluation.assessments.run import (
     plan_units,
 )
 from app.evaluation.northbridge.labels import load_golden
-from app.extraction.gate import INSTRUCTION_LIKE
+from app.extraction.gate import injection_fragments
 from app.extraction.schema import AssessmentExtraction
 from app.retrieval.chunking import estimate_tokens
 from tests.ai_fakes import ScriptedServer, completion, make_provider
@@ -44,8 +44,8 @@ def test_the_plan_is_every_version_once_plus_the_injection_control() -> None:
     assert [p.where[2] for p in planned].count(2) == 2  # the two later versions
     control = planned[-1]
     assert control.where == ("msd7000", "research-methods-lecture", 1)
-    assert not any(INSTRUCTION_LIKE.search(s.excerpt) for s in control.unit.spans)
-    assert any(INSTRUCTION_LIKE.search(s.excerpt) for p in planned[:-1] for s in p.unit.spans)
+    assert not any(injection_fragments(s.excerpt) for s in control.unit.spans)
+    assert any(injection_fragments(s.excerpt) for p in planned[:-1] for s in p.unit.spans)
 
 
 def test_the_golden_deadline_facts() -> None:
