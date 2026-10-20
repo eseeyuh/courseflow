@@ -13,6 +13,8 @@ Create Date: 2026-10-20
 - assessment_deadlines: one row per deadline value a source states, as a
   local date, an optional local time and an IANA timezone, with how the
   timezone was obtained; ``due_at`` only when all three are known. Disagreeing sources give separate rows.
+- review_reason on all three: why a needs_review row needs review (a typed,
+  gate-derived code); present exactly when the status is needs_review.
 - evidence_links: one row per (fact, span, quote range) supporting an
   assessment or a deadline, with its verification status and ModelCall /
   WorkflowRun lineage. No cascade from spans, calls or runs: evidence must
@@ -35,6 +37,21 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _STATUS = "IN ('verified', 'needs_review', 'rejected')"
+_REASONS = (
+    "review_reason IN ("
+    "'no_verified_assessment_fact', 'conflicting_weighting', 'non_unique_quote_location', 'missing_timezone', 'unrecognised_timezone', 'conflicting_timezone', 'weekday_mismatch', 'ambiguous_time', 'ambiguous_local_time'"
+    ")"
+)
+
+
+def _reason_checks(table: str, status: str) -> list[sa.CheckConstraint]:
+    return [
+        sa.CheckConstraint(_REASONS, name=op.f(f"ck_{table}_review_reason")),
+        sa.CheckConstraint(
+            f"(review_reason IS NOT NULL) = ({status} = 'needs_review')",
+            name=op.f(f"ck_{table}_review_reason_iff_review"),
+        ),
+    ]
 
 
 def _timestamps(*, updated: bool = True) -> list[sa.Column]:  # type: ignore[type-arg]
@@ -72,8 +89,10 @@ def upgrade() -> None:
         sa.Column("title", sa.Text(), nullable=False),
         sa.Column("weighting_percent", sa.SmallInteger(), nullable=True),
         sa.Column("status", sa.String(length=32), nullable=False),
+        sa.Column("review_reason", sa.String(length=32), nullable=True),
         *_timestamps(),
         sa.CheckConstraint(f"status {_STATUS}", name=op.f("ck_assessments_verification_status")),
+        *_reason_checks("assessments", "status"),
         sa.CheckConstraint(
             "length(canonical_key) > 0 AND canonical_key = lower(canonical_key)",
             name=op.f("ck_assessments_canonical_key_normalised"),
@@ -101,10 +120,12 @@ def upgrade() -> None:
         sa.Column("precision", sa.String(length=32), nullable=False),
         sa.Column("due_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("status", sa.String(length=32), nullable=False),
+        sa.Column("review_reason", sa.String(length=32), nullable=True),
         *_timestamps(),
         sa.CheckConstraint(
             f"status {_STATUS}", name=op.f("ck_assessment_deadlines_verification_status")
         ),
+        *_reason_checks("assessment_deadlines", "status"),
         sa.CheckConstraint(
             "timezone_source IN ('explicit_source', 'institution_default', 'unknown')",
             name=op.f("ck_assessment_deadlines_timezone_source"),
@@ -160,6 +181,7 @@ def upgrade() -> None:
         sa.Column("quote_start", sa.Integer(), nullable=False),
         sa.Column("quote_end", sa.Integer(), nullable=False),
         sa.Column("verification_status", sa.String(length=32), nullable=False),
+        sa.Column("review_reason", sa.String(length=32), nullable=True),
         sa.Column("model_call_id", sa.Uuid(), nullable=True),
         sa.Column("workflow_run_id", sa.Uuid(), nullable=True),
         *_timestamps(updated=False),
@@ -189,6 +211,7 @@ def upgrade() -> None:
             "quote_start >= 0 AND quote_start < quote_end",
             name=op.f("ck_evidence_links_quote_ordered"),
         ),
+        *_reason_checks("evidence_links", "verification_status"),
         sa.ForeignKeyConstraint(
             ["assessment_id"],
             ["assessments.id"],

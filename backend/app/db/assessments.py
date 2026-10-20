@@ -47,6 +47,7 @@ async def _evidence(
                 id=link.id,
                 field=link.field,
                 verification_status=link.verification_status,
+                review_reason=link.review_reason,
                 quote=span.excerpt[link.quote_start : link.quote_end],
                 source_span_id=span.id,
                 page_number=span.page_number,
@@ -102,6 +103,7 @@ async def course_assessments(
                 precision=d.precision,
                 due_at=d.due_at,
                 status=d.status,
+                review_reason=d.review_reason,
                 evidence=by_deadline[d.id],
             )
         )
@@ -113,6 +115,7 @@ async def course_assessments(
             canonical_key=a.canonical_key,
             weighting_percent=a.weighting_percent,
             status=a.status,
+            review_reason=a.review_reason,
             evidence=by_assessment[a.id],
             deadlines=deadline_reads[a.id],
         )

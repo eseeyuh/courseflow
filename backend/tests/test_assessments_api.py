@@ -31,6 +31,8 @@ async def test_a_course_lists_its_assessments_with_all_evidence(
     assert response.status_code == 200
     (assessment,) = response.json()
     assert assessment["canonical_key"] == "coursework 1" and assessment["status"] == "verified"
+    assert assessment["review_reason"] is None
+    assert {e["review_reason"] for e in assessment["evidence"]} == {None}
     assert sorted(e["field"] for e in assessment["evidence"]) == [
         "title", "title", "weighting", "weighting",
     ]  # fmt: skip
@@ -58,3 +60,19 @@ async def test_unknown_course_or_assessment_is_404(client: httpx.AsyncClient) ->
         f"/api/v1/assessments/{uuid.uuid4()}",
     ):
         assert (await client.get(path)).status_code == 404
+
+
+async def test_needs_review_claims_carry_their_reason(
+    committed_session: AsyncSession, client: httpx.AsyncClient, tmp_path: Path
+) -> None:
+    from tests.test_assessment_extraction_service import EXERCISES, _spec_script
+
+    sessions = async_sessionmaker(committed_session.bind, expire_on_commit=False)
+    course_id, _ = await _course(sessions, tmp_path, {"workshop": EXERCISES})
+    await AssessmentExtractionService(sessions, FakeModel(_spec_script)).extract_course(course_id)
+    body = (await client.get(f"/api/v1/courses/{course_id}/assessments")).json()
+    assert {(a["status"], a["review_reason"]) for a in body} == {
+        ("needs_review", "no_verified_assessment_fact")
+    }
+    # Its title evidence itself is exact and unique, so verified.
+    assert {e["verification_status"] for a in body for e in a["evidence"]} == {"verified"}

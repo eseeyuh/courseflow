@@ -558,7 +558,9 @@ async def score(
                 if (c, k) not in stored or stored[(c, k)].status.value != "verified"
             ),
             "needs_review": sorted(
-                f"{c}/{k}" for (c, k), a in stored.items() if a.status.value == "needs_review"
+                f"{c}/{k}: {a.review_reason.value if a.review_reason else '?'}"
+                for (c, k), a in stored.items()
+                if a.status.value == "needs_review"
             ),
             "extra": sorted(f"{c}/{k}" for c, k in set(stored) - set(golden_assessments)),
             "weighting": {

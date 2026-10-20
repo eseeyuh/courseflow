@@ -39,12 +39,14 @@ from app.db.models import Assessment, AssessmentDeadline, EvidenceLink
 from app.domain.enums import (
     EvidenceField,
     EvidenceSubject,
+    ReviewReason,
     TimezoneSource,
     VerificationStatus,
 )
 from app.extraction.gate import GatedAssessment, GatedDeadline, Located
 
 V = VerificationStatus
+R = ReviewReason
 _SOURCE_STRENGTH = {
     TimezoneSource.UNKNOWN: 0,
     TimezoneSource.INSTITUTION_DEFAULT: 1,
@@ -88,6 +90,7 @@ async def _assessment(
             title=gated.title,
             weighting_percent=None,
             status=V.NEEDS_REVIEW,  # until its facts are written (_derive_status)
+            review_reason=R.NO_VERIFIED_ASSESSMENT_FACT,
         )
         .on_conflict_do_nothing(constraint="uq_assessments_course_key")
         .returning(Assessment.id)
@@ -112,6 +115,7 @@ async def _links(
     counts: PersistCounts,
     evidence: Located,
     status: VerificationStatus,
+    reason: ReviewReason | None,
     field: EvidenceField,
     lineage: Lineage,
     *,
@@ -135,6 +139,7 @@ async def _links(
                 quote_start=location.quote_start,
                 quote_end=location.quote_end,
                 verification_status=status,
+                review_reason=reason,
                 model_call_id=lineage.model_call_id,
                 workflow_run_id=lineage.workflow_run_id,
             )
@@ -162,6 +167,7 @@ async def _deadline(
             precision=value.precision,
             due_at=value.due_at,
             status=status,
+            review_reason=gated.review_reason,
         )
         .on_conflict_do_nothing(constraint="uq_assessment_deadlines_value")
         .returning(AssessmentDeadline.id)
@@ -184,7 +190,7 @@ async def _deadline(
     if row is None:
         raise RuntimeError("assessment deadline vanished during persistence")
     if status is V.VERIFIED and row.status is not V.VERIFIED:
-        row.status, row.due_at = V.VERIFIED, value.due_at
+        row.status, row.due_at, row.review_reason = V.VERIFIED, value.due_at, None
     if _SOURCE_STRENGTH[value.timezone_source] > _SOURCE_STRENGTH[row.timezone_source]:
         row.timezone_source = value.timezone_source
     return row.id
@@ -200,6 +206,7 @@ async def _weighting(
     if gated.weighting is None:
         return
     status = gated.weighting.status
+    reason = None if status is V.VERIFIED else R.NON_UNIQUE_QUOTE_LOCATION
     weighting_links = (EvidenceLink.assessment_id == row.id) & (
         EvidenceLink.field == EvidenceField.WEIGHTING
     )
@@ -207,23 +214,27 @@ async def _weighting(
         if row.weighting_percent is None:
             disputed = await session.scalar(
                 select(
-                    exists().where(weighting_links, EvidenceLink.verification_status != V.VERIFIED)
+                    exists().where(
+                        weighting_links, EvidenceLink.review_reason == R.CONFLICTING_WEIGHTING
+                    )
                 )
             )
             if disputed:
-                status = V.NEEDS_REVIEW
+                status, reason = V.NEEDS_REVIEW, R.CONFLICTING_WEIGHTING
             else:
                 row.weighting_percent = gated.weighting.percent
         elif row.weighting_percent != gated.weighting.percent:
             counts.weighting_disagreements += 1
-            status = V.NEEDS_REVIEW
+            status, reason = V.NEEDS_REVIEW, R.CONFLICTING_WEIGHTING
             row.weighting_percent = None
             await session.execute(
-                update(EvidenceLink).where(weighting_links).values(verification_status=status)
+                update(EvidenceLink)
+                .where(weighting_links)
+                .values(verification_status=status, review_reason=reason)
             )
     await _links(
-        session, counts, gated.weighting.evidence, status, EvidenceField.WEIGHTING, lineage,
-        assessment_id=row.id,
+        session, counts, gated.weighting.evidence, status, reason, EvidenceField.WEIGHTING,
+        lineage, assessment_id=row.id,
     )  # fmt: skip
 
 
@@ -249,7 +260,19 @@ async def _derive_status(session: AsyncSession, row: Assessment) -> None:
             )
         )
     )
-    row.status = V.VERIFIED if verified_deadline or verified_weighting else V.NEEDS_REVIEW
+    if verified_deadline or verified_weighting:
+        row.status, row.review_reason = V.VERIFIED, None
+        return
+    conflicting = await session.scalar(
+        select(
+            exists().where(
+                EvidenceLink.assessment_id == row.id,
+                EvidenceLink.review_reason == R.CONFLICTING_WEIGHTING,
+            )
+        )
+    )
+    row.status = V.NEEDS_REVIEW
+    row.review_reason = R.CONFLICTING_WEIGHTING if conflicting else R.NO_VERIFIED_ASSESSMENT_FACT
 
 
 async def persist_unit(
@@ -262,8 +285,10 @@ async def persist_unit(
     counts = PersistCounts()
     for gated in assessments:
         row = await _assessment(session, course_id, gated, counts)
+        title_status = gated.title_evidence.status
         await _links(
-            session, counts, gated.title_evidence, gated.title_evidence.status,
+            session, counts, gated.title_evidence, title_status,
+            None if title_status is V.VERIFIED else R.NON_UNIQUE_QUOTE_LOCATION,
             EvidenceField.TITLE, lineage, assessment_id=row.id,
         )  # fmt: skip
         if gated.weighting is not None:
@@ -272,7 +297,8 @@ async def persist_unit(
             deadline_id = await _deadline(session, row.id, gated.deadline, counts)
             await _links(
                 session, counts, gated.deadline.evidence, gated.deadline.status,
-                EvidenceField.DEADLINE, lineage, deadline_id=deadline_id,
+                gated.deadline.review_reason, EvidenceField.DEADLINE, lineage,
+                deadline_id=deadline_id,
             )  # fmt: skip
         await session.flush()
         await _derive_status(session, row)

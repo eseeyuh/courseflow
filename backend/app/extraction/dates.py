@@ -27,6 +27,8 @@ from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
 from app.domain.enums import DeadlinePrecision, TimezoneSource, VerificationStatus
+from app.domain.enums import RejectionReason as X
+from app.domain.enums import ReviewReason as R
 
 
 def _names(groups: tuple[tuple[str, ...], ...], start: int) -> dict[str, int]:
@@ -109,8 +111,8 @@ _ZONE_ABBREVIATION = re.compile(
 class DeadlineRejected(ValueError):
     """The quote cannot support a concrete deadline. ``reason`` is a stable code."""
 
-    def __init__(self, reason: str) -> None:
-        super().__init__(reason)
+    def __init__(self, reason: X) -> None:
+        super().__init__(reason.value)
         self.reason = reason
 
 
@@ -120,7 +122,7 @@ class ParsedDeadline:
     due_time: time | None
     weekday_stated: int | None  # Monday = 0, when the quote names one
     timezone: str | None  # IANA, when the quote names a known zone
-    review_reasons: tuple[str, ...]  # stated, but not determinate enough to verify
+    review_reasons: tuple[R, ...]  # stated, but not determinate enough to verify
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,14 +134,14 @@ class NormalisedDeadline:
     precision: DeadlinePrecision
     due_at: datetime | None
     status: VerificationStatus
-    review_reasons: tuple[str, ...]
+    review_reasons: tuple[R, ...]
 
 
 def _date(year: str, month: int, day: str) -> date:
     try:
         return date(int(year), month, int(day))
     except ValueError:
-        raise DeadlineRejected("impossible_date") from None
+        raise DeadlineRejected(X.IMPOSSIBLE_DATE) from None
 
 
 def _dates(quote: str) -> set[tuple[date, int | None]]:
@@ -157,31 +159,31 @@ def _dates(quote: str) -> set[tuple[date, int | None]]:
     return found
 
 
-def _time(quote: str) -> tuple[time | None, tuple[str, ...]]:
+def _time(quote: str) -> tuple[time | None, tuple[R, ...]]:
     times: list[time] = []
     for match in _TIME_24.finditer(quote):
         hour, minute = int(match["h"]), int(match["m"])
         if match["ap"] is not None:
             if not 1 <= hour <= 12:
-                raise DeadlineRejected("impossible_time")
+                raise DeadlineRejected(X.IMPOSSIBLE_TIME)
             hour = hour % 12 + (12 if match["ap"].lower().startswith("p") else 0)
         times.append(time(hour, minute))
     if len(_CLOCKISH.findall(quote)) != len(times):
-        raise DeadlineRejected("impossible_time")  # e.g. 24:00 or 14:75
+        raise DeadlineRejected(X.IMPOSSIBLE_TIME)  # e.g. 24:00 or 14:75
     for match in _TIME_12.finditer(quote):
         hour = int(match["h"]) % 12 + (12 if match["ap"].lower().startswith("p") else 0)
         times.append(time(hour, int(match["m"] or 0)))
     times += [time(12, 0) for _ in _NOON.finditer(quote)]
     if len(set(times)) > 1:
-        raise DeadlineRejected("multiple_times")
+        raise DeadlineRejected(X.MULTIPLE_TIMES)
     if _MIDNIGHT.search(quote):
         if times:
-            raise DeadlineRejected("multiple_times")
-        return None, ("midnight_ambiguous",)  # the start or the end of the day?
+            raise DeadlineRejected(X.MULTIPLE_TIMES)
+        return None, (R.AMBIGUOUS_TIME,)  # the start or the end of the day?
     return (times[0] if times else None), ()
 
 
-def _timezone(quote: str) -> tuple[str | None, tuple[str, ...]]:
+def _timezone(quote: str) -> tuple[str | None, tuple[R, ...]]:
     lowered = quote.lower()
     zones = {
         zone
@@ -191,37 +193,37 @@ def _timezone(quote: str) -> tuple[str | None, tuple[str, ...]]:
     named = [f"{m['zone']} time" for m in _ZONE_WORDS.finditer(quote)]
     named += [m["zone"] for m in _ZONE_ABBREVIATION.finditer(quote)]
     if any(zone.lower() not in TIMEZONE_PHRASES for zone in named):
-        return None, ("timezone_unrecognised",)
+        return None, (R.UNRECOGNISED_TIMEZONE,)
     if len(zones) > 1:
-        return None, ("timezone_conflicting",)
+        return None, (R.CONFLICTING_TIMEZONE,)
     return (zones.pop() if zones else None), ()
 
 
 def parse_deadline_quote(quote: str) -> ParsedDeadline:
     """The one deadline an exact evidence quote states, or DeadlineRejected."""
     if _NUMERIC.search(quote):
-        raise DeadlineRejected("numeric_date")
+        raise DeadlineRejected(X.NUMERIC_DATE)
     dates = _dates(quote)
     if not dates:
         months = [m for m in _MONTH_YEAR.finditer(quote) if m["month"].lower() in _MONTHS]
-        raise DeadlineRejected("month_only" if months else "no_date")
+        raise DeadlineRejected(X.MONTH_ONLY if months else X.NO_DATE)
     if len({value for value, _ in dates}) > 1:
-        raise DeadlineRejected("multiple_dates")
+        raise DeadlineRejected(X.MULTIPLE_DATES)
     due_date = next(iter(dates))[0]
     weekdays = {weekday for _, weekday in dates if weekday is not None}
     due_time, time_reasons = _time(quote)
     zone, zone_reasons = _timezone(quote)
     reasons = time_reasons + zone_reasons
     if weekdays and weekdays != {due_date.weekday()}:
-        reasons += ("weekday_mismatch",)
+        reasons += (R.WEEKDAY_MISMATCH,)
     weekday = weekdays.pop() if len(weekdays) == 1 else None
     return ParsedDeadline(due_date, due_time, weekday, zone, reasons)
 
 
 def normalise(parsed: ParsedDeadline, institution_timezone: str | None) -> NormalisedDeadline:
     """Precision, timezone provenance, the instant and the status, deterministically."""
-    reasons = list(parsed.review_reasons)
-    zone_unusable = {"timezone_unrecognised", "timezone_conflicting"} & set(reasons)
+    reasons: list[R] = list(parsed.review_reasons)
+    zone_unusable = {R.UNRECOGNISED_TIMEZONE, R.CONFLICTING_TIMEZONE} & set(reasons)
     if parsed.timezone is not None:
         zone, source = parsed.timezone, TimezoneSource.EXPLICIT_SOURCE
     elif institution_timezone is not None and not zone_unusable:
@@ -233,11 +235,11 @@ def normalise(parsed: ParsedDeadline, institution_timezone: str | None) -> Norma
     if parsed.due_time is not None:
         if zone is None:
             if not zone_unusable:
-                reasons.append("timezone_unknown")
+                reasons.append(R.MISSING_TIMEZONE)
         else:
             due_at = _instant(parsed.due_date, parsed.due_time, zone)
             if due_at is None:
-                reasons.append("local_time_ambiguous")  # occurs twice (DST overlap)
+                reasons.append(R.AMBIGUOUS_LOCAL_TIME)  # occurs twice (DST overlap)
     return NormalisedDeadline(
         due_date=parsed.due_date,
         due_time=parsed.due_time,
@@ -257,7 +259,7 @@ def _instant(day: date, at: time, zone: str) -> datetime | None:
     local = datetime.combine(day, at)
     first, second = local.replace(tzinfo=tz, fold=0), local.replace(tzinfo=tz, fold=1)
     if first.astimezone(UTC).astimezone(tz).replace(tzinfo=None) != local:
-        raise DeadlineRejected("local_time_nonexistent")  # skipped by a DST gap
+        raise DeadlineRejected(X.LOCAL_TIME_NONEXISTENT)  # skipped by a DST gap
     if first.utcoffset() != second.utcoffset():
         return None
     return first.astimezone(UTC)

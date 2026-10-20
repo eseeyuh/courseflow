@@ -150,3 +150,45 @@ class EvidenceField(StrEnum):
     TITLE = "title"  # that the assessment exists, under this name
     WEIGHTING = "weighting"
     DEADLINE = "deadline"
+
+
+class ReviewReason(StrEnum):
+    """Why a stored claim or piece of evidence needs review. Derived by the
+    evidence gate from the evidence itself, never supplied by a model."""
+
+    # An assessment candidate with no verified deadline and no verified weighting.
+    NO_VERIFIED_ASSESSMENT_FACT = "no_verified_assessment_fact"
+    # Verified sources state different weightings for one assessment.
+    CONFLICTING_WEIGHTING = "conflicting_weighting"
+    # The quote occurs more than once in its span: no single location.
+    NON_UNIQUE_QUOTE_LOCATION = "non_unique_quote_location"
+    # A local time, with no timezone in the quote and none for the institution.
+    MISSING_TIMEZONE = "missing_timezone"
+    # The quote names a timezone that cannot be mapped (never replaced by a default).
+    UNRECOGNISED_TIMEZONE = "unrecognised_timezone"
+    CONFLICTING_TIMEZONE = "conflicting_timezone"  # the quote names two
+    WEEKDAY_MISMATCH = "weekday_mismatch"  # the stated weekday is not the date's
+    AMBIGUOUS_TIME = "ambiguous_time"  # "midnight": the start or the end of the day?
+    AMBIGUOUS_LOCAL_TIME = "ambiguous_local_time"  # occurs twice (DST overlap)
+
+
+class RejectionReason(StrEnum):
+    """Why the gate rejected a proposed fact; rejected facts are never stored."""
+
+    SPAN_UNKNOWN = "span_unknown"  # not a local span ID issued for the unit
+    QUOTE_NOT_FOUND = "quote_not_found"
+    QUOTE_OVERLAPS_INJECTION = "quote_overlaps_injection"
+    TITLE_UNSUPPORTED = "title_unsupported"
+    WEIGHTING_UNSUPPORTED = "weighting_unsupported"
+    SCHEMA_VIOLATION = "schema_violation"
+    MODEL_DATE_MISMATCH = "model_date_mismatch"
+    MODEL_TIME_MISMATCH = "model_time_mismatch"
+    MODEL_TIME_INVALID = "model_time_invalid"
+    MONTH_ONLY = "month_only"  # a month, never a date
+    NO_DATE = "no_date"
+    NUMERIC_DATE = "numeric_date"  # 12/11/2026: day-month order undecidable
+    MULTIPLE_DATES = "multiple_dates"
+    IMPOSSIBLE_DATE = "impossible_date"
+    IMPOSSIBLE_TIME = "impossible_time"
+    MULTIPLE_TIMES = "multiple_times"
+    LOCAL_TIME_NONEXISTENT = "local_time_nonexistent"  # skipped by a DST gap

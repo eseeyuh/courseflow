@@ -97,7 +97,7 @@ def test_a_local_time_with_no_zone_anywhere_needs_review_and_has_no_instant() ->
     value = _deadline("due Friday 13 November 2026 at 23:59.", institution=None)
     assert value.timezone is None and value.timezone_source is TimezoneSource.UNKNOWN
     assert value.due_at is None
-    assert value.status is V.NEEDS_REVIEW and value.review_reasons == ("timezone_unknown",)
+    assert value.status is V.NEEDS_REVIEW and value.review_reasons == ("missing_timezone",)
 
 
 @pytest.mark.parametrize(
@@ -107,14 +107,14 @@ def test_a_local_time_with_no_zone_anywhere_needs_review_and_has_no_instant() ->
 def test_a_named_zone_that_cannot_be_mapped_is_never_replaced_by_the_default(quote: str) -> None:
     value = _deadline(quote)
     assert value.timezone is None and value.timezone_source is TimezoneSource.UNKNOWN
-    assert value.due_at is None and value.review_reasons == ("timezone_unrecognised",)
+    assert value.due_at is None and value.review_reasons == ("unrecognised_timezone",)
 
 
 def test_dst_is_handled_deterministically() -> None:
     with pytest.raises(DeadlineRejected, match="local_time_nonexistent"):
         _deadline("Sunday 28 March 2027 01:30 UK time")  # clocks go forward at 01:00
     overlap = _deadline("Sunday 31 October 2027 01:30 UK time")  # 01:00-02:00 occurs twice
-    assert overlap.due_at is None and overlap.review_reasons == ("local_time_ambiguous",)
+    assert overlap.due_at is None and overlap.review_reasons == ("ambiguous_local_time",)
 
 
 def test_a_weekday_that_contradicts_the_date_needs_review() -> None:
@@ -124,7 +124,7 @@ def test_a_weekday_that_contradicts_the_date_needs_review() -> None:
 
 def test_midnight_is_not_given_a_time() -> None:
     value = _deadline("Submit by midnight on 4 May 2027")
-    assert value.due_time is None and value.review_reasons == ("midnight_ambiguous",)
+    assert value.due_time is None and value.review_reasons == ("ambiguous_time",)
 
 
 @pytest.mark.parametrize(

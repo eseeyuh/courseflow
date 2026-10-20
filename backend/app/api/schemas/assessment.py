@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from app.domain.enums import (
     DeadlinePrecision,
     EvidenceField,
+    ReviewReason,
     TimezoneSource,
     VerificationStatus,
 )
@@ -25,6 +26,7 @@ class EvidenceRead(BaseModel):
     id: uuid.UUID
     field: EvidenceField
     verification_status: VerificationStatus
+    review_reason: ReviewReason | None  # set exactly when needs_review
     quote: str
     source_span_id: uuid.UUID
     page_number: int | None
@@ -54,6 +56,7 @@ class DeadlineRead(BaseModel):
     precision: DeadlinePrecision
     due_at: datetime | None
     status: VerificationStatus
+    review_reason: ReviewReason | None
     evidence: list[EvidenceRead]
 
 
@@ -67,5 +70,6 @@ class AssessmentRead(BaseModel):
     canonical_key: str
     weighting_percent: int | None
     status: VerificationStatus
+    review_reason: ReviewReason | None  # e.g. no_verified_assessment_fact
     evidence: list[EvidenceRead]
     deadlines: list[DeadlineRead]

@@ -38,6 +38,7 @@ from app.domain.enums import (
     ModelCallErrorCategory,
     ModelRole,
     ResourceType,
+    ReviewReason,
     TimezoneSource,
     VerificationStatus,
     WorkflowRunStatus,
@@ -341,6 +342,7 @@ async def test_a_local_time_with_no_timezone_anywhere_is_stored_for_review(
     (deadline,) = await _rows(sessions, AssessmentDeadline)
     assert deadline.timezone is None and deadline.timezone_source is TimezoneSource.UNKNOWN
     assert deadline.due_at is None and deadline.status is V.NEEDS_REVIEW
+    assert deadline.review_reason is ReviewReason.MISSING_TIMEZONE
     (link,) = [x for x in await _rows(sessions, EvidenceLink) if x.field is EvidenceField.DEADLINE]
     assert link.verification_status is V.NEEDS_REVIEW
 
@@ -480,6 +482,8 @@ async def test_an_ambiguous_title_keeps_the_assessment_and_its_verified_facts(
     links = await _rows(sessions, EvidenceLink)
     titles = [x for x in links if x.field is EvidenceField.TITLE]
     assert len(titles) == 2 and {x.verification_status for x in titles} == {V.NEEDS_REVIEW}
+    assert {x.review_reason for x in titles} == {ReviewReason.NON_UNIQUE_QUOTE_LOCATION}
+    assert assessment.review_reason is None
     assert {x.verification_status for x in links if x.field is not EvidenceField.TITLE} == {
         V.VERIFIED
     }
@@ -491,8 +495,14 @@ async def test_a_candidate_without_a_verified_deadline_or_weighting_needs_review
     """Regression: ungraded exercises and notices were verified on their title alone."""
     course_id, _ = await _course(sessions, tmp_path, {"workshop": EXERCISES})
     await AssessmentExtractionService(sessions, FakeModel(_spec_script)).extract_course(course_id)
-    statuses = {a.canonical_key: a.status for a in await _rows(sessions, Assessment)}
-    assert statuses == {"exercise 1": V.NEEDS_REVIEW, "welcome to the module": V.NEEDS_REVIEW}
+    statuses = {
+        a.canonical_key: (a.status, a.review_reason) for a in await _rows(sessions, Assessment)
+    }
+    reason = ReviewReason.NO_VERIFIED_ASSESSMENT_FACT
+    assert statuses == {
+        "exercise 1": (V.NEEDS_REVIEW, reason),
+        "welcome to the module": (V.NEEDS_REVIEW, reason),
+    }
 
 
 async def test_disagreeing_weightings_become_unknown_and_all_need_review(
@@ -509,4 +519,5 @@ async def test_disagreeing_weightings_become_unknown_and_all_need_review(
         x for x in await _rows(sessions, EvidenceLink) if x.field is EvidenceField.WEIGHTING
     ]
     assert len(weightings) == 2 and {x.verification_status for x in weightings} == {V.NEEDS_REVIEW}
+    assert {x.review_reason for x in weightings} == {ReviewReason.CONFLICTING_WEIGHTING}
     assert assessment.status is V.VERIFIED  # still: its brief deadline is verified

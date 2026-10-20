@@ -35,7 +35,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, time
 
-from app.domain.enums import VerificationStatus
+from app.domain.enums import RejectionReason, ReviewReason, VerificationStatus
 from app.extraction.dates import (
     DeadlineRejected,
     NormalisedDeadline,
@@ -85,11 +85,12 @@ _PERCENT = re.compile(r"(?<![\d.])(\d{1,3})\s*(?:%|per\s?cent\b)", re.IGNORECASE
 
 
 class _Rejected(Exception):
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: RejectionReason) -> None:
         self.reason = reason
 
 
-GATE_VERSION = "assessment-gate/v2"  # v2: fact-level gating, derived assessment status
+# v2: fact-level gating, derived assessment status, typed review reasons.
+GATE_VERSION = "assessment-gate/v2"
 
 V = VerificationStatus
 
@@ -130,8 +131,15 @@ class GatedDeadline:
 
     @property
     def status(self) -> VerificationStatus:
-        verified = self.value.status is V.VERIFIED and self.evidence.status is V.VERIFIED
-        return V.VERIFIED if verified else V.NEEDS_REVIEW
+        return V.VERIFIED if self.review_reason is None else V.NEEDS_REVIEW
+
+    @property
+    def review_reason(self) -> ReviewReason | None:
+        """The value's first reason, else the location's; None when verified."""
+        reasons = list(self.value.review_reasons)
+        if self.evidence.status is not V.VERIFIED:
+            reasons.append(ReviewReason.NON_UNIQUE_QUOTE_LOCATION)
+        return reasons[0] if reasons else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,15 +182,15 @@ def canonical_key(title: str) -> str:
 def locate(unit: ExtractionUnit, ref: EvidenceRef) -> tuple[Located, str]:
     span = unit.resolve(ref.span)
     if span is None:
-        raise _Rejected("span_unknown")
+        raise _Rejected(RejectionReason.SPAN_UNKNOWN)
     starts = [m.start() for m in re.finditer(f"(?={re.escape(ref.quote)})", span.excerpt)]
     if not starts:
-        raise _Rejected("quote_not_found")
+        raise _Rejected(RejectionReason.QUOTE_NOT_FOUND)
     locations = tuple(GatedEvidence(span.span_id, a, a + len(ref.quote)) for a in starts)
     fragments = injection_fragments(span.excerpt)
     # Injection text is inert content: it can never support a claim.
     if any(a < e.quote_end and e.quote_start < b for e in locations for a, b in fragments):
-        raise _Rejected("quote_overlaps_injection")
+        raise _Rejected(RejectionReason.QUOTE_OVERLAPS_INJECTION)
     return Located(locations), ref.quote
 
 
@@ -190,7 +198,7 @@ def _title(unit: ExtractionUnit, proposed: AssessmentOut) -> tuple[str, Located]
     evidence, quote = locate(unit, proposed.title_evidence)
     key = canonical_key(proposed.title)
     if not key or not set(key.split()) <= set(_words(quote)):
-        raise _Rejected("title_unsupported")
+        raise _Rejected(RejectionReason.TITLE_UNSUPPORTED)
     return key, evidence
 
 
@@ -200,7 +208,7 @@ def _weighting(unit: ExtractionUnit, proposed: AssessmentOut) -> GatedWeighting 
     evidence, quote = locate(unit, proposed.weighting.evidence)
     stated = {int(m.group(1)) for m in _PERCENT.finditer(quote)}
     if stated != {proposed.weighting.percent}:
-        raise _Rejected("weighting_unsupported")
+        raise _Rejected(RejectionReason.WEIGHTING_UNSUPPORTED)
     return GatedWeighting(proposed.weighting.percent, evidence)
 
 
@@ -208,7 +216,7 @@ def _deadline(
     unit: ExtractionUnit, proposed: DeadlineOut, institution_timezone: str | None
 ) -> GatedDeadline:
     if proposed.evidence is None or proposed.due_date is None:  # the schema forbids it
-        raise _Rejected("schema_violation")
+        raise _Rejected(RejectionReason.SCHEMA_VIOLATION)
     evidence, quote = locate(unit, proposed.evidence)
     try:
         parsed = parse_deadline_quote(quote)
@@ -216,14 +224,14 @@ def _deadline(
     except DeadlineRejected as rejected:
         raise _Rejected(rejected.reason) from None
     if date.fromisoformat(proposed.due_date) != value.due_date:
-        raise _Rejected("model_date_mismatch")
+        raise _Rejected(RejectionReason.MODEL_DATE_MISMATCH)
     if proposed.due_time is not None:
         try:
             claimed = time.fromisoformat(proposed.due_time)
         except ValueError:
-            raise _Rejected("model_time_invalid") from None
+            raise _Rejected(RejectionReason.MODEL_TIME_INVALID) from None
         if claimed != value.due_time:
-            raise _Rejected("model_time_mismatch")
+            raise _Rejected(RejectionReason.MODEL_TIME_MISMATCH)
     # A time the quote states but the model omitted is still the quote's: the
     # evidence, not the model, determines the value.
     return GatedDeadline(value, evidence)
@@ -231,7 +239,7 @@ def _deadline(
 
 def _note_location(result: GateResult, fact: str, evidence: Located) -> None:
     if evidence.status is not V.VERIFIED:
-        result.review_reasons[f"{fact}:non_unique_quote_location"] += 1
+        result.review_reasons[f"{fact}:{ReviewReason.NON_UNIQUE_QUOTE_LOCATION}"] += 1
 
 
 def gate(

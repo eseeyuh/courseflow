@@ -67,6 +67,7 @@ from app.domain.enums import (
     ModelCallStatus,
     ModelRole,
     ResourceType,
+    ReviewReason,
     TimezoneSource,
     VerificationStatus,
     WorkflowRunStatus,
@@ -609,6 +610,10 @@ class Assessment(UUIDPrimaryKey, Timestamps, Base):
         ),
         CheckConstraint("length(btrim(title)) > 0", name="title_nonblank"),
         CheckConstraint("weighting_percent BETWEEN 0 AND 100", name="weighting_percent_range"),
+        CheckConstraint(
+            "(review_reason IS NOT NULL) = (status = 'needs_review')",
+            name="review_reason_iff_review",
+        ),
     )
 
     # Lookups by course use the unique constraint (leading column).
@@ -618,6 +623,9 @@ class Assessment(UUIDPrimaryKey, Timestamps, Base):
     weighting_percent: Mapped[int | None] = mapped_column(SmallInteger)
     status: Mapped[VerificationStatus] = mapped_column(
         str_enum(VerificationStatus, "verification_status")
+    )
+    review_reason: Mapped[ReviewReason | None] = mapped_column(
+        str_enum(ReviewReason, "review_reason")
     )
 
     course: Mapped[Course] = relationship(lazy="raise")
@@ -660,6 +668,10 @@ class AssessmentDeadline(UUIDPrimaryKey, Timestamps, Base):
             "status <> 'verified' OR precision = 'date' OR due_at IS NOT NULL",
             name="verified_datetime_has_instant",
         ),
+        CheckConstraint(
+            "(review_reason IS NOT NULL) = (status = 'needs_review')",
+            name="review_reason_iff_review",
+        ),
     )
 
     assessment_id: Mapped[uuid.UUID] = mapped_column(
@@ -677,6 +689,9 @@ class AssessmentDeadline(UUIDPrimaryKey, Timestamps, Base):
     due_at: Mapped[datetime | None]
     status: Mapped[VerificationStatus] = mapped_column(
         str_enum(VerificationStatus, "verification_status")
+    )
+    review_reason: Mapped[ReviewReason | None] = mapped_column(
+        str_enum(ReviewReason, "review_reason")
     )
 
     assessment: Mapped[Assessment] = relationship(back_populates="deadlines", lazy="raise")
@@ -710,6 +725,10 @@ class EvidenceLink(UUIDPrimaryKey, CreatedAt, Base):
             name="field_fits_subject",
         ),
         CheckConstraint("quote_start >= 0 AND quote_start < quote_end", name="quote_ordered"),
+        CheckConstraint(
+            "(review_reason IS NOT NULL) = (verification_status = 'needs_review')",
+            name="review_reason_iff_review",
+        ),
         UniqueConstraint(
             "assessment_id",
             "assessment_deadline_id",
@@ -739,6 +758,9 @@ class EvidenceLink(UUIDPrimaryKey, CreatedAt, Base):
     quote_end: Mapped[int]
     verification_status: Mapped[VerificationStatus] = mapped_column(
         str_enum(VerificationStatus, "verification_status")
+    )
+    review_reason: Mapped[ReviewReason | None] = mapped_column(
+        str_enum(ReviewReason, "review_reason")
     )
     # NULL only for evidence no model produced. No cascade: a call or run
     # cannot be deleted while claims still rest on it.

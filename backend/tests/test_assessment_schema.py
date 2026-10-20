@@ -37,6 +37,7 @@ from app.domain.enums import (
     ModelCallStatus,
     ModelRole,
     ResourceType,
+    ReviewReason,
     TimezoneSource,
     VerificationStatus,
 )
@@ -84,13 +85,20 @@ async def _rejected(sessions: async_sessionmaker[AsyncSession], row: Any, constr
         await _add(sessions, row)
 
 
+def _reasoned(row: dict[str, Any], status_field: str) -> dict[str, Any]:
+    """A needs_review row needs a reason unless the test sets one itself."""
+    if row.get(status_field) is V.NEEDS_REVIEW and "review_reason" not in row:
+        row["review_reason"] = ReviewReason.MISSING_TIMEZONE
+    return row
+
+
 def _assessment(course_id: uuid.UUID, **values: Any) -> Assessment:
     fields: dict[str, Any] = {
         "canonical_key": "coursework 1",
         "title": "Coursework 1",
         "status": V.VERIFIED,
     }
-    return Assessment(course_id=course_id, **(fields | values))
+    return Assessment(course_id=course_id, **_reasoned(fields | values, "status"))
 
 
 def _deadline(assessment_id: uuid.UUID, **values: Any) -> AssessmentDeadline:
@@ -103,7 +111,7 @@ def _deadline(assessment_id: uuid.UUID, **values: Any) -> AssessmentDeadline:
         "due_at": datetime(2026, 11, 12, 14, 0, tzinfo=UTC),  # GMT in November
         "status": V.VERIFIED,
     }
-    return AssessmentDeadline(assessment_id=assessment_id, **(fields | values))
+    return AssessmentDeadline(assessment_id=assessment_id, **_reasoned(fields | values, "status"))
 
 
 async def _span(
@@ -138,7 +146,7 @@ def _link(span_id: uuid.UUID, **values: Any) -> EvidenceLink:
         "quote_end": 19,
         "verification_status": V.VERIFIED,
     }
-    return EvidenceLink(**(fields | values))
+    return EvidenceLink(**_reasoned(fields | values, "verification_status"))
 
 
 # --- assessments --------------------------------------------------------------------------
@@ -409,3 +417,20 @@ async def test_reset_removes_a_demo_institutions_assessments_and_their_evidence(
         remaining = (await session.scalars(select(Assessment.id))).all()
         links = await session.scalar(select(func.count()).select_from(EvidenceLink))
     assert remaining == [kept.id] and links == 0
+
+
+@pytest.mark.parametrize(
+    ("values", "constraint"),
+    [
+        ({"status": V.NEEDS_REVIEW, "review_reason": None}, "review_reason_iff_review"),
+        ({"review_reason": ReviewReason.WEEKDAY_MISMATCH}, "review_reason_iff_review"),
+    ],
+)
+async def test_a_review_reason_is_present_exactly_when_review_is_needed(
+    sessions: async_sessionmaker[AsyncSession], values: dict[str, Any], constraint: str
+) -> None:
+    assessment_id = await _assessment_id(sessions)
+    deadline = _deadline(assessment_id, due_at=None, **values)
+    await _rejected(sessions, deadline, constraint)
+    course_id = await _course(sessions, "Reasons U")
+    await _rejected(sessions, _assessment(course_id, **values), constraint)
