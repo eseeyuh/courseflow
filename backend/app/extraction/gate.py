@@ -293,9 +293,12 @@ def _key_pattern(key: str) -> re.Pattern[str]:
 
 def _occurrences(span: UnitSpan, key: str, within: tuple[int, int] | None = None) -> Located | None:
     start, end = within or (0, len(span.excerpt))
+    fragments = injection_fragments(span.excerpt)
     found = [
         GatedEvidence(span.span_id, m.start(), m.end())
         for m in _key_pattern(key).finditer(span.excerpt, start, end)
+        # Title words inside injected text are not identity evidence either.
+        if not any(a < m.end() and m.start() < b for a, b in fragments)
     ]
     return Located(tuple(found)) if found else None
 
