@@ -850,7 +850,8 @@ def _usage(calls: Sequence[ModelCall], info: ModelInfo) -> dict[str, Any]:
 def write_report(result: dict[str, Any], role: ModelRole) -> tuple[Path, Path, Path]:
     outputs = result.pop("outputs")
     thinking = result["meta"]["thinking"].replace("model default", "default")
-    name = f"assessment-extraction-v1-{role.value}-thinking-{thinking}"
+    gate_suffix = "-gate-" + GATE_VERSION.rsplit("/", 1)[1]  # earlier reports: gate v1, no suffix
+    name = f"assessment-extraction-v1-{role.value}-thinking-{thinking}{gate_suffix}"
     REPORTS.mkdir(parents=True, exist_ok=True)
     RUNS.mkdir(parents=True, exist_ok=True)
     report_json = REPORTS / f"{name}.json"
