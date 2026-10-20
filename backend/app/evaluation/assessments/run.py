@@ -330,7 +330,7 @@ def assign_outputs(
     fixed (resource IDs order it), so each output goes to the one unit of
     its group its exact quotes resolve in.
 
-    Recorded with a material key: matched exactly. Otherwise an output with
+    Recorded with a nonce-free material hash: matched exactly. Otherwise an output with
     evidence must resolve best in exactly one unit; outputs whose quotes
     resolve nowhere and empty outputs fill the remaining units (their gated
     result cannot depend on the unit: nothing of theirs can pass).
@@ -362,10 +362,10 @@ def _assign_group(
     assigned: dict[str, dict[str, Any]] = {}
     rest = []
     for item in recorded:
-        if "material_key" in item:
-            match = [m for m in materials if _sha(m) == item["material_key"]]
+        if "nonce_free_material_sha256" in item:
+            match = [m for m in materials if _sha(m) == item["nonce_free_material_sha256"]]
             if len(match) != 1:
-                raise ReplayAmbiguous("a material key matches no single unit")
+                raise ReplayAmbiguous("a material hash matches no single unit")
             assigned[match[0]] = item["output"]
             continue
         scores = [_resolves(u, item["output"]) for u in units]
@@ -681,7 +681,7 @@ async def run_live(
         return await _assemble(
             sessions, golden, info, role, thinking, started, injection,
             [r.summary.model_dump(mode="json") | {"status": r.status.value} for r in runs],
-            [{"material_key": _sha(material_of(user)), "output": out}
+            [{"nonce_free_material_sha256": _sha(material_of(user)), "output": out}
              for user, out in provider.outputs],
         )  # fmt: skip
     finally:
