@@ -398,3 +398,16 @@ async def test_injected_instructions_change_nothing(
     assert await _rows(sessions, AssessmentDeadline) == []
     (system, user) = model.calls[0]
     assert INJECTION not in system.content and INJECTION in user.content
+
+
+async def test_the_thinking_option_reaches_the_model(
+    sessions: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    course_id, _ = await _course(sessions, tmp_path, {"brief": BRIEF})
+    default, off = FakeModel(script), FakeModel(script)
+    await AssessmentExtractionService(sessions, default).extract_course(course_id)
+    result = await AssessmentExtractionService(sessions, off, thinking=False).extract_course(
+        course_id
+    )
+    assert default.thinking is None and off.thinking is False
+    assert result.summary.thinking is False
