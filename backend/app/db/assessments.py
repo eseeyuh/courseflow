@@ -104,6 +104,7 @@ async def course_assessments(
                 due_at=d.due_at,
                 status=d.status,
                 review_reason=d.review_reason,
+                supported_by_current_version=any(e.current_version for e in by_deadline[d.id]),
                 evidence=by_deadline[d.id],
             )
         )

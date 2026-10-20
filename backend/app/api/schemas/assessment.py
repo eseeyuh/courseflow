@@ -46,7 +46,12 @@ class EvidenceRead(BaseModel):
 class DeadlineRead(BaseModel):
     """A deadline as its source states it. ``due_time`` is local ("HH:MM"),
     null for a date with no time; ``due_at`` is the instant, only when date,
-    time and timezone are all known. Only ``verified`` is presented as fact."""
+    time and timezone are all known. Only ``verified`` is presented as fact.
+
+    ``verified`` means faithfully supported by the cited source version; it
+    is not freshness. ``supported_by_current_version`` is false when every
+    piece of its evidence is in a superseded version: a current view must
+    not present such a deadline as the current one."""
 
     id: uuid.UUID
     due_date: date
@@ -57,6 +62,7 @@ class DeadlineRead(BaseModel):
     due_at: datetime | None
     status: VerificationStatus
     review_reason: ReviewReason | None
+    supported_by_current_version: bool
     evidence: list[EvidenceRead]
 
 

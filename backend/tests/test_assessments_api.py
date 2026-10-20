@@ -76,3 +76,49 @@ async def test_needs_review_claims_carry_their_reason(
     }
     # Its title evidence itself is exact and unique, so verified.
     assert {e["verification_status"] for a in body for e in a["evidence"]} == {"verified"}
+
+
+async def test_a_superseded_version_keeps_its_deadline_verified_but_not_current(
+    committed_session: AsyncSession, client: httpx.AsyncClient, tmp_path: Path
+) -> None:
+    """Verified is about the source version, not freshness: once the brief has
+    a newer version, its old deadline stays verified history, flagged as not
+    supported by any current version."""
+    from app.domain.enums import ResourceType
+    from app.evaluation.retrieval.resolve import production_limits
+    from app.ingestion.schemas import RawSource
+    from app.ingestion.service import ingest_file
+    from app.ingestion.storage import LocalRawObjectStore
+    from tests.test_assessment_extraction_service import _page
+
+    sessions = async_sessionmaker(committed_session.bind, expire_on_commit=False)
+    course_id, versions = await _course(sessions, tmp_path, {"brief": BRIEF})
+    await AssessmentExtractionService(sessions, FakeModel(script)).extract_course(course_id)
+    newer = _page("Coursework 1: Model Evaluation Report", "This brief has been withdrawn.")
+    async with sessions() as session:
+        result = await ingest_file(
+            session,
+            LocalRawObjectStore(tmp_path / "raw"),
+            course_id=course_id,
+            resource_type=ResourceType.BRIEF,
+            source=RawSource(content=newer, display_name="brief.html", source_uri="upload:brief"),
+            limits=production_limits(),
+        )
+        await session.commit()
+    assert result.version_id != versions["brief"]
+
+    (assessment,) = (await client.get(f"/api/v1/courses/{course_id}/assessments")).json()
+    (deadline,) = assessment["deadlines"]
+    assert deadline["status"] == "verified" and deadline["review_reason"] is None
+    assert deadline["supported_by_current_version"] is False
+    assert [e["current_version"] for e in deadline["evidence"]] == [False]
+
+
+async def test_a_current_deadline_is_flagged_current(
+    committed_session: AsyncSession, client: httpx.AsyncClient, tmp_path: Path
+) -> None:
+    sessions = async_sessionmaker(committed_session.bind, expire_on_commit=False)
+    course_id, _ = await _course(sessions, tmp_path, {"brief": BRIEF})
+    await AssessmentExtractionService(sessions, FakeModel(script)).extract_course(course_id)
+    (assessment,) = (await client.get(f"/api/v1/courses/{course_id}/assessments")).json()
+    assert [d["supported_by_current_version"] for d in assessment["deadlines"]] == [True]
