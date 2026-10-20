@@ -1,0 +1,27 @@
+{
+  "schema_version": "northbridge-dataset/v1",
+  "dataset": "northbridge-golden",
+  "dataset_version": "v1",
+  "label_schema_version": "northbridge-label/v1",
+  "synthetic": true,
+  "institution": "Northbridge University (fictional)",
+  "corpus_manifest": "demo_data/northbridge/manifest.yaml",
+  "labels_file": "golden.jsonl",
+  "frozen_on": "2026-10-19",
+  "dataset_hash_scheme": "sha256-path-and-bytes/v1",
+  "hash_inputs": "evals/datasets/northbridge/v1/manifest.json, evals/datasets/northbridge/v1/golden.jsonl, demo_data/northbridge/manifest.yaml and every corpus file it lists, by repository-relative POSIX path in bytewise order. dataset.sha256 and README files are not inputs.",
+  "label_counts": {
+    "assessment": 4,
+    "change": 2,
+    "conflict": 2,
+    "deadline_claim": 5,
+    "dependency": 3,
+    "irrelevant_resource": 1,
+    "needs_review": 2,
+    "not_a_deadline": 2,
+    "obligation": 3,
+    "prompt_injection": 1,
+    "requirement": 11
+  },
+  "description": "Golden truth for the synthetic Northbridge University demo institution: assessments, stated deadlines and their conflicts before and after later versions, requirements mapped to original teaching material, hidden obligations, dependencies, changes, abstention cases, a prompt-injection sentence, an irrelevant resource and statements that are not deadlines."
+}

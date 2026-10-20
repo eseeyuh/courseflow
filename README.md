@@ -235,7 +235,13 @@ uv run uvicorn app.main:create_app --factory --reload --port 8000
 
 ## Demo data
 
-All demo content will be **fully synthetic** (a fictional "Northbridge University"). The repository contains no real university material and no student data. The retrieval smoke test creates its own clearly labelled synthetic courses and reuses them on every run.
+All demo content is **fully synthetic**: a fictional "Northbridge University" with two courses ([demo_data/README.md](demo_data/README.md)). The repository contains no real university material and no student data. Seed it, imported and indexed, with no API key:
+
+```bash
+docker compose run --rm api python -m app.demo.seed --reset [--state initial|final]
+```
+
+The retrieval smoke test creates its own clearly labelled synthetic courses and reuses them on every run.
 
 ## Contributing and security
 

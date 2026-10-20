@@ -169,23 +169,33 @@ async def test_the_normal_test_database_cannot_be_destroyed(test_database_url: U
         await engine.dispose()
 
 
-def test_nothing_outside_evaluation_tooling_imports_the_destructive_helpers() -> None:
+def _imports(path: Path) -> list[str]:
+    names: list[str] = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.ImportFrom):
+            names.append(node.module or "")
+        elif isinstance(node, ast.Import):
+            names.extend(a.name for a in node.names)
+    return names
+
+
+RUNTIME = ("api", "core", "db", "domain", "ai", "ingestion", "retrieval", "connectors")
+
+
+def test_the_destructive_helpers_stay_in_evaluation_tooling() -> None:
+    """Only evaluation tooling may import the evaluation database helpers, and
+    the runtime path (the API and the packages it uses) imports no evaluation
+    or demo tooling at all."""
     app_dir = Path(eval_db.__file__).resolve().parents[2]
     offenders = []
     for path in app_dir.rglob("*.py"):
-        if "evaluation" in path.relative_to(app_dir).parts:
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            names = (
-                [node.module or ""]
-                if isinstance(node, ast.ImportFrom)
-                else [a.name for a in node.names]
-                if isinstance(node, ast.Import)
-                else []
-            )
-            if any(n.startswith("app.evaluation") for n in names):
-                offenders.append(path.name)
+        parts = path.relative_to(app_dir).parts
+        names = _imports(path)
+        if parts[0] != "evaluation" and any(n.endswith("eval_db") for n in names):
+            offenders.append(f"{path.name} imports eval_db")
+        runtime = parts[0] in RUNTIME or parts == ("main.py",)
+        if runtime and any(n.startswith(("app.evaluation", "app.demo")) for n in names):
+            offenders.append(f"{'/'.join(parts)} imports tooling")
     assert offenders == []
 
 
