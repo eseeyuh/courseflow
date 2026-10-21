@@ -808,7 +808,7 @@ def _sha(text: str) -> str:
 
 def report_name() -> str:
     """Reports of earlier gates keep their names (gate v1: no suffix)."""
-    return f"claim-extraction-v1-fast-thinking-off-gate-{CLAIM_GATE_VERSION.rsplit('/v', 1)[1]}"
+    return f"claim-extraction-v1-fast-thinking-off-gate-{CLAIM_GATE_VERSION.rsplit('/', 1)[1]}"
 
 
 def write_report(result: dict[str, Any]) -> tuple[Path, Path, Path]:

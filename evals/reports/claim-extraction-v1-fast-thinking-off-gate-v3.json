@@ -1,0 +1,546 @@
+{
+  "injection": {
+    "claims_with_evidence_on_injection_text": 0,
+    "control": "run",
+    "unchanged": true,
+    "with_injection": [],
+    "without_injection": []
+  },
+  "meta": {
+    "assessments": "replayed: assessment-extraction-v2-fast-thinking-off-gate-v3-outputs.json",
+    "dataset": {
+      "name": "northbridge-golden",
+      "sha256": "da106bd3b731e7bee5d763d59ec9cac55c80b3fa694ae9b3c1ebe25f3b14812e",
+      "version": "v1"
+    },
+    "gates": [
+      "claim-gate/v3",
+      "claim-gate/v3"
+    ],
+    "model": "nvidia/Nemotron-3_5-Lightning",
+    "model_role": "fast",
+    "output_token_cap_per_request": 2048,
+    "prompts": [
+      "requirement-extraction/v1",
+      "obligation-extraction/v1"
+    ],
+    "run_at": "2026-10-21T21:34:46Z",
+    "spend_cap_usd": "0.03",
+    "temperature": 0.0,
+    "thinking": "off"
+  },
+  "obligations": {
+    "ambiguous_never_verified": true,
+    "category_correct": "2/2",
+    "generic_never_verified": true,
+    "guards": {
+      "needs_review": [
+        {
+          "label": "msd-progress-note-ambiguous",
+          "rows": [
+            "needs_review:permissive_wording"
+          ]
+        },
+        {
+          "label": "msd-low-risk-route-ambiguous",
+          "rows": [
+            "needs_review:permissive_wording"
+          ]
+        }
+      ],
+      "not_a_deadline": [
+        {
+          "label": "aml-feedback-not-deadline",
+          "rows": []
+        },
+        {
+          "label": "msd-ethics-timescale-not-deadline",
+          "rows": []
+        }
+      ],
+      "prompt_injection": [
+        {
+          "label": "msd-prompt-injection",
+          "rows": []
+        }
+      ]
+    },
+    "labelled": 3,
+    "labels_exhaustive": false,
+    "modality_correct": "2/2",
+    "per_label": [
+      {
+        "assessment_correct": false,
+        "category_correct": false,
+        "evidence": [],
+        "expected": {
+          "assessment": "coursework 1",
+          "category": "other",
+          "modality": "mandatory"
+        },
+        "hidden": false,
+        "label": "aml-cw1-resample-training-only",
+        "matched": false,
+        "modality_correct": false,
+        "rows": 0,
+        "status": null,
+        "verified": false,
+        "where": null
+      },
+      {
+        "assessment_correct": true,
+        "category_correct": true,
+        "evidence": [
+          "Before you submit your Project Specification, your supervisor must have\nreviewed a complete draft of it. Send the draft to your supervisor\nat least 10 working days before the specification deadline.",
+          "Before you submit your Project Specification, your supervisor must have\nreviewed a complete draft of it. Send the draft to your supervisor\nat least 5 working days before the specification deadline."
+        ],
+        "expected": {
+          "assessment": "project specification",
+          "category": "supervisor_review",
+          "modality": "mandatory"
+        },
+        "hidden": true,
+        "label": "msd-supervisor-review-v1",
+        "matched": true,
+        "modality_correct": true,
+        "rows": 1,
+        "status": "verified:None",
+        "verified": true,
+        "where": "dissertation-handbook v1 page 2"
+      },
+      {
+        "assessment_correct": true,
+        "category_correct": true,
+        "evidence": [
+          "Before you submit your Project Specification, your supervisor must have\nreviewed a complete draft of it. Send the draft to your supervisor\nat least 10 working days before the specification deadline.",
+          "Before you submit your Project Specification, your supervisor must have\nreviewed a complete draft of it. Send the draft to your supervisor\nat least 5 working days before the specification deadline."
+        ],
+        "expected": {
+          "assessment": "project specification",
+          "category": "supervisor_review",
+          "modality": "mandatory"
+        },
+        "hidden": true,
+        "label": "msd-supervisor-review-v2",
+        "matched": true,
+        "modality_correct": true,
+        "rows": 1,
+        "status": "verified:None",
+        "verified": true,
+        "where": "dissertation-handbook v1 page 2"
+      }
+    ],
+    "recall_any_status": 2,
+    "recall_verified": 2,
+    "recall_verified_rate": 0.6666666666666666,
+    "stored": {
+      "needs_review": 5,
+      "verified": 2
+    },
+    "supervisor_review_killer_case": true,
+    "unlabelled_for_review": [
+      {
+        "assessment": null,
+        "category": "formative_prerequisite",
+        "modality": null,
+        "overlaps_labels": {
+          "needs_review": [
+            "msd-progress-note-ambiguous"
+          ]
+        },
+        "quotes": [
+          "Your supervisor may also ask for a short progress note before the interim\nreview; agree the format and timing with them."
+        ],
+        "review_reason": "permissive_wording",
+        "status": "needs_review",
+        "text": "Agree the format and timing with your supervisor for a short progress note before the interim review",
+        "where": "dissertation-handbook v1 page 3"
+      },
+      {
+        "assessment": null,
+        "category": "ethics_admin_form",
+        "modality": "mandatory",
+        "overlaps_labels": {
+          "dependency": [
+            "msd-dep-ethics-before-data"
+          ]
+        },
+        "quotes": [
+          "No data may be collected for your project before ethics approval has\nbeen granted.",
+          "No data may be collected for your project before ethics approval has\nbeen granted. The Ethics Guidance explains the process and timescales."
+        ],
+        "review_reason": null,
+        "status": "verified",
+        "text": "No data may be collected for your project before ethics approval has been granted",
+        "where": "dissertation-handbook v1 page 3"
+      },
+      {
+        "assessment": null,
+        "category": "other",
+        "modality": null,
+        "overlaps_labels": {
+          "needs_review": [
+            "msd-low-risk-route-ambiguous"
+          ]
+        },
+        "quotes": [
+          "Projects that use only publicly available, fully anonymised datasets may qualify for the low-risk route; check with your supervisor."
+        ],
+        "review_reason": "permissive_wording",
+        "status": "needs_review",
+        "text": "Projects that use only publicly available, fully anonymised datasets may qualify for the low-risk route; check with your supervisor.",
+        "where": "ethics-guidance v1 Research Ethics Guidance for MSc Projects > When you need ethics review"
+      },
+      {
+        "assessment": null,
+        "category": "submission_prerequisite",
+        "modality": "mandatory",
+        "overlaps_labels": {},
+        "quotes": [
+          "Data collected before approval cannot be used in your dissertation, even if approval is granted later."
+        ],
+        "review_reason": "category_unsupported",
+        "status": "needs_review",
+        "text": "Data collected before approval cannot be used in your dissertation, even if approval is granted later.",
+        "where": "ethics-guidance v1 Research Ethics Guidance for MSc Projects > Before data collection"
+      },
+      {
+        "assessment": null,
+        "category": "submission_prerequisite",
+        "modality": "mandatory",
+        "overlaps_labels": {
+          "dependency": [
+            "msd-dep-ethics-before-data"
+          ]
+        },
+        "quotes": [
+          "You must not recruit participants or collect any data until your ethics application has been approved."
+        ],
+        "review_reason": "category_unsupported",
+        "status": "needs_review",
+        "text": "You must not recruit participants or collect any data until your ethics application has been approved.",
+        "where": "ethics-guidance v1 Research Ethics Guidance for MSc Projects > Before data collection"
+      },
+      {
+        "assessment": null,
+        "category": "ethics_admin_form",
+        "modality": "mandatory",
+        "overlaps_labels": {
+          "dependency": [
+            "msd-dep-supervisor-before-ethics"
+          ]
+        },
+        "quotes": [
+          "Submit the application form, participant information sheet and consent form through the ethics portal. Your supervisor must approve the application first.",
+          "Your supervisor must approve the application first."
+        ],
+        "review_reason": "conflicting_category",
+        "status": "needs_review",
+        "text": "Submit the application form, participant information sheet and consent form through the ethics portal.",
+        "where": "ethics-guidance v1 Research Ethics Guidance for MSc Projects > Timescales > Submitting an application"
+      }
+    ]
+  },
+  "requirements": {
+    "labelled": 11,
+    "labels_exhaustive": false,
+    "missed": [],
+    "needs_review": [],
+    "per_label": [
+      {
+        "label": "aml-cw1-r1-framing",
+        "matched": true,
+        "rows": 1,
+        "statuses": [
+          "verified:None"
+        ],
+        "verified": true,
+        "wrong_assessment": []
+      },
+      {
+        "label": "aml-cw1-r2-class-imbalance",
+        "matched": true,
+        "rows": 1,
+        "statuses": [
+          "verified:None"
+        ],
+        "verified": true,
+        "wrong_assessment": []
+      },
+      {
+        "label": "aml-cw1-r3-metric-justification",
+        "matched": true,
+        "rows": 1,
+        "statuses": [
+          "verified:None"
+        ],
+        "verified": true,
+        "wrong_assessment": []
+      },
+      {
+        "label": "aml-cw1-r4-model-comparison",
+        "matched": true,
+        "rows": 1,
+        "statuses": [
+          "verified:None"
+        ],
+        "verified": true,
+        "wrong_assessment": []
+      },
+      {
+        "label": "aml-cw1-r5-limitations",
+        "matched": true,
+        "rows": 1,
+        "statuses": [
+          "verified:None"
+        ],
+        "verified": true,
+        "wrong_assessment": []
+      },
+      {
+        "label": "msd-spec-s1-research-question",
+        "matched": true,
+        "rows": 1,
+        "statuses": [
+          "verified:None"
+        ],
+        "verified": true,
+        "wrong_assessment": []
+      },
+      {
+        "label": "msd-spec-s2-aims",
+        "matched": true,
+        "rows": 1,
+        "statuses": [
+          "verified:None"
+        ],
+        "verified": true,
+        "wrong_assessment": []
+      },
+      {
+        "label": "msd-spec-s3-related-work",
+        "matched": true,
+        "rows": 1,
+        "statuses": [
+          "verified:None"
+        ],
+        "verified": true,
+        "wrong_assessment": []
+      },
+      {
+        "label": "msd-spec-s4-methodology",
+        "matched": true,
+        "rows": 1,
+        "statuses": [
+          "verified:None"
+        ],
+        "verified": true,
+        "wrong_assessment": []
+      },
+      {
+        "label": "msd-spec-s5-ethics",
+        "matched": true,
+        "rows": 1,
+        "statuses": [
+          "verified:None"
+        ],
+        "verified": true,
+        "wrong_assessment": []
+      },
+      {
+        "label": "msd-spec-s6-timeline",
+        "matched": true,
+        "rows": 1,
+        "statuses": [
+          "verified:None"
+        ],
+        "verified": true,
+        "wrong_assessment": []
+      }
+    ],
+    "recall_any_status": 11,
+    "recall_verified": 11,
+    "recall_verified_rate": 1.0,
+    "stored": {
+      "verified": 11
+    },
+    "unlabelled_for_review": []
+  },
+  "runs": [
+    {
+      "abstained": {},
+      "completion_tokens": 289,
+      "conflicts": 0,
+      "created": 5,
+      "failures": {},
+      "gate_version": "claim-gate/v3",
+      "links_created": 9,
+      "links_existing": 0,
+      "merged": 0,
+      "model_role": "fast",
+      "prompt_tokens": 1250,
+      "prompt_version": "requirement-extraction/v1",
+      "proposed": 5,
+      "rejected": {},
+      "review_reasons": {},
+      "status": "succeeded",
+      "thinking": false,
+      "units": 1,
+      "units_failed": 0,
+      "versions": 1,
+      "workflow_version": "requirement-extraction/v1"
+    },
+    {
+      "abstained": {},
+      "completion_tokens": 184,
+      "conflicts": 0,
+      "created": 6,
+      "failures": {},
+      "gate_version": "claim-gate/v3",
+      "links_created": 12,
+      "links_existing": 0,
+      "merged": 0,
+      "model_role": "fast",
+      "prompt_tokens": 879,
+      "prompt_version": "requirement-extraction/v1",
+      "proposed": 2,
+      "rejected": {
+        "requirement:quote_not_found": 1
+      },
+      "review_reasons": {},
+      "status": "succeeded",
+      "thinking": false,
+      "units": 1,
+      "units_failed": 0,
+      "versions": 1,
+      "workflow_version": "requirement-extraction/v1"
+    },
+    {
+      "abstained": {},
+      "completion_tokens": 48,
+      "conflicts": 0,
+      "created": 0,
+      "failures": {},
+      "gate_version": "claim-gate/v3",
+      "links_created": 0,
+      "links_existing": 0,
+      "merged": 0,
+      "model_role": "fast",
+      "prompt_tokens": 7992,
+      "prompt_version": "obligation-extraction/v1",
+      "proposed": 0,
+      "rejected": {},
+      "review_reasons": {},
+      "status": "succeeded",
+      "thinking": false,
+      "units": 6,
+      "units_failed": 0,
+      "versions": 6,
+      "workflow_version": "obligation-extraction/v1"
+    },
+    {
+      "abstained": {
+        "due:not_stated": 6,
+        "due:relative": 2
+      },
+      "completion_tokens": 1872,
+      "conflicts": 1,
+      "created": 7,
+      "failures": {},
+      "gate_version": "claim-gate/v3",
+      "links_created": 8,
+      "links_existing": 0,
+      "merged": 1,
+      "model_role": "fast",
+      "prompt_tokens": 4942,
+      "prompt_version": "obligation-extraction/v1",
+      "proposed": 18,
+      "rejected": {
+        "evidence:quote_not_found": 5,
+        "obligation:no_evidence": 5,
+        "obligation:no_obligation_wording": 4,
+        "obligation:wrong_claim_type": 1
+      },
+      "review_reasons": {
+        "obligation:assessment_link_unsupported": 2,
+        "obligation:category_unsupported": 2,
+        "obligation:permissive_wording": 2
+      },
+      "status": "succeeded",
+      "thinking": false,
+      "units": 4,
+      "units_failed": 0,
+      "versions": 4,
+      "workflow_version": "obligation-extraction/v1"
+    },
+    {
+      "abstained": {},
+      "completion_tokens": 8,
+      "conflicts": 0,
+      "created": 0,
+      "failures": {},
+      "gate_version": "claim-gate/v3",
+      "links_created": 0,
+      "links_existing": 0,
+      "merged": 0,
+      "model_role": "fast",
+      "prompt_tokens": 1376,
+      "prompt_version": "obligation-extraction/v1",
+      "proposed": 0,
+      "rejected": {},
+      "review_reasons": {},
+      "status": "succeeded",
+      "thinking": false,
+      "units": 1,
+      "units_failed": 0,
+      "versions": 1,
+      "workflow_version": "obligation-extraction/v1"
+    },
+    {
+      "abstained": {
+        "due:ambiguous": 1,
+        "due:relative": 2
+      },
+      "completion_tokens": 516,
+      "conflicts": 0,
+      "created": 0,
+      "failures": {},
+      "gate_version": "claim-gate/v3",
+      "links_created": 3,
+      "links_existing": 0,
+      "merged": 3,
+      "model_role": "fast",
+      "prompt_tokens": 1248,
+      "prompt_version": "obligation-extraction/v1",
+      "proposed": 5,
+      "rejected": {
+        "obligation:no_obligation_wording": 2
+      },
+      "review_reasons": {
+        "obligation:permissive_wording": 1
+      },
+      "status": "succeeded",
+      "thinking": false,
+      "units": 1,
+      "units_failed": 0,
+      "versions": 1,
+      "workflow_version": "obligation-extraction/v1"
+    }
+  ],
+  "usage": {
+    "completion_tokens": 3008,
+    "cost_usd_from_reported_tokens": "0.001857",
+    "failed": {},
+    "http_attempts": 15,
+    "latency_ms": {
+      "max": 29732,
+      "p50": 8736
+    },
+    "model_calls": 15,
+    "prompt_tokens": 18913,
+    "reasoning_tokens": 0,
+    "repair_rounds": 0,
+    "succeeded": 15,
+    "unreported_usage_calls": 0
+  }
+}

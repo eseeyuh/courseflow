@@ -189,3 +189,9 @@ def test_a_replay_keys_each_output_by_task_and_material() -> None:
     clash = [*recorded, {"nonce_free_material_sha256": "a" * 64, "output": {"obligations": [1]}}]
     with pytest.raises(ReplayMissing, match="two different"):
         recorded_by_material(clash)
+
+
+def test_reports_are_named_by_gate_version() -> None:
+    from app.evaluation.claims.run import report_name
+
+    assert report_name() == "claim-extraction-v1-fast-thinking-off-gate-v3"
