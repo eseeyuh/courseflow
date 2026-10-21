@@ -239,3 +239,11 @@ class RejectionReason(StrEnum):
     NO_DEADLINE_SEMANTICS = "no_deadline_semantics"
     # No valid evidence anywhere in the candidate supports its title.
     IDENTITY_UNSUPPORTED = "identity_unsupported"
+    # Not a local assessment ID issued for the unit.
+    ASSESSMENT_UNKNOWN = "assessment_unknown"
+    # Neither the statement nor a cited lead-in says it is required.
+    NO_REQUIREMENT_LANGUAGE = "no_requirement_language"
+    STATEMENT_TOO_LONG = "statement_too_long"  # its sentence exceeds the stored bound
+    # No cited quote says the action is required or recommended.
+    NO_OBLIGATION_WORDING = "no_obligation_wording"
+    NO_EVIDENCE = "no_evidence"  # every cited quote was rejected
