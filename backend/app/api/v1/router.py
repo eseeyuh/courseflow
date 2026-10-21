@@ -4,9 +4,10 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import assessments, courses, health
+from app.api.v1 import assessments, claims, courses, health
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health.router)
 api_router.include_router(courses.router)
 api_router.include_router(assessments.router)
+api_router.include_router(claims.router)

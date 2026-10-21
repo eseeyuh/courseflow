@@ -9,7 +9,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas.assessment import AssessmentRead, DeadlineRead, EvidenceRead
@@ -27,16 +27,26 @@ from app.db.models import (
 async def _evidence(
     session: AsyncSession, assessment_ids: Sequence[uuid.UUID], deadline_ids: Sequence[uuid.UUID]
 ) -> list[tuple[EvidenceLink, EvidenceRead]]:
+    return await evidence_reads(
+        session,
+        EvidenceLink.assessment_id.in_(assessment_ids)
+        | EvidenceLink.assessment_deadline_id.in_(deadline_ids),
+    )
+
+
+async def evidence_reads(
+    session: AsyncSession, condition: ColumnElement[bool]
+) -> list[tuple[EvidenceLink, EvidenceRead]]:
+    """Every link matching ``condition``, resolved to its exact quote, location,
+    source version and lineage; in a stable natural order (field, source,
+    version, span, offset)."""
     rows = await session.execute(
         select(EvidenceLink, SourceSpan, ResourceVersion, Resource, ModelCall)
         .join(SourceSpan, SourceSpan.id == EvidenceLink.source_span_id)
         .join(ResourceVersion, ResourceVersion.id == SourceSpan.resource_version_id)
         .join(Resource, Resource.id == ResourceVersion.resource_id)
         .outerjoin(ModelCall, ModelCall.id == EvidenceLink.model_call_id)
-        .where(
-            EvidenceLink.assessment_id.in_(assessment_ids)
-            | EvidenceLink.assessment_deadline_id.in_(deadline_ids)
-        )
+        .where(condition)
         .order_by(EvidenceLink.field, Resource.source_uri, ResourceVersion.version_number,
                   SourceSpan.ordinal, EvidenceLink.quote_start)
     )  # fmt: skip
