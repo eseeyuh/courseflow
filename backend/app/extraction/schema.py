@@ -23,16 +23,16 @@ LocalSpanId = Annotated[str, StringConstraints(pattern=LOCAL_SPAN_ID_PATTERN)]
 Quote = Annotated[str, StringConstraints(min_length=1, max_length=400)]
 
 
-class _Strict(BaseModel):
+class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class EvidenceRef(_Strict):
+class EvidenceRef(StrictModel):
     span: LocalSpanId
     quote: Quote
 
 
-class DeadlineOut(_Strict):
+class DeadlineOut(StrictModel):
     # stated: the material gives a full calendar date. not_stated / ambiguous
     # are abstentions (no date, or only a month, week or term).
     status: Literal["stated", "not_stated", "ambiguous"]
@@ -49,17 +49,17 @@ class DeadlineOut(_Strict):
         return self
 
 
-class WeightingOut(_Strict):
+class WeightingOut(StrictModel):
     percent: int = Field(ge=0, le=100)
     evidence: EvidenceRef
 
 
-class AssessmentOut(_Strict):
+class AssessmentOut(StrictModel):
     title: Annotated[str, StringConstraints(min_length=1, max_length=200)]
     title_evidence: EvidenceRef
     weighting: WeightingOut | None
     deadline: DeadlineOut
 
 
-class AssessmentExtraction(_Strict):
+class AssessmentExtraction(StrictModel):
     assessments: list[AssessmentOut] = Field(max_length=10)

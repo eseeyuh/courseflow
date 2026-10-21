@@ -59,6 +59,10 @@ class ExtractionUnit:
                 return span
         return None
 
+    def resolve_by_id(self, span_id: uuid.UUID) -> UnitSpan:
+        """A span of this unit by its real ID (from gated evidence)."""
+        return next(span for span in self.spans if span.span_id == span_id)
+
 
 def _locator(span: SourceSpan) -> str:
     if span.slide_number is not None:

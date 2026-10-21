@@ -1,0 +1,355 @@
+{
+  "injection": {
+    "claims_with_evidence_on_injection_text": 0,
+    "control": "run",
+    "unchanged": true,
+    "with_injection": [],
+    "without_injection": []
+  },
+  "meta": {
+    "assessments": "replayed: assessment-extraction-v2-fast-thinking-off-gate-v3-outputs.json",
+    "dataset": {
+      "name": "northbridge-golden",
+      "sha256": "da106bd3b731e7bee5d763d59ec9cac55c80b3fa694ae9b3c1ebe25f3b14812e",
+      "version": "v1"
+    },
+    "gates": [
+      "claim-gate/v3"
+    ],
+    "model": "nvidia/Nemotron-3_5-Lightning",
+    "model_role": "fast",
+    "output_token_cap_per_request": 2048,
+    "prompts": [
+      "obligation-extraction/v2"
+    ],
+    "run_at": "2026-10-21T21:52:34Z",
+    "spend_cap_usd": "0.01",
+    "tasks": [
+      "obligations"
+    ],
+    "temperature": 0.0,
+    "thinking": "off"
+  },
+  "obligations": {
+    "ambiguous_never_verified": true,
+    "category_correct": "2/2",
+    "generic_never_verified": true,
+    "guards": {
+      "needs_review": [
+        {
+          "label": "msd-progress-note-ambiguous",
+          "rows": []
+        },
+        {
+          "label": "msd-low-risk-route-ambiguous",
+          "rows": [
+            "needs_review:permissive_wording"
+          ]
+        }
+      ],
+      "not_a_deadline": [
+        {
+          "label": "aml-feedback-not-deadline",
+          "rows": []
+        },
+        {
+          "label": "msd-ethics-timescale-not-deadline",
+          "rows": []
+        }
+      ],
+      "prompt_injection": [
+        {
+          "label": "msd-prompt-injection",
+          "rows": []
+        }
+      ]
+    },
+    "labelled": 3,
+    "labels_exhaustive": false,
+    "modality_correct": "2/2",
+    "per_label": [
+      {
+        "assessment_correct": false,
+        "category_correct": false,
+        "evidence": [],
+        "expected": {
+          "assessment": "coursework 1",
+          "category": "other",
+          "modality": "mandatory"
+        },
+        "hidden": false,
+        "label": "aml-cw1-resample-training-only",
+        "matched": false,
+        "modality_correct": false,
+        "rows": 0,
+        "status": null,
+        "verified": false,
+        "where": null
+      },
+      {
+        "assessment_correct": true,
+        "category_correct": true,
+        "evidence": [
+          "Before you submit your Project Specification, your supervisor must have\nreviewed a complete draft of it."
+        ],
+        "expected": {
+          "assessment": "project specification",
+          "category": "supervisor_review",
+          "modality": "mandatory"
+        },
+        "hidden": true,
+        "label": "msd-supervisor-review-v1",
+        "matched": true,
+        "modality_correct": true,
+        "rows": 1,
+        "status": "verified:None",
+        "verified": true,
+        "where": "dissertation-handbook v1 page 2"
+      },
+      {
+        "assessment_correct": true,
+        "category_correct": true,
+        "evidence": [
+          "Before you submit your Project Specification, your supervisor must have\nreviewed a complete draft of it."
+        ],
+        "expected": {
+          "assessment": "project specification",
+          "category": "supervisor_review",
+          "modality": "mandatory"
+        },
+        "hidden": true,
+        "label": "msd-supervisor-review-v2",
+        "matched": true,
+        "modality_correct": true,
+        "rows": 1,
+        "status": "verified:None",
+        "verified": true,
+        "where": "dissertation-handbook v1 page 2"
+      }
+    ],
+    "recall_any_status": 2,
+    "recall_verified": 2,
+    "recall_verified_rate": 0.6666666666666666,
+    "stored": {
+      "needs_review": 4,
+      "verified": 2
+    },
+    "supervisor_review_killer_case": true,
+    "unlabelled_for_review": [
+      {
+        "assessment": null,
+        "category": "ethics_admin_form",
+        "modality": "mandatory",
+        "overlaps_labels": {
+          "dependency": [
+            "msd-dep-ethics-before-data"
+          ]
+        },
+        "quotes": [
+          "No data may be collected for your project before ethics approval has\nbeen granted."
+        ],
+        "review_reason": null,
+        "status": "verified",
+        "text": "No data may be collected for your project before ethics approval has been granted",
+        "where": "dissertation-handbook v1 page 3"
+      },
+      {
+        "assessment": null,
+        "category": "other",
+        "modality": null,
+        "overlaps_labels": {
+          "needs_review": [
+            "msd-low-risk-route-ambiguous"
+          ]
+        },
+        "quotes": [
+          "Projects that use only publicly available, fully anonymised datasets may qualify for the low-risk route; check with your supervisor."
+        ],
+        "review_reason": "permissive_wording",
+        "status": "needs_review",
+        "text": "Projects that use only publicly available, fully anonymised datasets may qualify for the low-risk route; check with your supervisor",
+        "where": "ethics-guidance v1 Research Ethics Guidance for MSc Projects > When you need ethics review"
+      },
+      {
+        "assessment": null,
+        "category": "other",
+        "modality": "mandatory",
+        "overlaps_labels": {},
+        "quotes": [
+          "Data collected before approval cannot be used in your dissertation, even if approval is granted later."
+        ],
+        "review_reason": "assessment_link_unsupported",
+        "status": "needs_review",
+        "text": "Data collected before approval cannot be used in your dissertation",
+        "where": "ethics-guidance v1 Research Ethics Guidance for MSc Projects > Before data collection"
+      },
+      {
+        "assessment": null,
+        "category": "submission_prerequisite",
+        "modality": "mandatory",
+        "overlaps_labels": {
+          "dependency": [
+            "msd-dep-ethics-before-data"
+          ]
+        },
+        "quotes": [
+          "You must not recruit participants or collect any data until your ethics application has been approved."
+        ],
+        "review_reason": "category_unsupported",
+        "status": "needs_review",
+        "text": "You must not recruit participants or collect any data until your ethics application has been approved",
+        "where": "ethics-guidance v1 Research Ethics Guidance for MSc Projects > Before data collection"
+      },
+      {
+        "assessment": null,
+        "category": "ethics_admin_form",
+        "modality": "mandatory",
+        "overlaps_labels": {
+          "dependency": [
+            "msd-dep-supervisor-before-ethics"
+          ]
+        },
+        "quotes": [
+          "Submit the application form, participant information sheet and consent form through the ethics portal. Your supervisor must approve the application first.",
+          "Your supervisor must approve the application first."
+        ],
+        "review_reason": "conflicting_category",
+        "status": "needs_review",
+        "text": "Submit the application form, participant information sheet and consent form through the ethics portal",
+        "where": "ethics-guidance v1 Research Ethics Guidance for MSc Projects > Timescales > Submitting an application"
+      }
+    ]
+  },
+  "requirements": null,
+  "runs": [
+    {
+      "abstained": {},
+      "completion_tokens": 160,
+      "conflicts": 0,
+      "created": 0,
+      "failures": {},
+      "gate_version": "claim-gate/v3",
+      "links_created": 0,
+      "links_existing": 0,
+      "merged": 0,
+      "model_role": "fast",
+      "prompt_tokens": 9962,
+      "prompt_version": "obligation-extraction/v2",
+      "proposed": 1,
+      "rejected": {
+        "obligation:no_obligation_wording": 1
+      },
+      "review_reasons": {},
+      "status": "succeeded",
+      "thinking": false,
+      "units": 6,
+      "units_failed": 0,
+      "versions": 6,
+      "workflow_version": "obligation-extraction/v1"
+    },
+    {
+      "abstained": {
+        "due:not_stated": 6,
+        "due:relative": 1
+      },
+      "completion_tokens": 2550,
+      "conflicts": 1,
+      "created": 6,
+      "failures": {},
+      "gate_version": "claim-gate/v3",
+      "links_created": 7,
+      "links_existing": 0,
+      "merged": 1,
+      "model_role": "fast",
+      "prompt_tokens": 8489,
+      "prompt_version": "obligation-extraction/v2",
+      "proposed": 18,
+      "rejected": {
+        "evidence:quote_not_found": 5,
+        "obligation:no_evidence": 5,
+        "obligation:no_obligation_wording": 5,
+        "obligation:wrong_claim_type": 1
+      },
+      "review_reasons": {
+        "obligation:assessment_link_unsupported": 3,
+        "obligation:category_unsupported": 1,
+        "obligation:permissive_wording": 1
+      },
+      "status": "succeeded",
+      "thinking": false,
+      "units": 4,
+      "units_failed": 0,
+      "versions": 4,
+      "workflow_version": "obligation-extraction/v1"
+    },
+    {
+      "abstained": {},
+      "completion_tokens": 353,
+      "conflicts": 0,
+      "created": 0,
+      "failures": {},
+      "gate_version": "claim-gate/v3",
+      "links_created": 0,
+      "links_existing": 0,
+      "merged": 0,
+      "model_role": "fast",
+      "prompt_tokens": 3642,
+      "prompt_version": "obligation-extraction/v2",
+      "proposed": 1,
+      "rejected": {
+        "obligation:no_obligation_wording": 1
+      },
+      "review_reasons": {},
+      "status": "succeeded",
+      "thinking": false,
+      "units": 1,
+      "units_failed": 0,
+      "versions": 1,
+      "workflow_version": "obligation-extraction/v1"
+    },
+    {
+      "abstained": {
+        "due:not_stated": 1,
+        "due:relative": 1
+      },
+      "completion_tokens": 489,
+      "conflicts": 0,
+      "created": 0,
+      "failures": {},
+      "gate_version": "claim-gate/v3",
+      "links_created": 2,
+      "links_existing": 0,
+      "merged": 2,
+      "model_role": "fast",
+      "prompt_tokens": 1579,
+      "prompt_version": "obligation-extraction/v2",
+      "proposed": 5,
+      "rejected": {
+        "obligation:no_obligation_wording": 3
+      },
+      "review_reasons": {},
+      "status": "succeeded",
+      "thinking": false,
+      "units": 1,
+      "units_failed": 0,
+      "versions": 1,
+      "workflow_version": "obligation-extraction/v1"
+    }
+  ],
+  "usage": {
+    "completion_tokens": 3641,
+    "cost_usd_from_reported_tokens": "0.002388",
+    "failed": {},
+    "http_attempts": 15,
+    "latency_ms": {
+      "max": 69688,
+      "p50": 27355
+    },
+    "model_calls": 13,
+    "prompt_tokens": 25231,
+    "reasoning_tokens": 0,
+    "repair_rounds": 2,
+    "succeeded": 13,
+    "unreported_usage_calls": 0
+  }
+}

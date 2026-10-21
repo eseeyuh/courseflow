@@ -32,6 +32,7 @@ import re
 import unicodedata
 import uuid
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, time
 
@@ -85,7 +86,7 @@ def injection_fragments(text: str) -> list[tuple[int, int]]:
 _PERCENT = re.compile(r"(?<![\d.])(\d{1,3})\s*(?:%|per\s?cent\b)", re.IGNORECASE)
 
 
-class _Rejected(Exception):
+class Rejected(Exception):
     def __init__(self, reason: RejectionReason) -> None:
         self.reason = reason
 
@@ -201,15 +202,15 @@ def canonical_key(title: str) -> str:
 def locate(unit: ExtractionUnit, ref: EvidenceRef) -> tuple[Located, str]:
     span = unit.resolve(ref.span)
     if span is None:
-        raise _Rejected(RejectionReason.SPAN_UNKNOWN)
+        raise Rejected(RejectionReason.SPAN_UNKNOWN)
     starts = [m.start() for m in re.finditer(f"(?={re.escape(ref.quote)})", span.excerpt)]
     if not starts:
-        raise _Rejected(RejectionReason.QUOTE_NOT_FOUND)
+        raise Rejected(RejectionReason.QUOTE_NOT_FOUND)
     locations = tuple(GatedEvidence(span.span_id, a, a + len(ref.quote)) for a in starts)
     fragments = injection_fragments(span.excerpt)
     # Injection text is inert content: it can never support a claim.
     if any(a < e.quote_end and e.quote_start < b for e in locations for a, b in fragments):
-        raise _Rejected(RejectionReason.QUOTE_OVERLAPS_INJECTION)
+        raise Rejected(RejectionReason.QUOTE_OVERLAPS_INJECTION)
     return Located(locations), ref.quote
 
 
@@ -217,7 +218,7 @@ def _title(unit: ExtractionUnit, proposed: AssessmentOut) -> tuple[str, Located]
     evidence, quote = locate(unit, proposed.title_evidence)
     key = canonical_key(proposed.title)
     if not key or not set(key.split()) <= set(_words(quote)):
-        raise _Rejected(RejectionReason.TITLE_UNSUPPORTED)
+        raise Rejected(RejectionReason.TITLE_UNSUPPORTED)
     return key, evidence
 
 
@@ -227,18 +228,18 @@ def _weighting(unit: ExtractionUnit, proposed: AssessmentOut) -> tuple[GatedWeig
     evidence, quote = locate(unit, proposed.weighting.evidence)
     stated = {int(m.group(1)) for m in _PERCENT.finditer(quote)}
     if stated != {proposed.weighting.percent}:
-        raise _Rejected(RejectionReason.WEIGHTING_UNSUPPORTED)
+        raise Rejected(RejectionReason.WEIGHTING_UNSUPPORTED)
     return GatedWeighting(proposed.weighting.percent, evidence), quote
 
 
 def _role(quote: str, key: str) -> None:
     """Reject a quote whose date is not established as a deadline (v3)."""
     if NON_DEADLINE_ROLE.search(quote):
-        raise _Rejected(RejectionReason.NON_DEADLINE_DATE)
+        raise Rejected(RejectionReason.NON_DEADLINE_DATE)
     for start, end in date_spans(quote):
         before, after = quote[:start].rstrip(), quote[end:].lstrip()
         if before.endswith("(") and after.startswith(")"):
-            raise _Rejected(RejectionReason.NON_DEADLINE_DATE)  # a notice's own date
+            raise Rejected(RejectionReason.NON_DEADLINE_DATE)  # a notice's own date
     if DEADLINE_ROLE.search(quote):
         return
     label, colon, rest = quote.partition(":")
@@ -250,30 +251,35 @@ def _role(quote: str, key: str) -> None:
         and date_spans(rest)[0][0] == len(rest) - len(rest.lstrip())
     )
     if not labelled:
-        raise _Rejected(RejectionReason.NO_DEADLINE_SEMANTICS)
+        raise Rejected(RejectionReason.NO_DEADLINE_SEMANTICS)
 
 
-def _deadline(
-    unit: ExtractionUnit, proposed: DeadlineOut, institution_timezone: str | None, key: str
+def check_deadline(
+    unit: ExtractionUnit,
+    proposed: DeadlineOut,
+    institution_timezone: str | None,
+    key: str,
+    locator: Callable[[ExtractionUnit, EvidenceRef], tuple[Located, str]] | None = None,
 ) -> tuple[GatedDeadline, str]:
+    """``locator`` finds the quote (default: exact ``locate``, this gate's rule)."""
     if proposed.evidence is None or proposed.due_date is None:  # the schema forbids it
-        raise _Rejected(RejectionReason.SCHEMA_VIOLATION)
-    evidence, quote = locate(unit, proposed.evidence)
+        raise Rejected(RejectionReason.SCHEMA_VIOLATION)
+    evidence, quote = (locator or locate)(unit, proposed.evidence)
     try:
         parsed = parse_deadline_quote(quote)
         _role(quote, key)
         value = normalise(parsed, institution_timezone)
     except DeadlineRejected as rejected:
-        raise _Rejected(rejected.reason) from None
+        raise Rejected(rejected.reason) from None
     if date.fromisoformat(proposed.due_date) != value.due_date:
-        raise _Rejected(RejectionReason.MODEL_DATE_MISMATCH)
+        raise Rejected(RejectionReason.MODEL_DATE_MISMATCH)
     if proposed.due_time is not None:
         try:
             claimed = time.fromisoformat(proposed.due_time)
         except ValueError:
-            raise _Rejected(RejectionReason.MODEL_TIME_INVALID) from None
+            raise Rejected(RejectionReason.MODEL_TIME_INVALID) from None
         if claimed != value.due_time:
-            raise _Rejected(RejectionReason.MODEL_TIME_MISMATCH)
+            raise Rejected(RejectionReason.MODEL_TIME_MISMATCH)
     # A time the quote states but the model omitted is still the quote's: the
     # evidence, not the model, determines the value.
     return GatedDeadline(value, evidence), quote
@@ -344,7 +350,7 @@ def gate(
         title_failure: RejectionReason | None = None
         try:
             key, title_evidence = _title(unit, proposed)
-        except _Rejected as rejected:
+        except Rejected as rejected:
             title_failure, title_evidence = rejected.reason, None
         if title_failure is RejectionReason.QUOTE_OVERLAPS_INJECTION or not key:
             result.rejected[f"assessment:{title_failure or RejectionReason.TITLE_UNSUPPORTED}"] += 1
@@ -352,7 +358,7 @@ def gate(
         weighting = None
         try:
             found_weighting = _weighting(unit, proposed)
-        except _Rejected as rejected:
+        except Rejected as rejected:
             result.rejected[f"weighting:{rejected.reason}"] += 1
         else:
             if found_weighting is not None:
@@ -362,8 +368,8 @@ def gate(
             result.abstained[f"deadline:{proposed.deadline.status}"] += 1
         else:
             try:
-                deadline, _ = _deadline(unit, proposed.deadline, institution_timezone, key)
-            except _Rejected as rejected:
+                deadline, _ = check_deadline(unit, proposed.deadline, institution_timezone, key)
+            except Rejected as rejected:
                 result.rejected[f"deadline:{rejected.reason}"] += 1
         identity = "title"
         if title_evidence is None:

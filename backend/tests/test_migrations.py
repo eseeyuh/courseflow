@@ -47,8 +47,10 @@ EXPECTED_TABLES = {
     "assessments",
     "assessment_deadlines",
     "evidence_links",
+    "assessment_requirements",
+    "obligations",
 }
-HEAD = "0007"
+HEAD = "0008"
 
 EXPECTED_SOURCE_SPAN_CHECKS = {
     "ck_source_spans_locator_present",
@@ -787,3 +789,139 @@ def test_0007_upgrade_downgrade_upgrade_keeps_existing_data(db_at_0006: URL) -> 
 
     migrate(db_at_0006, "0007")
     _assert_at_0007(db_at_0006)
+
+
+# --- 0008: assessment requirements and obligations ------------------------------------
+
+REQUIREMENT_OBLIGATION_TABLES = {"assessment_requirements", "obligations"}
+ASSESSMENT = "00000000-0000-0000-0000-0000000000e1"
+REQUIREMENT = "00000000-0000-0000-0000-0000000000e2"
+OBLIGATION = "00000000-0000-0000-0000-0000000000e3"
+KEY = "f" * 64
+FIRST_SPAN = "(SELECT id FROM source_spans WHERE ordinal = 0)"
+# Written with the 0007 schema: an assessment with one piece of title evidence.
+ASSESSMENT_ROWS = [
+    (
+        "INSERT INTO assessments (id, course_id, canonical_key, title, status) VALUES "
+        f"('{ASSESSMENT}', (SELECT course_id FROM resources), 'coursework 1', 'Coursework 1', "
+        "'verified')"
+    ),
+    (
+        "INSERT INTO evidence_links (subject_type, assessment_id, field, source_span_id, "
+        "quote_start, quote_end, verification_status) VALUES "
+        f"('assessment', '{ASSESSMENT}', 'title', {FIRST_SPAN}, 0, 6, 'verified')"
+    ),
+]
+REQUIREMENT_OBLIGATION_ROWS = [
+    (
+        "INSERT INTO assessment_requirements (id, assessment_id, canonical_key, text, status) "
+        f"VALUES ('{REQUIREMENT}', '{ASSESSMENT}', '{KEY}', 'Submit by Friday.', 'verified')"
+    ),
+    (
+        "INSERT INTO obligations (id, course_id, assessment_id, canonical_key, canonical_action, "
+        "category, modality, status) VALUES "
+        f"('{OBLIGATION}', (SELECT course_id FROM resources), '{ASSESSMENT}', '{KEY}', "
+        "'Submit by Friday', 'other', 'mandatory', 'verified')"
+    ),
+    (
+        "INSERT INTO evidence_links (subject_type, assessment_requirement_id, field, "
+        "source_span_id, quote_start, quote_end, verification_status) VALUES "
+        f"('assessment_requirement', '{REQUIREMENT}', 'requirement', {FIRST_SPAN}, 0, 17, "
+        "'verified')"
+    ),
+    (
+        "INSERT INTO evidence_links (subject_type, obligation_id, field, source_span_id, "
+        "quote_start, quote_end, verification_status) VALUES "
+        f"('obligation', '{OBLIGATION}', 'obligation', {FIRST_SPAN}, 0, 17, 'verified')"
+    ),
+]
+
+
+@pytest.fixture
+def db_at_0007(test_database_url: URL) -> Iterator[URL]:
+    """A fresh database at 0007 holding ingestion data and an evidenced assessment."""
+    url = test_database_url.set(database=MIGRATIONS_DATABASE)
+    recreate_database(url)
+    migrate(url, "0003")
+    _execute(url, EXISTING_ROWS)
+    migrate(url, "0007")
+    _execute(url, ASSESSMENT_ROWS)
+    try:
+        yield url
+    finally:
+        drop_database(url)
+
+
+def _assert_at_0007_with_assessment(url: URL) -> None:
+    state = _state(url)
+    assert state.version == "0007"
+    assert not REQUIREMENT_OBLIGATION_TABLES & state.tables
+    assert "uq_assessments_id_course" not in state.uniques
+    assert _scalar(url, "SELECT count(*) FROM evidence_links") == 1
+    assert _scalar(url, "SELECT count(*) FROM assessments") == 1
+    _assert_existing_data_intact(url)
+
+
+def _assert_at_0008(url: URL) -> None:
+    state = _state(url)
+    assert state.version == "0008"
+    assert REQUIREMENT_OBLIGATION_TABLES <= state.tables
+    assert {
+        "uq_assessments_id_course",
+        "uq_assessment_requirements_assessment_key",
+        "uq_obligations_course_key",
+        "uq_evidence_links_fact_quote",
+    } <= state.uniques
+    assert {
+        "ck_obligations_verified_has_modality",
+        "ck_obligations_due_fields_need_date",
+        "ck_obligations_verified_due_datetime_has_instant",
+        "ck_assessment_requirements_canonical_key_sha256_hex",
+        "ck_evidence_links_one_subject",
+        "ck_evidence_links_field_fits_subject",
+    } <= state.checks
+    assert "fk_obligations_assessment_same_course" in state.foreign_keys
+    # The 0007 evidence satisfies the rebuilt checks unchanged.
+    assert (
+        _scalar(url, "SELECT count(*) FROM evidence_links WHERE subject_type = 'assessment'") == 1
+    )
+    _assert_existing_data_intact(url)
+
+
+def test_0008_upgrade_downgrade_upgrade_keeps_existing_claims(db_at_0007: URL) -> None:
+    _assert_at_0007_with_assessment(db_at_0007)
+
+    migrate(db_at_0007, "0008")
+    _assert_at_0008(db_at_0007)
+    _execute(db_at_0007, REQUIREMENT_OBLIGATION_ROWS)
+    assert _scalar(db_at_0007, "SELECT count(*) FROM evidence_links") == 3
+
+    # Requirements, obligations and their evidence go; the assessment's stays.
+    downgrade(db_at_0007, "0007")
+    _assert_at_0007_with_assessment(db_at_0007)
+
+    migrate(db_at_0007, "0008")
+    _assert_at_0008(db_at_0007)
+
+
+def test_0008_downgrade_refuses_while_a_new_review_reason_is_in_use(db_at_0007: URL) -> None:
+    migrate(db_at_0007, "0008")
+    _execute(
+        db_at_0007,
+        [
+            (
+                "UPDATE assessments SET status = 'needs_review', "
+                "review_reason = 'conflicting_assessment_link'"
+            )
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match=r"1 assessment, deadline or evidence row\(s\)"):
+        downgrade(db_at_0007, "0007")
+    assert _state(db_at_0007).version == "0008"
+
+
+def test_0008_downgrade_refuses_offline_sql_mode(test_database_url: URL) -> None:
+    url = test_database_url.set(database=MIGRATIONS_DATABASE)
+    with pytest.raises(RuntimeError, match="0008: downgrade preconditions need a live database"):
+        command.downgrade(alembic_config(url), "0008:0007", sql=True)
