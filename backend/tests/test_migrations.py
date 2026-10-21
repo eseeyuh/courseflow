@@ -44,8 +44,11 @@ EXPECTED_TABLES = {
     "embedding_spaces",
     "embeddings",
     "chunk_embeddings",
+    "assessments",
+    "assessment_deadlines",
+    "evidence_links",
 }
-HEAD = "0006"
+HEAD = "0007"
 
 EXPECTED_SOURCE_SPAN_CHECKS = {
     "ck_source_spans_locator_present",
@@ -723,3 +726,64 @@ def test_0006_upgrade_downgrade_upgrade_backfills_existing_chunks(db_at_0005: UR
 
     migrate(db_at_0005, "0006")
     _assert_at_0006_with_chunk(db_at_0005)
+
+
+# --- 0007: assessments, assessment deadlines, evidence links -------------------------
+
+ACADEMIC_TABLES = {"assessments", "assessment_deadlines", "evidence_links"}
+INSTITUTION_TIMEZONE = (
+    "SELECT count(*) FROM information_schema.columns "
+    "WHERE table_name = 'institutions' AND column_name = 'timezone'"
+)
+
+
+@pytest.fixture
+def db_at_0006(test_database_url: URL) -> Iterator[URL]:
+    """A fresh database at 0006 holding pre-existing ingestion data."""
+    url = test_database_url.set(database=MIGRATIONS_DATABASE)
+    recreate_database(url)
+    migrate(url, "0003")
+    _execute(url, EXISTING_ROWS)
+    migrate(url, "0006")
+    try:
+        yield url
+    finally:
+        drop_database(url)
+
+
+def _assert_at_0006_without_academic_layer(url: URL) -> None:
+    state = _state(url)
+    assert state.version == "0006"
+    assert not ACADEMIC_TABLES & state.tables
+    assert _scalar(url, INSTITUTION_TIMEZONE) == 0
+    _assert_existing_data_intact(url)
+
+
+def _assert_at_0007(url: URL) -> None:
+    state = _state(url)
+    assert state.version == "0007"
+    assert ACADEMIC_TABLES <= state.tables
+    assert "uq_assessment_deadlines_value" in state.uniques
+    assert "uq_evidence_links_fact_quote" in state.uniques
+    assert {
+        "ck_evidence_links_one_subject",
+        "ck_evidence_links_field_fits_subject",
+        "ck_assessment_deadlines_time_fits_precision",
+        "ck_assessment_deadlines_verified_datetime_has_instant",
+        "ck_institutions_timezone_nonblank",
+    } <= state.checks
+    assert _scalar(url, "SELECT timezone IS NULL FROM institutions") is True  # left unknown
+    _assert_existing_data_intact(url)
+
+
+def test_0007_upgrade_downgrade_upgrade_keeps_existing_data(db_at_0006: URL) -> None:
+    _assert_at_0006_without_academic_layer(db_at_0006)
+
+    migrate(db_at_0006, "0007")
+    _assert_at_0007(db_at_0006)
+
+    downgrade(db_at_0006, "0006")
+    _assert_at_0006_without_academic_layer(db_at_0006)
+
+    migrate(db_at_0006, "0007")
+    _assert_at_0007(db_at_0006)

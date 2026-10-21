@@ -27,6 +27,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -63,17 +64,30 @@ class SyncResult:
         return sum(d.created for d in self.documents)
 
 
-async def ensure_institution(session: AsyncSession, name: str, lms_type: LmsType) -> uuid.UUID:
+async def ensure_institution(
+    session: AsyncSession, name: str, lms_type: LmsType, *, timezone: str | None = None
+) -> uuid.UUID:
+    """The institution's id, created if absent. ``timezone`` (IANA) fills an
+    unknown timezone; a different stored one is a conflict, never overwritten."""
+    if timezone is not None:
+        ZoneInfo(timezone)  # ZoneInfoNotFoundError for a name zoneinfo does not know
     found = (
         await session.scalars(
-            select(Institution.id).where(Institution.name == name, Institution.lms_type == lms_type)
+            select(Institution).where(Institution.name == name, Institution.lms_type == lms_type)
         )
     ).all()
     if len(found) > 1:
         raise SyncConflictError(f"{len(found)} institutions are named {name!r} ({lms_type.value})")
     if found:
-        return found[0]
-    institution = Institution(name=name, lms_type=lms_type)
+        (institution,) = found
+        if timezone is not None and institution.timezone is None:
+            institution.timezone = timezone
+        elif timezone is not None and institution.timezone != timezone:
+            raise SyncConflictError(
+                f"{name!r} has timezone {institution.timezone!r}, not {timezone!r}"
+            )
+        return institution.id
+    institution = Institution(name=name, lms_type=lms_type, timezone=timezone)
     session.add(institution)
     await session.flush()
     return institution.id
@@ -154,11 +168,14 @@ async def import_course(
     institution_name: str,
     lms_type: LmsType,
     limits: IngestionLimits,
+    institution_timezone: str | None = None,
 ) -> SyncResult:
     """The course as of the connector's initial sync, in one transaction."""
     documents = await connector.fetch_course_sources(stub.course_ref)
     async with session_factory() as session, session.begin():
-        institution_id = await ensure_institution(session, institution_name, lms_type)
+        institution_id = await ensure_institution(
+            session, institution_name, lms_type, timezone=institution_timezone
+        )
         course_id, created = await _ensure_course(session, institution_id, stub)
         synced = [
             await _sync_document(session, store, course_id, d, limits)

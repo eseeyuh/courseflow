@@ -9,6 +9,14 @@ Provenance chain (docs/architecture/data-contract.md):
 WorkflowRun records which ResourceVersions a run consumed. ModelCall records
 each logical model call, inside a run or standalone.
 
+Academic and trust layers:
+    Course -> Assessment -> AssessmentDeadline
+    EvidenceLink -> SourceSpan, for an Assessment fact or an AssessmentDeadline
+An Assessment is canonical per course; every source that states it, its
+weighting or a deadline adds an EvidenceLink instead of a duplicate row.
+Sources that disagree on a deadline give one AssessmentDeadline each: the
+schema never picks a winner.
+
 Retrieval layer (see ADR-007):
     ResourceVersion -> Chunk -> ChunkEmbedding -> Embedding -> EmbeddingSpaceRecord
 A Chunk is an exact slice of one version's text; its resource and course come
@@ -23,7 +31,7 @@ explicitly (e.g. selectinload) instead of triggering hidden I/O.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
@@ -37,6 +45,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Numeric,
+    SmallInteger,
     Table,
     Text,
     UniqueConstraint,
@@ -48,6 +57,9 @@ from app.db.base import Base, CreatedAt, Timestamps, UUIDPrimaryKey, str_enum
 from app.domain.enums import (
     BlockKind,
     CourseStatus,
+    DeadlinePrecision,
+    EvidenceField,
+    EvidenceSubject,
     LmsType,
     MediaType,
     ModelCallErrorCategory,
@@ -55,15 +67,22 @@ from app.domain.enums import (
     ModelCallStatus,
     ModelRole,
     ResourceType,
+    ReviewReason,
+    TimezoneSource,
+    VerificationStatus,
     WorkflowRunStatus,
 )
 
 
 class Institution(UUIDPrimaryKey, Timestamps, Base):
     __tablename__ = "institutions"
+    __table_args__ = (CheckConstraint("length(btrim(timezone)) > 0", name="timezone_nonblank"),)
 
     name: Mapped[str] = mapped_column(Text)
     lms_type: Mapped[LmsType] = mapped_column(str_enum(LmsType, "lms_type"))
+    # IANA name (e.g. "Europe/London"), validated by the application: the
+    # timezone of a deadline whose source states none. NULL: unknown.
+    timezone: Mapped[str | None] = mapped_column(Text)
 
     courses: Mapped[list[Course]] = relationship(back_populates="institution", lazy="raise")
 
@@ -569,3 +588,187 @@ class ChunkEmbedding(CreatedAt, Base):
     embedding_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
     space_id: Mapped[uuid.UUID]
     input_format: Mapped[str] = mapped_column(Text)
+
+
+# --- academic layer -------------------------------------------------------------------
+
+
+class Assessment(UUIDPrimaryKey, Timestamps, Base):
+    """An assessed deliverable or milestone of a course, once per course.
+
+    ``canonical_key`` is the deterministic normal form of its title: the
+    identity that merges the same assessment stated by several sources.
+    ``status`` is derived from its evidence; only ``verified`` is shown as fact.
+    """
+
+    __tablename__ = "assessments"
+    __table_args__ = (
+        UniqueConstraint("course_id", "canonical_key", name="uq_assessments_course_key"),
+        CheckConstraint(
+            "length(canonical_key) > 0 AND canonical_key = lower(canonical_key)",
+            name="canonical_key_normalised",
+        ),
+        CheckConstraint("length(btrim(title)) > 0", name="title_nonblank"),
+        CheckConstraint("weighting_percent BETWEEN 0 AND 100", name="weighting_percent_range"),
+        CheckConstraint(
+            "(review_reason IS NOT NULL) = (status = 'needs_review')",
+            name="review_reason_iff_review",
+        ),
+    )
+
+    # Lookups by course use the unique constraint (leading column).
+    course_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("courses.id"))
+    canonical_key: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text)
+    weighting_percent: Mapped[int | None] = mapped_column(SmallInteger)
+    status: Mapped[VerificationStatus] = mapped_column(
+        str_enum(VerificationStatus, "verification_status")
+    )
+    review_reason: Mapped[ReviewReason | None] = mapped_column(
+        str_enum(ReviewReason, "review_reason")
+    )
+
+    course: Mapped[Course] = relationship(lazy="raise")
+    deadlines: Mapped[list[AssessmentDeadline]] = relationship(
+        back_populates="assessment", lazy="raise"
+    )
+
+
+class AssessmentDeadline(UUIDPrimaryKey, Timestamps, Base):
+    """One deadline value that a source states for an assessment.
+
+    Stored as the source states it: a local calendar date, an optional local
+    time and an IANA timezone. ``due_at`` is the instant, derived
+    deterministically only when date, time and timezone are all known. A date
+    with no time stays ``precision = date`` with no instant: no time of day is
+    ever invented. Sources that disagree give one row each (the disagreement
+    is preserved); sources that agree share one row with one link each.
+    """
+
+    __tablename__ = "assessment_deadlines"
+    __table_args__ = (
+        UniqueConstraint(
+            "assessment_id",
+            "due_date",
+            "due_time",
+            "timezone",
+            name="uq_assessment_deadlines_value",
+            postgresql_nulls_not_distinct=True,
+        ),
+        CheckConstraint("(precision = 'date') = (due_time IS NULL)", name="time_fits_precision"),
+        CheckConstraint(
+            "(timezone IS NULL) = (timezone_source = 'unknown')", name="timezone_sourced"
+        ),
+        CheckConstraint("length(btrim(timezone)) > 0", name="timezone_nonblank"),
+        CheckConstraint(
+            "due_at IS NULL OR (precision = 'datetime' AND timezone IS NOT NULL)",
+            name="instant_needs_time_and_timezone",
+        ),
+        CheckConstraint(
+            "status <> 'verified' OR precision = 'date' OR due_at IS NOT NULL",
+            name="verified_datetime_has_instant",
+        ),
+        CheckConstraint(
+            "(review_reason IS NOT NULL) = (status = 'needs_review')",
+            name="review_reason_iff_review",
+        ),
+    )
+
+    assessment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("assessments.id", ondelete="CASCADE")
+    )
+    due_date: Mapped[date]
+    due_time: Mapped[time | None]
+    timezone: Mapped[str | None] = mapped_column(Text)
+    timezone_source: Mapped[TimezoneSource] = mapped_column(
+        str_enum(TimezoneSource, "timezone_source")
+    )
+    precision: Mapped[DeadlinePrecision] = mapped_column(
+        str_enum(DeadlinePrecision, "deadline_precision")
+    )
+    due_at: Mapped[datetime | None]
+    status: Mapped[VerificationStatus] = mapped_column(
+        str_enum(VerificationStatus, "verification_status")
+    )
+    review_reason: Mapped[ReviewReason | None] = mapped_column(
+        str_enum(ReviewReason, "review_reason")
+    )
+
+    assessment: Mapped[Assessment] = relationship(back_populates="deadlines", lazy="raise")
+
+
+# --- trust layer ----------------------------------------------------------------------
+
+EVIDENCE_SUBJECT_SQL = (
+    "(subject_type = 'assessment' AND assessment_id IS NOT NULL"
+    " AND assessment_deadline_id IS NULL)"
+    " OR (subject_type = 'assessment_deadline' AND assessment_deadline_id IS NOT NULL"
+    " AND assessment_id IS NULL)"
+)
+
+
+class EvidenceLink(UUIDPrimaryKey, CreatedAt, Base):
+    """Which SourceSpan supports one fact of a claim, and how it was verified.
+
+    The supporting excerpt is ``source_span.excerpt[quote_start:quote_end]``
+    (code points), checked by the evidence gate; a location is never taken
+    from the model. Lineage: the span gives the ResourceVersion, the
+    ModelCall the model and prompt version, the WorkflowRun the run. Exactly
+    one subject column is set: the one ``subject_type`` names.
+    """
+
+    __tablename__ = "evidence_links"
+    __table_args__ = (
+        CheckConstraint(EVIDENCE_SUBJECT_SQL, name="one_subject"),
+        CheckConstraint(
+            "(field = 'deadline') = (subject_type = 'assessment_deadline')",
+            name="field_fits_subject",
+        ),
+        CheckConstraint("quote_start >= 0 AND quote_start < quote_end", name="quote_ordered"),
+        CheckConstraint(
+            "(review_reason IS NOT NULL) = (verification_status = 'needs_review')",
+            name="review_reason_iff_review",
+        ),
+        UniqueConstraint(
+            "assessment_id",
+            "assessment_deadline_id",
+            "field",
+            "source_span_id",
+            "quote_start",
+            "quote_end",
+            name="uq_evidence_links_fact_quote",
+            postgresql_nulls_not_distinct=True,
+        ),
+        Index("ix_evidence_links_assessment_deadline_id", "assessment_deadline_id"),
+    )
+
+    subject_type: Mapped[EvidenceSubject] = mapped_column(
+        str_enum(EvidenceSubject, "evidence_subject")
+    )
+    # Lookups by assessment use the unique constraint (leading column).
+    assessment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("assessments.id", ondelete="CASCADE")
+    )
+    assessment_deadline_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("assessment_deadlines.id", ondelete="CASCADE")
+    )
+    field: Mapped[EvidenceField] = mapped_column(str_enum(EvidenceField, "evidence_field"))
+    source_span_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source_spans.id"), index=True)
+    quote_start: Mapped[int]
+    quote_end: Mapped[int]
+    verification_status: Mapped[VerificationStatus] = mapped_column(
+        str_enum(VerificationStatus, "verification_status")
+    )
+    review_reason: Mapped[ReviewReason | None] = mapped_column(
+        str_enum(ReviewReason, "review_reason")
+    )
+    # NULL only for evidence no model produced. No cascade: a call or run
+    # cannot be deleted while claims still rest on it.
+    model_call_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_calls.id"), index=True
+    )
+    workflow_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflow_runs.id"), index=True
+    )
+
+    source_span: Mapped[SourceSpan] = relationship(lazy="raise")

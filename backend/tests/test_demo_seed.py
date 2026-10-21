@@ -157,3 +157,24 @@ async def test_only_a_demo_institution_can_be_reset(
 ) -> None:
     with pytest.raises(ValueError, match="only a demo institution"):
         await reset_demo_institution(sessions, "Northbridge University", LmsType.MOODLE)
+
+
+async def test_the_seed_gives_northbridge_its_timezone_and_never_overwrites_one(
+    sessions: async_sessionmaker[AsyncSession],
+    store: LocalRawObjectStore,
+    limits_and_indexer: dict[str, Any],
+) -> None:
+    await seed(sessions, store, **limits_and_indexer)
+    async with sessions() as session:
+        zone = await session.scalar(
+            select(Institution.timezone).where(Institution.lms_type == LmsType.DEMO)
+        )
+    assert zone == "Europe/London"
+    async with sessions() as session, session.begin():
+        # An unknown timezone is filled; a different one is a conflict.
+        await ensure_institution(session, "Unzoned", LmsType.DEMO)
+        await ensure_institution(session, "Unzoned", LmsType.DEMO, timezone="Europe/Paris")
+        with pytest.raises(SyncConflictError, match="has timezone"):
+            await ensure_institution(
+                session, "Northbridge University", LmsType.DEMO, timezone="Europe/Paris"
+            )

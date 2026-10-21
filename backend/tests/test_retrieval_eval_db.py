@@ -179,7 +179,17 @@ def _imports(path: Path) -> list[str]:
     return names
 
 
-RUNTIME = ("api", "core", "db", "domain", "ai", "ingestion", "retrieval", "connectors")
+RUNTIME = (
+    "api",
+    "core",
+    "db",
+    "domain",
+    "ai",
+    "ingestion",
+    "retrieval",
+    "connectors",
+    "extraction",
+)
 
 
 def test_the_destructive_helpers_stay_in_evaluation_tooling() -> None:
