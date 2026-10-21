@@ -7,7 +7,7 @@
 The model proposes an action in its own words, one of the narrow
 categories, optionally the assessment it concerns (local ID) and an
 explicit due date, and the quotes that state it. It never states the
-modality: the gate (``claim-gate/v2``) derives it from the cited
+modality: the gate (``claim-gate/v3``) derives it from the cited
 quotes alone, and decides each candidate on its own:
 
 1. each quote is located by ``claim_gate.locate_quote`` (whitespace runs
@@ -22,18 +22,24 @@ quotes alone, and decides each candidate on its own:
    needs_review (``mixed_modality``, no modality); none -> rejected
    (``no_obligation_wording``): an informational statement or a bare
    imperative is not a verified obligation in this version;
-3. a specific category needs its own word in a cited quote (supervisor,
+3. what an assessed artefact must contain or do is an AssessmentRequirement,
+   never an obligation: the candidate is rejected (``wrong_claim_type``) when
+   its anchor sentence has the form "<artefact> must include/discuss/...",
+   or it is a list item or section under a lead-in or heading of that form
+   ("Your specification must include"); "your supervisor must have
+   reviewed" or "must not collect data" are actions, not content;
+4. a specific category needs its own word in a cited quote (supervisor,
    approve, ethics/form, a precondition word, submit), else needs_review
    (``category_unsupported``); ``other`` needs none;
-4. an assessment link is supported when the assessment has title evidence
+5. an assessment link is supported when the assessment has title evidence
    in this resource or its designator words are in a cited quote, else
    needs_review (``assessment_link_unsupported``) and the link is not kept;
    an ID not issued for the unit is treated the same;
-5. a due date must be an explicit calendar date checked exactly as an
+6. a due date must be an explicit calendar date checked exactly as an
    assessment deadline is (``gate._deadline``); a relative lead time
    ("5 working days before the deadline") has no date and is never one.
    A rejected due date drops only the due date;
-6. non-unique quote locations keep every occurrence, needs_review.
+7. non-unique quote locations keep every occurrence, needs_review.
 
 Identity is the sentence of the first modal word of the earliest quote, in source order,
 that has modal wording (``canonical_location``, ``statements.statement_key``):
@@ -66,16 +72,18 @@ from app.extraction.gate import (
     Rejected,
     check_deadline,
 )
-from app.extraction.requirements import LocalAssessmentId
+from app.extraction.requirements import LocalAssessmentId, heading_span
 from app.extraction.schema import DeadlineOut, EvidenceRef, StrictModel
 from app.extraction.statements import (
+    ARTEFACT_CONTENT,
     anchor_text,
+    describes_artefact_content,
     first_modal_offset,
     modal_wording,
     statement_key,
     words,
 )
-from app.extraction.units import ExtractionUnit
+from app.extraction.units import ExtractionUnit, UnitSpan
 
 GATE_VERSION = CLAIM_GATE_VERSION  # shared by requirements and obligations
 
@@ -286,6 +294,16 @@ def canonical_location(
     return GatedEvidence(first.span_id, at, at + 1)
 
 
+def _is_requirement_content(unit: ExtractionUnit, span: UnitSpan, offset: int) -> bool:
+    """Whether the statement at ``offset`` is what an assessed artefact must
+    contain (an AssessmentRequirement), not an action the student performs:
+    by its own sentence, its list's lead-in, or its section heading."""
+    if describes_artefact_content(span.excerpt, offset):
+        return True
+    heading = heading_span(unit, span)
+    return heading is not None and ARTEFACT_CONTENT.search(heading.excerpt) is not None
+
+
 def gate_obligations(
     claim_unit: ClaimUnit, extraction: ObligationExtraction, institution_timezone: str | None
 ) -> ObligationGateResult:
@@ -297,6 +315,11 @@ def gate_obligations(
             modality, modal_reason = _modality(quotes)
         except Rejected as rejected:
             result.rejected[f"obligation:{rejected.reason}"] += 1
+            continue
+        anchor = canonical_location(unit, evidence, quotes)
+        span = unit.resolve_by_id(anchor.span_id)
+        if _is_requirement_content(unit, span, anchor.quote_start):
+            result.rejected[f"obligation:{RejectionReason.WRONG_CLAIM_TYPE}"] += 1
             continue
         category = ObligationCategory(proposed.category)
         reasons = {modal_reason} if modal_reason else set()
@@ -317,8 +340,6 @@ def gate_obligations(
             reasons.add(due.review_reason)
         if any(e.status is not V.VERIFIED for e in evidence):
             reasons.add(R.NON_UNIQUE_QUOTE_LOCATION)
-        anchor = canonical_location(unit, evidence, quotes)
-        span = unit.resolve_by_id(anchor.span_id)
         key = statement_key(anchor_text(span.excerpt, anchor.quote_start, anchor.quote_end))
         ordered = tuple(r for r in REASON_ORDER if r in reasons)
         if ordered:

@@ -5,7 +5,7 @@
 """Requirement extraction: what the model may say, and the gate that decides.
 
 The model proposes, for an assessment it names by local ID (A1, ...), a
-statement quote and optionally a lead-in. The gate (``claim-gate/v2``)
+statement quote and optionally a lead-in. The gate (``claim-gate/v3``)
 decides each candidate on its own:
 
 1. the assessment ID must have been issued for the unit, else rejected
@@ -13,12 +13,15 @@ decides each candidate on its own:
 2. the statement quote is located by ``claim_gate.locate_quote`` (whitespace
    runs match any whitespace; exact original offsets; outside any injection
    fragment), else rejected; a model lead-in that fails is dropped alone;
-3. one source sentence is one requirement: a quote merged with the lead-in
-   line above its list item starts at the item, and every location is cut
-   to that one sentence, so merged quotation text never makes a merged
-   requirement or supports a neighbouring one;
+3. one source requirement unit is one requirement (``source_units``): a
+   list item (its marker line and wrapped lines), a paragraph under a
+   DOCX/HTML heading, or else one sentence. A quote covering a lead-in and
+   several items is split by the source's own list structure into one
+   candidate per item, in source order, each with exact offsets and the same
+   lead-in; text outside the items is not split further. The text is the
+   source unit itself and the identity its key, never the model's quote;
 4. requirement wording (``statements.MANDATORY`` or ``RECOMMENDED``) must be
-   in that sentence's part of the quote, or in the lead-in the source
+   in that unit's part of the quote, or in the lead-in the source
    structure ties to the item, derived deterministically, never taken from
    the model: in the same span, the line introducing the item's list
    (``statements.governing_lead_in``); in DOCX/HTML, the heading span that
@@ -33,9 +36,9 @@ decides each candidate on its own:
 6. a quote that matches more than once keeps every location,
    ``needs_review`` (``non_unique_quote_location``).
 
-The requirement's text is its sentence, verbatim apart from whitespace;
-its identity is that sentence's key, so the same statement repeated
-anywhere merges.
+The requirement's text is its source unit, verbatim apart from whitespace
+and without its list marker; its identity is that unit's key, so the same
+statement repeated anywhere merges.
 """
 
 from __future__ import annotations
@@ -53,11 +56,11 @@ from app.extraction.claim_units import AssessmentRef, ClaimUnit
 from app.extraction.gate import GatedEvidence, Located, Rejected
 from app.extraction.schema import EvidenceRef, StrictModel
 from app.extraction.statements import (
+    LIST_MARKER,
     MANDATORY,
     RECOMMENDED,
-    anchor_text,
-    first_list_item_after_lead_in,
     governing_lead_in,
+    list_items_in,
     sentence_bounds,
     statement_key,
     words,
@@ -110,7 +113,7 @@ def _has_wording(quote: str) -> bool:
     return bool(MANDATORY.search(quote) or RECOMMENDED.search(quote))
 
 
-def _heading_span(unit: ExtractionUnit, span: UnitSpan) -> UnitSpan | None:
+def heading_span(unit: ExtractionUnit, span: UnitSpan) -> UnitSpan | None:
     """The heading span of the section ``span`` is in (DOCX/HTML): before it in
     the unit, with the same section path, whose text is that path's last part."""
     if " > " not in span.locator and span.locator.split(" ", 1)[0] in {"page", "slide"}:
@@ -133,7 +136,7 @@ def _derived_lead_in(
     if bounds is not None:
         location = GatedEvidence(span.span_id, *bounds)
         return Located((location,)), span.excerpt[bounds[0] : bounds[1]]
-    heading = _heading_span(unit, span)
+    heading = heading_span(unit, span)
     if heading is None:
         return None
     stripped = heading.excerpt.strip()
@@ -142,23 +145,37 @@ def _derived_lead_in(
     return Located((location,)), stripped
 
 
-def _intended(text: str, start: int, end: int) -> tuple[int, int, int]:
-    """For a located quote: where its intended statement starts (past a lead-in
-    line it was merged with), and that one sentence's bounds."""
-    begin = first_list_item_after_lead_in(text, start, end)
-    begin = start if begin is None else begin
-    return (begin, *sentence_bounds(text, begin))
+@dataclass(frozen=True, slots=True)
+class _Unit:
+    """One source requirement unit a located quote is evidence for."""
+
+    span: UnitSpan
+    start: int  # the unit's own bounds in the span (its text)
+    end: int
+    evidence: GatedEvidence  # the part of the quote inside the unit
 
 
-def _clip(unit: ExtractionUnit, located: Located) -> Located:
-    """Each location cut to its intended sentence: a merged quote supports only
-    the one statement it is evidence for."""
-    clipped = []
-    for location in located.locations:
-        text = unit.resolve_by_id(location.span_id).excerpt
-        begin, _, end = _intended(text, location.quote_start, location.quote_end)
-        clipped.append(GatedEvidence(location.span_id, begin, min(location.quote_end, end)))
-    return Located(tuple(clipped))
+def source_units(unit: ExtractionUnit, location: GatedEvidence) -> list[_Unit]:
+    """The source requirement units one located quote covers, in source order:
+    each list item it touches (a quote merged across a lead-in and several
+    items is split by the source's own list structure; wrapped lines stay in
+    their item); else, in a DOCX/HTML section under a heading, its
+    paragraph; else the one sentence it starts in. Never a semantic split."""
+    span = unit.resolve_by_id(location.span_id)
+    text, qs, qe = span.excerpt, location.quote_start, location.quote_end
+    items = list_items_in(text, qs, qe)
+    if items:
+        return [
+            _Unit(span, a, b, GatedEvidence(span.span_id, max(qs, a), min(qe, b)))
+            for a, b in items
+            if max(qs, a) < min(qe, b)
+        ]
+    if heading_span(unit, span) is not None:
+        stripped = text.strip()
+        a = text.index(stripped)
+        return [_Unit(span, a, a + len(stripped), location)]
+    a, b = sentence_bounds(text, qs)
+    return [_Unit(span, a, b, GatedEvidence(span.span_id, qs, min(qe, b)))]
 
 
 def _linked(assessment: AssessmentRef, quotes: list[str]) -> bool:
@@ -166,6 +183,12 @@ def _linked(assessment: AssessmentRef, quotes: list[str]) -> bool:
         return True
     key = set(assessment.canonical_key.split())
     return bool(key) and any(key <= set(words(quote)) for quote in quotes)
+
+
+def _unit_text(source: _Unit) -> str:
+    """The unit verbatim, whitespace collapsed, without its list marker."""
+    text = " ".join(source.span.excerpt[source.start : source.end].split())
+    return LIST_MARKER.sub("", text, count=1)
 
 
 def gate_requirements(
@@ -191,39 +214,57 @@ def gate_requirements(
                 # Dropped on its own (injected text included): the statement
                 # is judged without it.
                 result.rejected[f"lead_in:{rejected.reason}"] += 1
-        statement = _clip(unit, located)
-        first = statement.locations[0]
-        span = unit.resolve_by_id(first.span_id)
-        supporting = span.excerpt[first.quote_start : first.quote_end]
-        reasons: list[ReviewReason] = []
-        if statement.status is not V.VERIFIED:
-            reasons.append(R.NON_UNIQUE_QUOTE_LOCATION)
-        lead_in: Located | None = None
-        quotes = [supporting]
-        derived = _derived_lead_in(unit, span, first.quote_start)
-        if _has_wording(supporting):
-            pass  # the statement supports itself; a lead-in adds nothing
-        elif derived is not None and _has_wording(derived[1]):
-            lead_in = derived[0]
-            quotes.append(derived[1])
-        elif model_lead_in is not None and _has_wording(model_lead_in[1]):
-            # Wording the source structure does not tie to this statement.
-            lead_in = model_lead_in[0]
-            quotes.append(model_lead_in[1])
-            reasons.append(R.NO_REQUIREMENT_LANGUAGE)
-        else:
-            result.rejected[f"requirement:{RejectionReason.NO_REQUIREMENT_LANGUAGE}"] += 1
-            continue
-        if not _linked(assessment, quotes):
-            reasons.append(R.ASSESSMENT_LINK_UNSUPPORTED)
-        text = anchor_text(span.excerpt, first.quote_start, first.quote_start + 1)
-        if len(text) > MAX_TEXT:
-            result.rejected[f"requirement:{RejectionReason.STATEMENT_TOO_LONG}"] += 1
-            continue
-        reason = reasons[0] if reasons else None
-        if reason is not None:
-            result.review_reasons[f"requirement:{reason}"] += 1
-        result.requirements.append(
-            GatedRequirement(assessment, statement_key(text), text, statement, lead_in, reason)
-        )
+        # Every occurrence's units, grouped by the unit's identity: one candidate
+        # per source unit, in source order of the first occurrence.
+        grouped: dict[str, list[_Unit]] = {}
+        for location in located.locations:
+            for source in source_units(unit, location):
+                grouped.setdefault(statement_key(_unit_text(source)), []).append(source)
+        for key, sources in grouped.items():
+            gated = _gate_unit(unit, assessment, key, sources, located, model_lead_in, result)
+            if gated is not None:
+                result.requirements.append(gated)
     return result
+
+
+def _gate_unit(
+    unit: ExtractionUnit,
+    assessment: AssessmentRef,
+    key: str,
+    sources: list[_Unit],
+    located: Located,
+    model_lead_in: tuple[Located, str] | None,
+    result: RequirementGateResult,
+) -> GatedRequirement | None:
+    first = sources[0]
+    statement = Located(tuple(s.evidence for s in sources))
+    supporting = first.span.excerpt[first.evidence.quote_start : first.evidence.quote_end]
+    reasons: list[ReviewReason] = []
+    if located.status is not V.VERIFIED:
+        reasons.append(R.NON_UNIQUE_QUOTE_LOCATION)
+    lead_in: Located | None = None
+    quotes = [supporting]
+    derived = _derived_lead_in(unit, first.span, first.start)
+    if _has_wording(supporting):
+        pass  # the unit supports itself; a lead-in adds nothing
+    elif derived is not None and _has_wording(derived[1]):
+        lead_in = derived[0]
+        quotes.append(derived[1])
+    elif model_lead_in is not None and _has_wording(model_lead_in[1]):
+        # Wording the source structure does not tie to this unit.
+        lead_in = model_lead_in[0]
+        quotes.append(model_lead_in[1])
+        reasons.append(R.NO_REQUIREMENT_LANGUAGE)
+    else:
+        result.rejected[f"requirement:{RejectionReason.NO_REQUIREMENT_LANGUAGE}"] += 1
+        return None
+    if not _linked(assessment, quotes):
+        reasons.append(R.ASSESSMENT_LINK_UNSUPPORTED)
+    text = _unit_text(first)
+    if len(text) > MAX_TEXT:
+        result.rejected[f"requirement:{RejectionReason.STATEMENT_TOO_LONG}"] += 1
+        return None
+    reason = reasons[0] if reasons else None
+    if reason is not None:
+        result.review_reasons[f"requirement:{reason}"] += 1
+    return GatedRequirement(assessment, key, text, statement, lead_in, reason)

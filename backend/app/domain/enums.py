@@ -247,3 +247,6 @@ class RejectionReason(StrEnum):
     # No cited quote says the action is required or recommended.
     NO_OBLIGATION_WORDING = "no_obligation_wording"
     NO_EVIDENCE = "no_evidence"  # every cited quote was rejected
+    # What an assessed artefact must contain, proposed as an obligation: it is
+    # an assessment requirement, not an action the student performs.
+    WRONG_CLAIM_TYPE = "wrong_claim_type"

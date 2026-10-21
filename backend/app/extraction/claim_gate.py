@@ -2,7 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""Quote location for requirement and obligation claims (``claim-gate/v2``).
+"""Quote location for requirement and obligation claims (``claim-gate/v3``;
+location is unchanged since v2).
 
 v2 changes one thing about locating a quote: a run of whitespace in the
 model's quote matches any run of whitespace in the span (a PDF line break
@@ -27,7 +28,7 @@ from app.extraction.gate import GatedEvidence, Located, Rejected, injection_frag
 from app.extraction.schema import EvidenceRef
 from app.extraction.units import ExtractionUnit
 
-GATE_VERSION = "claim-gate/v2"
+GATE_VERSION = "claim-gate/v3"
 _WHITESPACE = re.compile(r"\s+")
 
 

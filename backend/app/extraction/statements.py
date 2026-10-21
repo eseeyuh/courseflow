@@ -227,22 +227,6 @@ def governing_lead_in(text: str, offset: int) -> tuple[int, int] | None:
     return bounds if governs_list_item(text, bounds, (item.start, item.end)) else None
 
 
-def first_list_item_after_lead_in(text: str, start: int, end: int) -> int | None:
-    """When [start, end) begins on a lead-in line and runs into the list item
-    it introduces (a merged quote), the offset where that item starts."""
-    all_lines = lines(text)
-    first = line_at(text, start)
-    for line in all_lines[first + 1 :]:
-        if line.start >= end:
-            return None
-        if line.is_list_item:
-            lead = governing_lead_in(text, line.start)
-            return line.start if lead is not None and lead[0] <= start < lead[1] + 1 else None
-        if not line.continues:
-            return None
-    return None
-
-
 def first_modal_offset(text: str) -> int | None:
     """Where the first modal word of any kind is in ``text``, if any."""
     found = [
@@ -252,3 +236,68 @@ def first_modal_offset(text: str) -> int | None:
         if m is not None
     ]
     return min(found) if found else None
+
+
+def list_item_bounds(text: str, offset: int) -> tuple[int, int] | None:
+    """The whole list item ``offset`` is in: its marker line and every wrapped
+    line after it, ending before the next item or a line that starts a new
+    sentence; trailing whitespace excluded. None outside a list item."""
+    all_lines = lines(text)
+    index = line_at(text, offset)
+    while index > 0 and not all_lines[index].is_list_item and all_lines[index].continues:
+        index -= 1
+    if not all_lines[index].is_list_item:
+        return None
+    last = index
+    while (
+        last + 1 < len(all_lines)
+        and all_lines[last + 1].continues
+        and not all_lines[last + 1].is_list_item
+    ):
+        last += 1
+    start = all_lines[index].start
+    end = all_lines[last].start + len(all_lines[last].text.rstrip())
+    return start, end
+
+
+def list_items_in(text: str, start: int, end: int) -> list[tuple[int, int]]:
+    """Every list item [start, end) touches, in source order: the item it
+    starts in, then each item whose marker line it reaches."""
+    found = []
+    first = list_item_bounds(text, start)
+    if first is not None:
+        found.append(first)
+    for line in lines(text)[line_at(text, start) + 1 :]:
+        if line.start >= end:
+            break
+        if line.is_list_item:
+            bounds = list_item_bounds(text, line.start)
+            if bounds is not None and bounds not in found:
+                found.append(bounds)
+    return found
+
+
+# What an assessed artefact must contain or do, as opposed to an action the
+# student performs: an artefact noun as subject, then a modal and a content
+# verb, within one clause. Deliberately narrow ("must be revised and
+# resubmitted" is a process, so "be" is not a content verb).
+ARTEFACT_CONTENT = re.compile(
+    r"\b(?:specifications?|reports?|submissions?|essays?|dissertations?|theses|thesis"
+    r"|proposals?|portfolios?|assignments?|coursework|answers?|appendix|abstracts?)\b"
+    r"[^.;:\n]{0,40}?\b(?:must|should|shall|needs?\s+to|is\s+required\s+to|are\s+required\s+to)"
+    r"\s+(?:not\s+)?(?:include|contain|address|discuss|cover|describe|present|demonstrate"
+    r"|justify|explain|reflect|compare|state|cite|do)\b",
+    re.IGNORECASE,
+)
+
+
+def describes_artefact_content(text: str, offset: int) -> bool:
+    """Whether the statement at ``offset`` says what an assessed artefact must
+    contain or do: its sentence has that form, or it is a list item whose
+    governing lead-in does ("Your specification must include")."""
+    start, end = sentence_bounds(text, offset)
+    if ARTEFACT_CONTENT.search(text[start:end]):
+        return True
+    item = list_item_bounds(text, offset)
+    lead = governing_lead_in(text, item[0]) if item is not None else None
+    return lead is not None and ARTEFACT_CONTENT.search(text[lead[0] : lead[1]]) is not None

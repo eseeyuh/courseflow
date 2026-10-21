@@ -177,20 +177,29 @@ def test_a_quote_matching_twice_under_normalisation_needs_review() -> None:
     assert gated.review_reason is R.NON_UNIQUE_QUOTE_LOCATION
 
 
-def test_a_merged_heading_and_list_quote_is_one_requirement_from_one_sentence() -> None:
+def test_a_merged_heading_and_list_quote_splits_into_one_requirement_per_item() -> None:
     merged = (
         "Your specification must include 1. A focused research question. "
-        "2. The aims and objectives of the project."
+        "2. The aims and objectives of the project. "
+        "3. A short review of related work, citing at least eight sources."
     )
-    (gated,) = gate_requirements(_claims(SPEC_PAGE), _requirement(_ref("S1", merged))).requirements
-    assert gated.text == "A focused research question."
-    assert gated.review_reason is None
-    # The evidence is cut to that sentence: it supports no neighbouring item.
-    (location,) = gated.statement.locations
-    assert SPEC_PAGE[location.quote_start : location.quote_end] == "1. A focused research question."
+    result = gate_requirements(_claims(SPEC_PAGE), _requirement(_ref("S1", merged)))
+    # Source order, source text, exact offsets, one shared governing lead-in.
+    assert [g.text for g in result.requirements] == [
+        "A focused research question.",
+        "The aims and objectives of the project.",
+        "A short review of related work, citing at least eight sources.",
+    ]
+    for gated in result.requirements:
+        assert gated.review_reason is None
+        (location,) = gated.statement.locations
+        item = SPEC_PAGE[location.quote_start : location.quote_end]
+        assert " ".join(item.split()).endswith(gated.text)
+        (lead,) = gated.lead_in.locations  # type: ignore[union-attr]
+        assert SPEC_PAGE[lead.quote_start : lead.quote_end] == "Your specification must include"
 
 
-def test_merged_sentences_make_one_requirement_from_the_first() -> None:
+def test_a_wrapped_list_item_stays_one_requirement() -> None:
     merged = (
         "3. Justify the evaluation metrics you report. Accuracy on its own is not an "
         "acceptable justification for a model on this dataset."
@@ -198,10 +207,44 @@ def test_merged_sentences_make_one_requirement_from_the_first() -> None:
     (gated,) = gate_requirements(
         _claims(REPORT_PAGE), _requirement(_ref("S1", merged))
     ).requirements
-    assert gated.text == "Justify the evaluation metrics you report."
-    (location,) = gated.statement.locations
-    assert REPORT_PAGE[location.quote_end - 1] == "."
-    assert "Accuracy" not in REPORT_PAGE[location.quote_start : location.quote_end]
+    # No semantic sentence split: the whole item is the requirement.
+    assert gated.text == (
+        "Justify the evaluation metrics you report. Accuracy on its own is not an "
+        "acceptable justification for a model on this dataset."
+    )
+
+
+def test_text_after_the_last_item_is_not_another_requirement() -> None:
+    merged = (
+        "3. Justify the evaluation metrics you report. Accuracy on its own is not an "
+        "acceptable justification for a model on this dataset. Any resampling or class "
+        "weighting must be applied to the training data only."
+    )
+    result = gate_requirements(_claims(REPORT_PAGE), _requirement(_ref("S1", merged)))
+    assert [g.text[:10] for g in result.requirements] == ["Justify th"]
+
+
+def test_the_identity_is_the_source_item_whatever_the_quote() -> None:
+    quotes = (
+        "3. Justify the evaluation metrics",
+        "Accuracy on its own is not an",
+        (
+            "What your report must do 1. Describe the dataset and frame the prediction task in "
+            "your own words. 2. Discuss the class imbalance in the data and explain how it "
+            "affects both model training and the way the models should be evaluated. 3. Justify"
+        ),
+    )
+    keys = [
+        [
+            g.canonical_key
+            for g in gate_requirements(
+                _claims(REPORT_PAGE), _requirement(_ref("S1", q))
+            ).requirements
+        ]
+        for q in quotes
+    ]
+    assert keys[0] == keys[1] == keys[2][2:]
+    assert len(set(keys[2])) == 3
 
 
 def test_injection_is_checked_on_the_original_offsets() -> None:
@@ -264,32 +307,6 @@ def test_an_assessment_link_needs_support_in_the_resource_or_the_quote() -> None
         _requirement(_ref("S1", "Any resampling or class weighting must"), assessment="A2"),
     )
     assert result.requirements[0].review_reason is R.ASSESSMENT_LINK_UNSUPPORTED
-
-
-def test_one_sentence_is_one_requirement() -> None:
-    lead_in = _ref("S1", "What your report must do")
-    quotes = (
-        "3. Justify the evaluation metrics",
-        "3. Justify the evaluation metrics you report.",
-        "Accuracy on its own",
-    )
-    result = gate_requirements(
-        _claims(REPORT_PAGE),
-        RequirementExtraction.model_validate(
-            {
-                "requirements": [
-                    {"assessment": "A1", "statement": _ref("S1", q), "lead_in": lead_in}
-                    for q in quotes
-                ]
-            }
-        ),
-    )
-    first, same, second = result.requirements
-    # Two quotes of one sentence are one requirement (the key merges them);
-    # the item's second sentence is another statement, so another requirement.
-    assert first.canonical_key == same.canonical_key != second.canonical_key
-    assert second.text.startswith("Accuracy on its own is not an acceptable justification")
-    assert all(g.review_reason is None for g in result.requirements)
 
 
 def test_injected_text_never_supports_a_requirement() -> None:

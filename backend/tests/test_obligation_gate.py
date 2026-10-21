@@ -315,3 +315,69 @@ def test_whitespace_tolerance_does_not_bypass_injection() -> None:
         "evidence:quote_overlaps_injection": 1,
         "obligation:no_evidence": 1,
     }
+
+
+# --- claim-gate/v3: the requirement/obligation boundary ---------------------------------
+
+SPEC_LIST = (
+    "Your specification must include\n"
+    "1. A focused research question.\n"
+    "2. The aims and objectives of the project.\n"
+    "Marking\n"
+    "a failed specification must be revised and resubmitted within 10 working days."
+)
+
+
+@pytest.mark.parametrize(
+    ("page", "quote"),
+    [
+        (SPEC_LIST, "Your specification must include 1. A focused research question."),
+        # An item under a content lead-in, with wording of its own.
+        (
+            "What your report must do\n1. Explain how the models should be evaluated.",
+            "1. Explain how the models should be evaluated.",
+        ),
+        ("The report must discuss class imbalance.", "The report must discuss class imbalance."),
+        (
+            "Your submission should contain a reflection.",
+            "Your submission should contain a reflection.",
+        ),
+    ],
+)
+def test_deliverable_content_is_never_a_verified_obligation(page: str, quote: str) -> None:
+    result = gate_obligations(_claims(page), _obligation(_ref("S1", quote)), LONDON)
+    assert result.obligations == []
+    assert result.rejected == {"obligation:wrong_claim_type": 1}
+
+
+@pytest.mark.parametrize(
+    ("page", "quote", "category"),
+    [
+        (HANDBOOK_PAGE, SUPERVISOR[0]["quote"], "supervisor_review"),
+        (
+            (
+                "You must not recruit participants or collect any data until your ethics "
+                "application has been approved."
+            ),
+            (
+                "You must not recruit participants or collect any data until your ethics "
+                "application has been approved."
+            ),
+            "approval",
+        ),
+        (SPEC_LIST, "a failed specification must be revised and resubmitted", "other"),
+        (
+            "Before submitting you must:\n1. Get your ethics form signed.",
+            "Before submitting you must: 1. Get your ethics form signed.",
+            "ethics_admin_form",
+        ),
+    ],
+)
+def test_process_obligations_are_not_mistaken_for_content(
+    page: str, quote: str, category: str
+) -> None:
+    result = gate_obligations(
+        _claims(page), _obligation(_ref("S1", quote), category=category), LONDON
+    )
+    (gated,) = result.obligations
+    assert gated.modality is ObligationModality.MANDATORY

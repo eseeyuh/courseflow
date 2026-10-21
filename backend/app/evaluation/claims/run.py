@@ -848,7 +848,8 @@ def markdown(r: dict[str, Any]) -> str:
             f"(sha256 `{m['dataset']['sha256'][:12]}…`), prompts {', '.join(f'`{p}`' for p in m['prompts'])}, "
             f"gates {', '.join(f'`{g}`' for g in m['gates'])}, model `{m['model']}`, thinking off, "
             f"temperature 0, output cap {m['output_token_cap_per_request']} tokens, spend cap "
-            f"${m['spend_cap_usd']}, run {m['run_at']}. Assessments {m['assessments']}. "(
+            f"${m['spend_cap_usd']}, run {m['run_at']}. Assessments {m['assessments']}. "
+            + (
                 "Recorded outputs replayed through the current gate: no model call."
                 if m["model"].startswith("replay:")
                 else "Real Nebius Token Factory calls; every number below is measured."
