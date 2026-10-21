@@ -142,6 +142,8 @@ class EvidenceSubject(StrEnum):
 
     ASSESSMENT = "assessment"
     ASSESSMENT_DEADLINE = "assessment_deadline"
+    ASSESSMENT_REQUIREMENT = "assessment_requirement"
+    OBLIGATION = "obligation"
 
 
 class EvidenceField(StrEnum):
@@ -150,6 +152,9 @@ class EvidenceField(StrEnum):
     TITLE = "title"  # that the assessment exists, under this name
     WEIGHTING = "weighting"
     DEADLINE = "deadline"
+    REQUIREMENT = "requirement"  # that the requirement is stated, for its assessment
+    OBLIGATION = "obligation"  # that the action is stated, with its modality
+    DUE_DATE = "due_date"  # an obligation's explicit calendar due date
 
 
 class ReviewReason(StrEnum):
@@ -170,6 +175,41 @@ class ReviewReason(StrEnum):
     WEEKDAY_MISMATCH = "weekday_mismatch"  # the stated weekday is not the date's
     AMBIGUOUS_TIME = "ambiguous_time"  # "midnight": the start or the end of the day?
     AMBIGUOUS_LOCAL_TIME = "ambiguous_local_time"  # occurs twice (DST overlap)
+    # The action is only permitted or possible ("may", "can"): not an obligation.
+    PERMISSIVE_WORDING = "permissive_wording"
+    MIXED_MODALITY = "mixed_modality"  # the evidence is both mandatory and permissive
+    # A requirement candidate whose evidence has no requirement wording.
+    NO_REQUIREMENT_LANGUAGE = "no_requirement_language"
+    # Nothing in the evidence ties the claim to the assessment it names.
+    ASSESSMENT_LINK_UNSUPPORTED = "assessment_link_unsupported"
+    # The evidence lacks the wording its obligation category needs.
+    CATEGORY_UNSUPPORTED = "category_unsupported"
+    # Sources for one canonical obligation disagree on one of its values.
+    CONFLICTING_CATEGORY = "conflicting_category"
+    CONFLICTING_MODALITY = "conflicting_modality"
+    CONFLICTING_ASSESSMENT_LINK = "conflicting_assessment_link"
+    CONFLICTING_DUE_DATE = "conflicting_due_date"
+
+
+class ObligationCategory(StrEnum):
+    """What kind of action an obligation is: deliberately narrow. Anything
+    that fits none of the specific kinds is ``other``, never a new kind."""
+
+    SUPERVISOR_REVIEW = "supervisor_review"  # a supervisor review or meeting
+    APPROVAL = "approval"
+    ETHICS_ADMIN_FORM = "ethics_admin_form"  # an ethics or administrative form
+    FORMATIVE_PREREQUISITE = "formative_prerequisite"
+    SUBMISSION_PREREQUISITE = "submission_prerequisite"
+    OTHER = "other"
+
+
+class ObligationModality(StrEnum):
+    """Whether the source requires the action or only recommends it. Derived
+    from the evidence wording by the gate; permissive wording ("may") is
+    neither, so it never verifies."""
+
+    MANDATORY = "mandatory"  # must, required, must not
+    RECOMMENDED = "recommended"  # should, recommended, encouraged
 
 
 class RejectionReason(StrEnum):

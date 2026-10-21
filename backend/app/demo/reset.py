@@ -25,6 +25,7 @@ from app.db.models import (
     Assessment,
     Course,
     Institution,
+    Obligation,
     Resource,
     ResourceVersion,
     SourceSpan,
@@ -66,8 +67,10 @@ async def reset_demo_institution(
                 select(ResourceVersion.id).where(ResourceVersion.resource_id.in_(resources))
             )
         ).all()
-        # Assessments first: their deadlines and evidence links cascade, and
-        # evidence links must go before the spans and runs they reference.
+        # Claims first: their deadlines, requirements and evidence links cascade,
+        # and evidence links must go before the spans and runs they reference.
+        # Obligations go before the assessments and model calls they reference.
+        await session.execute(delete(Obligation).where(Obligation.course_id.in_(courses)))
         await session.execute(delete(Assessment).where(Assessment.course_id.in_(courses)))
         runs = await session.execute(delete(WorkflowRun).where(WorkflowRun.course_id.in_(courses)))
         # Chunks and their embedding links cascade from their spans and versions.

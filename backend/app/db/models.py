@@ -11,7 +11,9 @@ each logical model call, inside a run or standalone.
 
 Academic and trust layers:
     Course -> Assessment -> AssessmentDeadline
-    EvidenceLink -> SourceSpan, for an Assessment fact or an AssessmentDeadline
+    Course -> Assessment -> AssessmentRequirement
+    Course -> Obligation (-> Assessment, optional)
+    EvidenceLink -> SourceSpan, for one fact of any of these claims
 An Assessment is canonical per course; every source that states it, its
 weighting or a deadline adds an EvidenceLink instead of a duplicate row.
 Sources that disagree on a deadline give one AssessmentDeadline each: the
@@ -66,6 +68,8 @@ from app.domain.enums import (
     ModelCallKind,
     ModelCallStatus,
     ModelRole,
+    ObligationCategory,
+    ObligationModality,
     ResourceType,
     ReviewReason,
     TimezoneSource,
@@ -604,6 +608,8 @@ class Assessment(UUIDPrimaryKey, Timestamps, Base):
     __tablename__ = "assessments"
     __table_args__ = (
         UniqueConstraint("course_id", "canonical_key", name="uq_assessments_course_key"),
+        # Target of fk_obligations_assessment_same_course.
+        UniqueConstraint("id", "course_id", name="uq_assessments_id_course"),
         CheckConstraint(
             "length(canonical_key) > 0 AND canonical_key = lower(canonical_key)",
             name="canonical_key_normalised",
@@ -630,6 +636,9 @@ class Assessment(UUIDPrimaryKey, Timestamps, Base):
 
     course: Mapped[Course] = relationship(lazy="raise")
     deadlines: Mapped[list[AssessmentDeadline]] = relationship(
+        back_populates="assessment", lazy="raise"
+    )
+    requirements: Mapped[list[AssessmentRequirement]] = relationship(
         back_populates="assessment", lazy="raise"
     )
 
@@ -697,13 +706,168 @@ class AssessmentDeadline(UUIDPrimaryKey, Timestamps, Base):
     assessment: Mapped[Assessment] = relationship(back_populates="deadlines", lazy="raise")
 
 
+# A claim's identity: the SHA-256 of the normal form of its anchor statement.
+CANONICAL_KEY_SHA256_SQL = "canonical_key ~ '^[0-9a-f]{64}$'"
+
+
+class AssessmentRequirement(UUIDPrimaryKey, Timestamps, Base):
+    """Something a student must satisfy in an assessed deliverable, once per
+    assessment.
+
+    ``text`` is the source statement itself, verbatim apart from whitespace,
+    never a model paraphrase. ``canonical_key`` is the SHA-256 of its normal
+    form: the same statement repeated by another version or source adds an
+    EvidenceLink, not a row. One statement is one requirement. ``status`` is
+    set by the evidence gate.
+    """
+
+    __tablename__ = "assessment_requirements"
+    __table_args__ = (
+        UniqueConstraint(
+            "assessment_id", "canonical_key", name="uq_assessment_requirements_assessment_key"
+        ),
+        CheckConstraint(CANONICAL_KEY_SHA256_SQL, name="canonical_key_sha256_hex"),
+        CheckConstraint(
+            "length(btrim(text)) > 0 AND length(text) <= 2000", name="text_nonblank_bounded"
+        ),
+        CheckConstraint(
+            "(review_reason IS NOT NULL) = (status = 'needs_review')",
+            name="review_reason_iff_review",
+        ),
+    )
+
+    # Lookups by assessment use the unique constraint (leading column).
+    assessment_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("assessments.id", ondelete="CASCADE")
+    )
+    canonical_key: Mapped[str] = mapped_column(Text)
+    text: Mapped[str] = mapped_column(Text)
+    status: Mapped[VerificationStatus] = mapped_column(
+        str_enum(VerificationStatus, "verification_status")
+    )
+    review_reason: Mapped[ReviewReason | None] = mapped_column(
+        str_enum(ReviewReason, "review_reason")
+    )
+
+    assessment: Mapped[Assessment] = relationship(back_populates="requirements", lazy="raise")
+
+
+class Obligation(UUIDPrimaryKey, Timestamps, Base):
+    """An academic action a student must or should perform, once per course,
+    possibly outside any deliverable (a supervisor review, an ethics form).
+
+    ``canonical_action`` and ``category`` are the proposing model's words and
+    classification (``model_call_id``); ``modality`` and ``status`` are
+    derived by the evidence gate from the source wording, and a verified
+    obligation always has a modality. ``canonical_key`` is the SHA-256 of
+    the normal form of its anchor statement, like a requirement's.
+
+    The optional due date is an explicit calendar date only, with the same
+    semantics as an AssessmentDeadline; a relative lead time ("5 working
+    days before the deadline") is not a due date. A related assessment must
+    belong to the same course (fk_obligations_assessment_same_course).
+    """
+
+    __tablename__ = "obligations"
+    __table_args__ = (
+        UniqueConstraint("course_id", "canonical_key", name="uq_obligations_course_key"),
+        ForeignKeyConstraint(
+            ["assessment_id", "course_id"],
+            ["assessments.id", "assessments.course_id"],
+            name="fk_obligations_assessment_same_course",
+        ),
+        CheckConstraint(CANONICAL_KEY_SHA256_SQL, name="canonical_key_sha256_hex"),
+        CheckConstraint(
+            "length(btrim(canonical_action)) > 0 AND length(canonical_action) <= 300",
+            name="canonical_action_nonblank_bounded",
+        ),
+        CheckConstraint(
+            "status <> 'verified' OR modality IS NOT NULL", name="verified_has_modality"
+        ),
+        # No due date: no due fields at all. A due date: typed like a deadline.
+        CheckConstraint(
+            "due_date IS NOT NULL OR (due_time IS NULL AND due_timezone IS NULL"
+            " AND due_timezone_source IS NULL AND due_precision IS NULL AND due_at IS NULL)",
+            name="due_fields_need_date",
+        ),
+        CheckConstraint(
+            "due_date IS NULL OR (due_precision IS NOT NULL AND due_timezone_source IS NOT NULL)",
+            name="due_date_typed",
+        ),
+        CheckConstraint(
+            "(due_precision = 'date') = (due_time IS NULL)", name="due_time_fits_precision"
+        ),
+        CheckConstraint(
+            "(due_timezone IS NULL) = (due_timezone_source = 'unknown')",
+            name="due_timezone_sourced",
+        ),
+        CheckConstraint("length(btrim(due_timezone)) > 0", name="due_timezone_nonblank"),
+        CheckConstraint(
+            "due_at IS NULL OR (due_precision = 'datetime' AND due_timezone IS NOT NULL)",
+            name="due_instant_needs_time_and_timezone",
+        ),
+        CheckConstraint(
+            "status <> 'verified' OR due_precision IS DISTINCT FROM 'datetime'"
+            " OR due_at IS NOT NULL",
+            name="verified_due_datetime_has_instant",
+        ),
+        CheckConstraint(
+            "(review_reason IS NOT NULL) = (status = 'needs_review')",
+            name="review_reason_iff_review",
+        ),
+        Index("ix_obligations_assessment_id", "assessment_id"),
+    )
+
+    # Lookups by course use the unique constraint (leading column).
+    course_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("courses.id"))
+    assessment_id: Mapped[uuid.UUID | None]
+    canonical_key: Mapped[str] = mapped_column(Text)
+    canonical_action: Mapped[str] = mapped_column(Text)
+    category: Mapped[ObligationCategory] = mapped_column(
+        str_enum(ObligationCategory, "obligation_category")
+    )
+    # NULL: not determined (permissive or conflicting wording), so never verified.
+    modality: Mapped[ObligationModality | None] = mapped_column(
+        str_enum(ObligationModality, "obligation_modality")
+    )
+    due_date: Mapped[date | None]
+    due_time: Mapped[time | None]
+    due_timezone: Mapped[str | None] = mapped_column(Text)
+    due_timezone_source: Mapped[TimezoneSource | None] = mapped_column(
+        str_enum(TimezoneSource, "timezone_source")
+    )
+    due_precision: Mapped[DeadlinePrecision | None] = mapped_column(
+        str_enum(DeadlinePrecision, "deadline_precision")
+    )
+    due_at: Mapped[datetime | None]
+    status: Mapped[VerificationStatus] = mapped_column(
+        str_enum(VerificationStatus, "verification_status")
+    )
+    review_reason: Mapped[ReviewReason | None] = mapped_column(
+        str_enum(ReviewReason, "review_reason")
+    )
+    # The call that proposed the action and category. No cascade, like evidence.
+    model_call_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_calls.id"), index=True
+    )
+
+    course: Mapped[Course] = relationship(lazy="raise")
+
+
 # --- trust layer ----------------------------------------------------------------------
 
+# Exactly one subject column is set, and it is the one subject_type names.
 EVIDENCE_SUBJECT_SQL = (
-    "(subject_type = 'assessment' AND assessment_id IS NOT NULL"
-    " AND assessment_deadline_id IS NULL)"
-    " OR (subject_type = 'assessment_deadline' AND assessment_deadline_id IS NOT NULL"
-    " AND assessment_id IS NULL)"
+    "(subject_type = 'assessment') = (assessment_id IS NOT NULL)"
+    " AND (subject_type = 'assessment_deadline') = (assessment_deadline_id IS NOT NULL)"
+    " AND (subject_type = 'assessment_requirement') = (assessment_requirement_id IS NOT NULL)"
+    " AND (subject_type = 'obligation') = (obligation_id IS NOT NULL)"
+)
+EVIDENCE_FIELD_SQL = (
+    "(subject_type = 'assessment' AND field IN ('title', 'weighting'))"
+    " OR (subject_type = 'assessment_deadline' AND field = 'deadline')"
+    " OR (subject_type = 'assessment_requirement' AND field = 'requirement')"
+    " OR (subject_type = 'obligation' AND field IN ('obligation', 'due_date'))"
 )
 
 
@@ -720,10 +884,7 @@ class EvidenceLink(UUIDPrimaryKey, CreatedAt, Base):
     __tablename__ = "evidence_links"
     __table_args__ = (
         CheckConstraint(EVIDENCE_SUBJECT_SQL, name="one_subject"),
-        CheckConstraint(
-            "(field = 'deadline') = (subject_type = 'assessment_deadline')",
-            name="field_fits_subject",
-        ),
+        CheckConstraint(EVIDENCE_FIELD_SQL, name="field_fits_subject"),
         CheckConstraint("quote_start >= 0 AND quote_start < quote_end", name="quote_ordered"),
         CheckConstraint(
             "(review_reason IS NOT NULL) = (verification_status = 'needs_review')",
@@ -732,6 +893,8 @@ class EvidenceLink(UUIDPrimaryKey, CreatedAt, Base):
         UniqueConstraint(
             "assessment_id",
             "assessment_deadline_id",
+            "assessment_requirement_id",
+            "obligation_id",
             "field",
             "source_span_id",
             "quote_start",
@@ -740,6 +903,8 @@ class EvidenceLink(UUIDPrimaryKey, CreatedAt, Base):
             postgresql_nulls_not_distinct=True,
         ),
         Index("ix_evidence_links_assessment_deadline_id", "assessment_deadline_id"),
+        Index("ix_evidence_links_assessment_requirement_id", "assessment_requirement_id"),
+        Index("ix_evidence_links_obligation_id", "obligation_id"),
     )
 
     subject_type: Mapped[EvidenceSubject] = mapped_column(
@@ -751,6 +916,12 @@ class EvidenceLink(UUIDPrimaryKey, CreatedAt, Base):
     )
     assessment_deadline_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("assessment_deadlines.id", ondelete="CASCADE")
+    )
+    assessment_requirement_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("assessment_requirements.id", ondelete="CASCADE")
+    )
+    obligation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("obligations.id", ondelete="CASCADE")
     )
     field: Mapped[EvidenceField] = mapped_column(str_enum(EvidenceField, "evidence_field"))
     source_span_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source_spans.id"), index=True)
