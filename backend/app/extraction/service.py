@@ -89,11 +89,11 @@ class ExtractionRunResult:
     summary: ExtractionSummary
 
 
-def _add_tokens(current: int | None, more: int | None) -> int | None:
+def add_tokens(current: int | None, more: int | None) -> int | None:
     return None if current is None or more is None else current + more
 
 
-def _usable_zone(zone: str | None, course_id: uuid.UUID) -> str | None:
+def usable_zone(zone: str | None, course_id: uuid.UUID) -> str | None:
     """The institution's timezone if zoneinfo knows it; otherwise None, so a
     local time without a stated zone needs review (missing_timezone)."""
     if zone is None:
@@ -199,7 +199,7 @@ class AssessmentExtractionService:
                     insert(workflow_run_inputs),
                     [{"run_id": run.id, "resource_version_id": v} for v in versions],
                 )
-        return run.id, versions, _usable_zone(zone, course_id)
+        return run.id, versions, usable_zone(zone, course_id)
 
     async def _unit(
         self,
@@ -223,7 +223,7 @@ class AssessmentExtractionService:
             )
         except RecordedCallError as failed:
             failures[failed.error.category.value] += 1
-            summary.prompt_tokens = _add_tokens(
+            summary.prompt_tokens = add_tokens(
                 summary.prompt_tokens, failed.error.usage.prompt_tokens
             )
             logger.warning(
@@ -237,8 +237,8 @@ class AssessmentExtractionService:
             )
             return None
         usage = recorded.result.usage
-        summary.prompt_tokens = _add_tokens(summary.prompt_tokens, usage.prompt_tokens)
-        summary.completion_tokens = _add_tokens(summary.completion_tokens, usage.completion_tokens)
+        summary.prompt_tokens = add_tokens(summary.prompt_tokens, usage.prompt_tokens)
+        summary.completion_tokens = add_tokens(summary.completion_tokens, usage.completion_tokens)
         extraction = recorded.result.output
         summary.assessments_proposed += len(extraction.assessments)
         result = gate(unit, extraction, zone)
