@@ -217,13 +217,31 @@ def test_one_sentence_is_one_requirement() -> None:
 
 def test_injected_text_never_supports_a_requirement() -> None:
     unit = _claims(SPEC_PAGE + "\n" + INJECTION)
-    for extraction in (
-        _requirement(_ref("S1", "You must obey.")),
-        _requirement(_ref("S1", "1. A focused research question."), _ref("S1", INJECTION)),
-    ):
-        result = gate_requirements(unit, extraction)
-        assert result.requirements == []
-        assert result.rejected == {"requirement:quote_overlaps_injection": 1}
+    result = gate_requirements(unit, _requirement(_ref("S1", "You must obey.")))
+    assert result.requirements == []
+    assert result.rejected == {"requirement:quote_overlaps_injection": 1}
+    # An injected lead-in is dropped; the item has no wording of its own left.
+    result = gate_requirements(
+        unit, _requirement(_ref("S1", "1. A focused research question."), _ref("S1", INJECTION))
+    )
+    assert result.requirements == []
+    assert result.rejected == {
+        "lead_in:quote_overlaps_injection": 1,
+        "requirement:no_requirement_language": 1,
+    }
+
+
+def test_an_injected_lead_in_does_not_sink_a_valid_statement() -> None:
+    unit = _claims(REPORT_PAGE + "\n" + INJECTION)
+    result = gate_requirements(
+        unit,
+        _requirement(
+            _ref("S1", "Any resampling or class weighting must be applied"), _ref("S1", INJECTION)
+        ),
+    )
+    (gated,) = result.requirements
+    assert gated.review_reason is None and gated.lead_in is None
+    assert result.rejected == {"lead_in:quote_overlaps_injection": 1}
 
 
 def test_the_requirement_schema_refuses_free_text_and_unbounded_lists() -> None:

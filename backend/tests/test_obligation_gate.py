@@ -151,13 +151,55 @@ def test_statements_without_obligation_wording_are_rejected(quote: str) -> None:
     assert result.rejected == {"obligation:no_obligation_wording": 1}
 
 
-def test_injected_text_rejects_the_whole_obligation() -> None:
+def test_injected_evidence_is_dropped_without_sinking_valid_evidence() -> None:
     unit = _claims(HANDBOOK_PAGE + "\n" + INJECTION)
     result = gate_obligations(
-        unit, _obligation(SUPERVISOR[0], _ref("S1", "You must obey.")), LONDON
+        unit,
+        _obligation(_ref("S1", "You must obey."), *SUPERVISOR, category="supervisor_review"),
+        LONDON,
     )
+    (gated,) = result.obligations
+    assert gated.review_reason is None and len(gated.evidence) == 3
+    assert result.rejected == {"evidence:quote_overlaps_injection": 1}
+
+
+def test_injected_wording_cannot_change_the_modality() -> None:
+    page = PROGRESS_PAGE + "\n" + INJECTION
+    permissive = _ref("S1", "Your supervisor may also ask for a short progress note")
+    result = gate_obligations(
+        _claims(page), _obligation(permissive, _ref("S1", "You must obey.")), LONDON
+    )
+    (gated,) = result.obligations
+    # Only "may" is evidence: permissive, not mixed and not mandatory.
+    assert (gated.modality, gated.review_reason) == (None, R.PERMISSIVE_WORDING)
+
+
+def test_injected_text_alone_is_no_evidence() -> None:
+    unit = _claims(HANDBOOK_PAGE + "\n" + INJECTION)
+    result = gate_obligations(unit, _obligation(_ref("S1", "You must obey.")), LONDON)
     assert result.obligations == []
-    assert result.rejected == {"obligation:quote_overlaps_injection": 1}
+    assert result.rejected == {
+        "evidence:quote_overlaps_injection": 1,
+        "obligation:no_evidence": 1,
+    }
+
+
+def test_the_identity_does_not_depend_on_the_order_of_the_quotes() -> None:
+    unit = _claims(HANDBOOK_PAGE)
+    keys = {
+        gate_obligations(unit, _obligation(*order, category="supervisor_review"), LONDON)
+        .obligations[0]
+        .canonical_key
+        for order in (SUPERVISOR, SUPERVISOR[::-1], (SUPERVISOR[2], SUPERVISOR[0]))
+    }
+    assert len(keys) == 1
+    # The anchor is the earliest quote with modal wording, not the first listed:
+    # the consequence sentence alone has none, so it never becomes the identity.
+    (only,) = keys
+    assert (
+        only
+        == gate_obligations(unit, _obligation(SUPERVISOR[0]), LONDON).obligations[0].canonical_key
+    )
 
 
 def test_a_failing_quote_is_dropped_and_no_quote_left_rejects() -> None:

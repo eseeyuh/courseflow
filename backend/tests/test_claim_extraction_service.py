@@ -302,7 +302,8 @@ async def test_the_hidden_supervisor_review_is_found_and_ambiguity_is_kept_for_r
     # The informational sentence and the injected one are not obligations.
     assert result.summary.rejected == {
         "obligation:no_obligation_wording": 1,
-        "obligation:quote_overlaps_injection": 1,
+        "evidence:quote_overlaps_injection": 1,
+        "obligation:no_evidence": 1,
     }
     assert result.summary.abstained == {"due:relative": 2}  # a lead time is not a date
     by_status = {o.status: o for o in await _rows(sessions, Obligation)}
@@ -339,6 +340,108 @@ async def test_repeated_wording_in_a_new_version_adds_evidence_not_an_obligation
             ).all()
         )
     assert versions == {v1, v2}
+
+
+async def test_two_sources_supporting_different_categories_are_a_kept_conflict(
+    sessions: async_sessionmaker[AsyncSession], course: Course_
+) -> None:
+    await course.ingest("notice", NOTICE, ResourceType.ANNOUNCEMENT)
+    # "submit" is in the quote: the notice's category is supported too, so the
+    # disagreement is real whichever source is processed first.
+    service = ClaimExtractionService(
+        sessions, FakeModel(obligations_script(category="submission_prerequisite")), "obligations"
+    )
+    result = await service.extract_course(course.id)
+    assert result.summary.conflicts == 1
+    (conflict,) = [
+        o for o in await _rows(sessions, Obligation) if o.review_reason is R.CONFLICTING_CATEGORY
+    ]
+    assert conflict.status is V.NEEDS_REVIEW
+    # Re-running never clears it.
+    await service.extract_course(course.id)
+    async with sessions() as session:
+        again = await session.get(Obligation, conflict.id)
+    assert again is not None and again.review_reason is R.CONFLICTING_CATEGORY
+
+
+async def test_an_unsupported_category_from_a_second_source_is_not_a_conflict(
+    sessions: async_sessionmaker[AsyncSession], course: Course_
+) -> None:
+    await course.ingest("notice", NOTICE, ResourceType.ANNOUNCEMENT)
+    # No "approve" in the quote: the notice cannot support "approval".
+    service = ClaimExtractionService(
+        sessions, FakeModel(obligations_script(category="approval")), "obligations"
+    )
+    result = await service.extract_course(course.id)
+    assert result.summary.conflicts == 0
+    supervisor = next(o for o in await _rows(sessions, Obligation) if o.status is V.VERIFIED)
+    assert supervisor.category is ObligationCategory.SUPERVISOR_REVIEW
+    assert len(await _links(sessions, obligation_id=supervisor.id)) == 2  # both sources
+
+
+def _uncertain(user: str) -> dict[str, Any]:
+    """The same sentence, cited with an assessment ID that was never issued."""
+    if "Dissertation handbook" not in user:
+        return {"obligations": []}
+    return {
+        "obligations": [
+            _obligation(_cite(user, SUPERVISOR), category="supervisor_review", assessment="A9")
+        ]
+    }
+
+
+@pytest.mark.parametrize("uncertain_first", [False, True])
+async def test_one_verified_source_verifies_and_an_uncertain_one_never_demotes(
+    sessions: async_sessionmaker[AsyncSession], course: Course_, uncertain_first: bool
+) -> None:
+    verified = ClaimExtractionService(sessions, FakeModel(obligations_script()), "obligations")
+    uncertain = ClaimExtractionService(sessions, FakeModel(_uncertain), "obligations")
+    for service in (uncertain, verified) if uncertain_first else (verified, uncertain):
+        await service.extract_course(course.id, [course.versions["handbook"]])
+
+    supervisor = next(
+        o
+        for o in await _rows(sessions, Obligation)
+        if o.category is ObligationCategory.SUPERVISOR_REVIEW and o.modality is not None
+    )
+    assert (supervisor.status, supervisor.review_reason) == (V.VERIFIED, None)
+    assert supervisor.assessment_id is not None  # from the verified source only
+
+
+def _reordered(user: str) -> dict[str, Any]:
+    """The verified script, with the supervisor obligation's quotes reversed."""
+    answer = obligations_script()(user)
+    for found in answer["obligations"]:
+        if found["evidence"] and SUPERVISOR in found["evidence"][0]["quote"]:
+            found["evidence"] = [
+                _cite(user, "Send the draft at least 5 working days before the deadline."),
+                *found["evidence"],
+            ]
+    return answer
+
+
+async def test_reordered_quotes_deduplicate_identically(
+    sessions: async_sessionmaker[AsyncSession], course: Course_
+) -> None:
+    first = await ClaimExtractionService(
+        sessions, FakeModel(obligations_script()), "obligations"
+    ).extract_course(course.id)
+    again = await ClaimExtractionService(
+        sessions, FakeModel(_reordered), "obligations"
+    ).extract_course(course.id)
+    assert again.summary.created == 0 and again.summary.merged == first.summary.created
+    assert len(await _rows(sessions, Obligation)) == first.summary.created
+
+
+async def test_rerunning_obligations_adds_nothing(
+    sessions: async_sessionmaker[AsyncSession], course: Course_
+) -> None:
+    service = ClaimExtractionService(sessions, FakeModel(obligations_script()), "obligations")
+    first = await service.extract_course(course.id)
+    again = await service.extract_course(course.id)
+    assert again.summary.created == 0 and again.summary.merged == first.summary.created
+    assert again.summary.links_created == 0
+    assert again.summary.links_existing == first.summary.links_created
 
 
 # --- boundary and failures ----------------------------------------------------------------

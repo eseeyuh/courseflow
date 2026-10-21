@@ -12,15 +12,17 @@ of evidence kept.
   it is verified once any verified source supports it (as a deadline value
   is). Otherwise it keeps the most important reason, in ``ReviewReason``
   order, so the result does not depend on processing order.
-- An obligation aggregates values proposed by several calls (category,
-  modality, assessment, due date), so it is verified only while every
-  source verifies it. Two sources that disagree on a value make it a
-  conflict (``conflicting_*``): the value becomes unknown where it can be
-  (modality, assessment, due date; the first category is kept), the row
-  needs review, and no later source clears it. A value one source states
-  and another leaves out is not a disagreement: the stated one is kept.
-- Its canonical action and category are the first proposing call's
-  (``model_call_id``); lineage of every link is its ModelCall and run.
+- An obligation row stores only values its evidence supports: a modality
+  only when the wording determines it, an assessment only when the link is
+  supported, a due date only when verified (an unverified one keeps its
+  evidence, for review). One verified source verifies it, as for a
+  requirement; an uncertain source adds its evidence and the values the row
+  lacks, and never demotes it. Two sources supporting different values
+  (category, modality, assessment, due date) are a conflict
+  (``conflicting_*``): the value becomes unknown where it can be (the first
+  category is kept), the row needs review, and no later source clears it.
+- Its canonical action is the first proposing call's (``model_call_id``);
+  lineage of every link is its ModelCall and run.
 - Every write is idempotent (unique constraints, ON CONFLICT DO NOTHING):
   re-running a unit adds nothing.
 """
@@ -37,7 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import AssessmentRequirement, EvidenceLink, Obligation
 from app.domain.enums import EvidenceField, EvidenceSubject, ReviewReason, VerificationStatus
 from app.extraction.gate import GatedDeadline, Located
-from app.extraction.obligations import GatedObligation
+from app.extraction.obligations import REASON_ORDER, GatedObligation
 from app.extraction.persist import Lineage
 from app.extraction.requirements import GatedRequirement
 
@@ -79,10 +81,15 @@ async def _links(
     field: EvidenceField,
     lineage: Lineage,
     subject: dict[str, object],
+    *,
+    review_reason: ReviewReason | None = None,
 ) -> None:
-    """One link per exact occurrence; a non-unique quote's links need review."""
-    status = evidence.status
-    reason = None if status is V.VERIFIED else R.NON_UNIQUE_QUOTE_LOCATION
+    """One link per exact occurrence; a non-unique quote's links need review,
+    and so do the links of a fact with its own review_reason."""
+    reason = first_reason(
+        review_reason, None if evidence.status is V.VERIFIED else R.NON_UNIQUE_QUOTE_LOCATION
+    )
+    status = V.VERIFIED if reason is None else V.NEEDS_REVIEW
     for location in evidence.locations:
         created = await session.execute(
             insert(EvidenceLink)
@@ -163,6 +170,12 @@ async def persist_requirements(
 # --- obligations --------------------------------------------------------------------------
 
 
+def _verified_due(obligation: GatedObligation) -> GatedDeadline | None:
+    """The due date a row may store: only a verified one."""
+    due = obligation.due
+    return due if due is not None and due.status is V.VERIFIED else None
+
+
 def _due_values(due: GatedDeadline | None) -> dict[str, object]:
     if due is None:
         return {
@@ -184,39 +197,72 @@ def _due_values(due: GatedDeadline | None) -> dict[str, object]:
     }
 
 
+def _category_supported(row: Obligation) -> bool:
+    """A stored row's category is unsupported only while that is its reason
+    (CATEGORY_UNSUPPORTED is always reported first: obligations.REASON_ORDER)."""
+    return row.review_reason is not R.CATEGORY_UNSUPPORTED
+
+
 def _merge(row: Obligation, obligation: GatedObligation) -> list[ReviewReason]:
-    """Merge one more source into ``row``; the conflicts it found."""
+    """Merge one more source into ``row``: adopt the values it supports that
+    the row lacks; the conflicts where both support different values. A value
+    already in conflict is not looked at again."""
     conflicts = []
-    if obligation.category is not row.category:
-        conflicts.append(R.CONFLICTING_CATEGORY)
-    # The modal outcome: a modality, or why there is none.
-    modal_reasons = {R.PERMISSIVE_WORDING, R.MIXED_MODALITY, R.CONFLICTING_MODALITY}
-    row_modal = (row.modality, row.review_reason if row.review_reason in modal_reasons else None)
-    new_modal = (
-        obligation.modality,
-        obligation.review_reason if obligation.review_reason in modal_reasons else None,
-    )
-    if row.review_reason is not R.CONFLICTING_MODALITY and row_modal != new_modal:
-        conflicts.append(R.CONFLICTING_MODALITY)
-        row.modality = None
-    new_assessment = obligation.assessment.assessment_id if obligation.assessment else None
-    if row.review_reason is not R.CONFLICTING_ASSESSMENT_LINK and new_assessment is not None:
+    if row.review_reason is not R.CONFLICTING_CATEGORY and obligation.category_supported:
+        if not _category_supported(row):
+            row.category = obligation.category
+        elif row.category is not obligation.category:
+            conflicts.append(R.CONFLICTING_CATEGORY)
+    if row.review_reason is not R.CONFLICTING_MODALITY and obligation.modality is not None:
+        if row.modality is None:
+            row.modality = obligation.modality
+        elif row.modality is not obligation.modality:
+            conflicts.append(R.CONFLICTING_MODALITY)
+            row.modality = None
+    if row.review_reason is not R.CONFLICTING_ASSESSMENT_LINK and obligation.assessment:
+        new_assessment = obligation.assessment.assessment_id
         if row.assessment_id is None:
             row.assessment_id = new_assessment
         elif row.assessment_id != new_assessment:
             conflicts.append(R.CONFLICTING_ASSESSMENT_LINK)
             row.assessment_id = None
-    new_due = _due_values(obligation.due)
-    if row.review_reason is not R.CONFLICTING_DUE_DATE and obligation.due is not None:
-        stated = (row.due_date, row.due_time, row.due_timezone)
+    due = _verified_due(obligation)
+    if row.review_reason is not R.CONFLICTING_DUE_DATE and due is not None:
+        values = _due_values(due)
         if row.due_date is None:
-            for name, value in new_due.items():
+            for name, value in values.items():
                 setattr(row, name, value)
-        elif stated != (new_due["due_date"], new_due["due_time"], new_due["due_timezone"]):
+        elif (row.due_date, row.due_time) != (values["due_date"], values["due_time"]):
             conflicts.append(R.CONFLICTING_DUE_DATE)
-            for name in new_due:
+            for name in values:
                 setattr(row, name, None)
     return conflicts
+
+
+def _merged_status(
+    row: Obligation,
+    obligation: GatedObligation,
+    was: VerificationStatus,
+    sticky: ReviewReason | None,
+) -> tuple[VerificationStatus, ReviewReason | None]:
+    """A conflict, once found, decides. Otherwise one verified source verifies
+    the obligation (an uncertain one never demotes it); else the most
+    important reason of either source that still applies."""
+    if sticky is not None:
+        return V.NEEDS_REVIEW, sticky
+    if V.VERIFIED in (was, obligation.status):
+        return V.VERIFIED, None
+    reasons = set(obligation.reasons) | {row.review_reason} - {None}
+    # ``row.review_reason`` is still the pre-merge one here: the row's category
+    # is supported if it was, or if this source supplied a supported one.
+    if _category_supported(row) or obligation.category_supported:
+        reasons.discard(R.CATEGORY_UNSUPPORTED)
+    else:
+        reasons.add(R.CATEGORY_UNSUPPORTED)
+    ordered = [r for r in REASON_ORDER if r in reasons]
+    if not ordered:  # two needs_review sources always leave a reason
+        raise RuntimeError("an unverified obligation lost its review reason")
+    return V.NEEDS_REVIEW, ordered[0]
 
 
 async def persist_obligations(
@@ -235,7 +281,7 @@ async def persist_obligations(
                 canonical_action=obligation.action,
                 category=obligation.category,
                 modality=obligation.modality,
-                **_due_values(obligation.due),
+                **_due_values(_verified_due(obligation)),
                 status=obligation.status,
                 review_reason=obligation.review_reason,
                 model_call_id=lineage.model_call_id,
@@ -257,26 +303,28 @@ async def persist_obligations(
             if row is None:
                 raise RuntimeError("obligation vanished during persistence")
             row_id = row.id
+            was = row.status
             sticky = row.review_reason if row.review_reason in CONFLICTS else None
             conflicts = _merge(row, obligation)
             counts.conflicts += len(conflicts)
-            # A conflict, once found, is the reason; then the sources' own.
-            reason = (
-                sticky
-                or first_reason(*conflicts)
-                or first_reason(row.review_reason, obligation.review_reason)
+            row.status, row.review_reason = _merged_status(
+                row, obligation, was, sticky or first_reason(*conflicts)
             )
-            if reason is None:  # both sources verify it, and they agree
-                row.status, row.review_reason = V.VERIFIED, None
-            else:
-                row.status, row.review_reason = V.NEEDS_REVIEW, reason
         else:
             counts.created += 1
         subject = {"subject_type": EvidenceSubject.OBLIGATION, "obligation_id": row_id}
         for evidence in obligation.evidence:
             await _links(session, counts, evidence, EvidenceField.OBLIGATION, lineage, subject)
         if obligation.due is not None:
+            # An unverified due date is not stored as a value; its evidence is
+            # kept for review with the due date's own reason.
             await _links(
-                session, counts, obligation.due.evidence, EvidenceField.DUE_DATE, lineage, subject
+                session,
+                counts,
+                obligation.due.evidence,
+                EvidenceField.DUE_DATE,
+                lineage,
+                subject,
+                review_reason=obligation.due.review_reason,
             )
     return counts

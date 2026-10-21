@@ -12,8 +12,8 @@ line such as "Your specification must include"). The gate
 1. the assessment ID must have been issued for the unit, else rejected
    (``assessment_unknown``);
 2. the statement quote must be located exactly, outside any injection
-   fragment, else rejected (gate.locate's reasons); a lead-in overlapping
-   an injection fragment rejects the candidate too;
+   fragment, else rejected (gate.locate's reasons); a lead-in that fails
+   (injected text included) is dropped and the statement judged without it;
 3. requirement wording (``statements.MANDATORY`` or ``RECOMMENDED``) must be
    in the statement quote itself, or in a lead-in quote that structurally
    governs it: in the same span, a whole line above the statement's list
@@ -152,10 +152,8 @@ def gate_requirements(
             try:
                 lead_in, lead_in_quote = locate(unit, proposed.lead_in)
             except Rejected as rejected:
-                if rejected.reason is RejectionReason.QUOTE_OVERLAPS_INJECTION:
-                    # Citing injected text taints the whole candidate.
-                    result.rejected[f"requirement:{rejected.reason}"] += 1
-                    continue
+                # Dropped on its own (injected text included): the statement
+                # is judged without it.
                 result.rejected[f"lead_in:{rejected.reason}"] += 1
         reasons: list[ReviewReason] = []
         if statement.status is not V.VERIFIED:
