@@ -63,12 +63,20 @@ def line_at(text: str, offset: int) -> int:
     return text.count("\n", 0, offset)
 
 
+def _body_start(line: Line) -> int:
+    """Where a line's text starts after any list marker: the period of "1." is
+    numbering, not the end of a sentence."""
+    marker = LIST_MARKER.match(line.text)
+    return line.start + (marker.end() if marker else 0)
+
+
 def _sentence_start(text: str, offset: int) -> int:
     all_lines = lines(text)
     index = line_at(text, offset)
     while True:
         line = all_lines[index]
-        ends = [m.end() for m in _TERMINAL.finditer(text, line.start, min(offset, line.end))]
+        begin = _body_start(line)
+        ends = [m.end() for m in _TERMINAL.finditer(text, begin, min(offset, line.end))]
         if ends:
             return ends[-1]
         if index == 0 or not line.continues or line.is_list_item:
@@ -83,7 +91,7 @@ def _sentence_end(text: str, offset: int) -> int:
     index = line_at(text, offset)
     while True:
         line = all_lines[index]
-        found = _TERMINAL.search(text, max(offset, line.start), line.end)
+        found = _TERMINAL.search(text, max(offset, _body_start(line)), line.end)
         if found:
             return found.end()
         following = all_lines[index + 1] if index + 1 < len(all_lines) else None
@@ -186,3 +194,61 @@ def modal_wording(text: str) -> Modal:
         recommended=bool(RECOMMENDED.search(text)),
         permissive=any(outside(m) for m in PERMISSIVE.finditer(text)),
     )
+
+
+def sentence_bounds(text: str, offset: int) -> tuple[int, int]:
+    """The one sentence of ``text`` containing ``offset``."""
+    return _sentence_start(text, offset), _sentence_end(text, offset)
+
+
+def governing_lead_in(text: str, offset: int) -> tuple[int, int] | None:
+    """The lead-in line that introduces the list item ``offset`` is in, within
+    one span: walk up over list items and their wrapped lines to the first
+    line that is neither; that whole line, if ``governs_list_item`` confirms
+    it. None when ``offset`` is not in a list item or nothing introduces it."""
+    all_lines = lines(text)
+    index = line_at(text, offset)
+    while index > 0 and not all_lines[index].is_list_item and all_lines[index].continues:
+        index -= 1  # a wrapped line: its item starts above
+    if not all_lines[index].is_list_item:
+        return None
+    above = index
+    while above > 0 and (all_lines[above - 1].is_list_item or all_lines[above - 1].continues):
+        above -= 1
+    if above == 0:
+        return None
+    line = all_lines[above - 1]
+    stripped = line.text.strip()
+    if not stripped:
+        return None
+    start = line.start + line.text.index(stripped)
+    bounds = (start, start + len(stripped))
+    item = all_lines[index]
+    return bounds if governs_list_item(text, bounds, (item.start, item.end)) else None
+
+
+def first_list_item_after_lead_in(text: str, start: int, end: int) -> int | None:
+    """When [start, end) begins on a lead-in line and runs into the list item
+    it introduces (a merged quote), the offset where that item starts."""
+    all_lines = lines(text)
+    first = line_at(text, start)
+    for line in all_lines[first + 1 :]:
+        if line.start >= end:
+            return None
+        if line.is_list_item:
+            lead = governing_lead_in(text, line.start)
+            return line.start if lead is not None and lead[0] <= start < lead[1] + 1 else None
+        if not line.continues:
+            return None
+    return None
+
+
+def first_modal_offset(text: str) -> int | None:
+    """Where the first modal word of any kind is in ``text``, if any."""
+    found = [
+        m.start()
+        for pattern in (_PROHIBITION, MANDATORY, RECOMMENDED, PERMISSIVE)
+        for m in [pattern.search(text)]
+        if m is not None
+    ]
+    return min(found) if found else None

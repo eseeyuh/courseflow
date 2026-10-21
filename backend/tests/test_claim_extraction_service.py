@@ -274,7 +274,7 @@ async def test_requirements_come_only_from_briefs_with_verbatim_text_and_lineage
     assert run.workflow_version == "requirement-extraction/v1"
     assert call.prompt_version == "requirement-extraction/v1" and call.workflow_run_id == run.id
     assert all(link.model_call_id == call.id and link.workflow_run_id == run.id for link in links)
-    assert run.summary["gate_version"] == "requirement-gate/v1"
+    assert run.summary["gate_version"] == "claim-gate/v2"
 
 
 async def test_rerunning_requirements_adds_nothing(

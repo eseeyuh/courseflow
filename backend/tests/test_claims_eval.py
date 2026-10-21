@@ -174,3 +174,18 @@ def test_obligations_report_the_killer_case_guards_and_extras(golden: GoldenData
     # A verified claim on an ambiguous statement fails the guard.
     claims[2] = _claim(100, 110)
     assert score_obligations(golden, claims, locations)["ambiguous_never_verified"] is False
+
+
+def test_a_replay_keys_each_output_by_task_and_material() -> None:
+    from app.evaluation.claims.run import ReplayMissing, recorded_by_material
+
+    recorded = [
+        {"nonce_free_material_sha256": "a" * 64, "output": {"requirements": []}},
+        # The same brief, read by the obligation task: a different key.
+        {"nonce_free_material_sha256": "a" * 64, "output": {"obligations": []}},
+    ]
+    assert set(recorded_by_material(recorded)) == {("requirements", "a" * 64),
+                                                   ("obligations", "a" * 64)}  # fmt: skip
+    clash = [*recorded, {"nonce_free_material_sha256": "a" * 64, "output": {"obligations": [1]}}]
+    with pytest.raises(ReplayMissing, match="two different"):
+        recorded_by_material(clash)

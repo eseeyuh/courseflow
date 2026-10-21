@@ -7,10 +7,11 @@
 The model proposes an action in its own words, one of the narrow
 categories, optionally the assessment it concerns (local ID) and an
 explicit due date, and the quotes that state it. It never states the
-modality: the gate (``obligation-gate/v1``) derives it from the cited
+modality: the gate (``claim-gate/v2``) derives it from the cited
 quotes alone, and decides each candidate on its own:
 
-1. each quote must be located exactly; a failing quote, injected text
+1. each quote is located by ``claim_gate.locate_quote`` (whitespace runs
+   match any whitespace; exact original offsets); a failing quote, injected text
    included, is dropped on its own and the candidate is judged on the
    quotes left, so injected text can neither support a claim nor sink a
    valid one; no quote left rejects it (``no_evidence``);
@@ -34,7 +35,7 @@ quotes alone, and decides each candidate on its own:
    A rejected due date drops only the due date;
 6. non-unique quote locations keep every occurrence, needs_review.
 
-Identity is the anchor sentence of the earliest quote, in source order,
+Identity is the sentence of the first modal word of the earliest quote, in source order,
 that has modal wording (``canonical_location``, ``statements.statement_key``):
 never the model's wording or the order of its quotes.
 """
@@ -55,6 +56,8 @@ from app.domain.enums import (
     ReviewReason,
     VerificationStatus,
 )
+from app.extraction.claim_gate import GATE_VERSION as CLAIM_GATE_VERSION
+from app.extraction.claim_gate import locate_quote
 from app.extraction.claim_units import AssessmentRef, ClaimUnit
 from app.extraction.gate import (
     GatedDeadline,
@@ -62,14 +65,19 @@ from app.extraction.gate import (
     Located,
     Rejected,
     check_deadline,
-    locate,
 )
 from app.extraction.requirements import LocalAssessmentId
 from app.extraction.schema import DeadlineOut, EvidenceRef, StrictModel
-from app.extraction.statements import anchor_text, modal_wording, statement_key, words
+from app.extraction.statements import (
+    anchor_text,
+    first_modal_offset,
+    modal_wording,
+    statement_key,
+    words,
+)
 from app.extraction.units import ExtractionUnit
 
-GATE_VERSION = "obligation-gate/v1"
+GATE_VERSION = CLAIM_GATE_VERSION  # shared by requirements and obligations
 
 V = VerificationStatus
 R = ReviewReason
@@ -208,7 +216,7 @@ def _located(
     evidence, quotes = [], []
     for ref in proposed.evidence:
         try:
-            located, quote = locate(claim_unit.unit, ref)
+            located, quote = locate_quote(claim_unit.unit, ref)
         except Rejected as rejected:
             result.rejected[f"evidence:{rejected.reason}"] += 1
             continue
@@ -250,7 +258,7 @@ def _due(
         status="stated", due_date=due.due_date, due_time=due.due_time, evidence=due.evidence
     )
     try:
-        gated, _ = check_deadline(claim_unit.unit, stated, zone, key)
+        gated, _ = check_deadline(claim_unit.unit, stated, zone, key, locate_quote)
     except Rejected as rejected:
         result.rejected[f"due:{rejected.reason}"] += 1
         return None
@@ -261,8 +269,10 @@ def canonical_location(
     unit: ExtractionUnit, evidence: list[Located], quotes: list[str]
 ) -> GatedEvidence:
     """The identity anchor: among the quotes with modal wording, the occurrence
-    earliest in the source (span order, then offsets). Independent of the
-    order in which the model listed its quotes."""
+    earliest in the source (span order, then offsets), narrowed to its first
+    modal word, so the anchor is the one sentence that states the action,
+    whatever else a merged quote covers. Independent of the order in which
+    the model listed its quotes."""
     order = {span.span_id: i for i, span in enumerate(unit.spans)}
     qualifying = [
         location
@@ -270,7 +280,10 @@ def canonical_location(
         if modal_wording(quote).kinds
         for location in located.locations
     ]
-    return min(qualifying, key=lambda e: (order[e.span_id], e.quote_start, e.quote_end))
+    first = min(qualifying, key=lambda e: (order[e.span_id], e.quote_start, e.quote_end))
+    text = unit.resolve_by_id(first.span_id).excerpt[first.quote_start : first.quote_end]
+    at = first.quote_start + (first_modal_offset(text) or 0)
+    return GatedEvidence(first.span_id, at, at + 1)
 
 
 def gate_obligations(

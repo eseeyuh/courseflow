@@ -32,6 +32,7 @@ import re
 import unicodedata
 import uuid
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, time
 
@@ -254,11 +255,16 @@ def _role(quote: str, key: str) -> None:
 
 
 def check_deadline(
-    unit: ExtractionUnit, proposed: DeadlineOut, institution_timezone: str | None, key: str
+    unit: ExtractionUnit,
+    proposed: DeadlineOut,
+    institution_timezone: str | None,
+    key: str,
+    locator: Callable[[ExtractionUnit, EvidenceRef], tuple[Located, str]] | None = None,
 ) -> tuple[GatedDeadline, str]:
+    """``locator`` finds the quote (default: exact ``locate``, this gate's rule)."""
     if proposed.evidence is None or proposed.due_date is None:  # the schema forbids it
         raise Rejected(RejectionReason.SCHEMA_VIOLATION)
-    evidence, quote = locate(unit, proposed.evidence)
+    evidence, quote = (locator or locate)(unit, proposed.evidence)
     try:
         parsed = parse_deadline_quote(quote)
         _role(quote, key)

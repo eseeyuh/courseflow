@@ -60,7 +60,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.ai.model_calls import RecordedCallError, call_structured_recorded
 from app.ai.prompts import load_prompt
-from app.ai.provider import ChatMessage, ModelInfo, StructuredResult
+from app.ai.provider import ChatMessage, ModelInfo, StructuredResult, TokenUsage
 from app.db.models import (
     Assessment,
     AssessmentRequirement,
@@ -86,6 +86,7 @@ from app.evaluation.assessments.run import (
     without_injection,
 )
 from app.evaluation.northbridge.labels import REPO_ROOT, GoldenDataset, load_golden
+from app.extraction.claim_gate import GATE_VERSION as CLAIM_GATE_VERSION
 from app.extraction.claim_units import (
     AssessmentRef,
     ClaimUnit,
@@ -255,6 +256,60 @@ class LimitedProvider:
         return await self.inner.chat_structured(
             messages, schema, role=role, temperature=temperature, thinking=thinking
         )
+
+
+class ReplayMissing(RuntimeError):
+    pass
+
+
+@dataclass(slots=True)
+class ClaimReplayProvider:
+    """Answers each call with the output a live run recorded for exactly that
+    material (nonce-free hash). No network, no tokens."""
+
+    by_material: dict[tuple[str, str], dict[str, Any]]
+    name: str = "replay"
+
+    def model_for(self, role: ModelRole) -> str:
+        return "replay:recorded-claim-outputs"
+
+    async def list_models(self) -> list[ModelInfo]:
+        return []
+
+    async def chat_structured[T: BaseModel](
+        self,
+        messages: Sequence[ChatMessage],
+        schema: type[T],
+        *,
+        role: ModelRole,
+        temperature: float | None = None,
+        thinking: bool | None = None,
+    ) -> StructuredResult[T]:
+        # A brief is read by both tasks: the output's list field names the task.
+        key = (next(iter(schema.model_fields)), _sha(spans_of(messages[-1].content)))
+        if key not in self.by_material:
+            raise ReplayMissing(f"no recorded {key[0]} output for material {key[1][:12]}")
+        return StructuredResult(
+            output=schema.model_validate(self.by_material[key]),
+            model=self.model_for(role),
+            usage=TokenUsage(prompt_tokens=0, completion_tokens=0, reasoning_tokens=0),
+            attempts=1,
+        )
+
+
+def recorded_by_material(
+    recorded: Sequence[dict[str, Any]],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Each recorded output under (its task's list field, its material hash);
+    a key recorded twice with different outputs is ambiguous and stops the
+    replay."""
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for item in recorded:
+        key = (next(iter(item["output"])), item["nonce_free_material_sha256"])
+        if key in out and out[key] != item["output"]:
+            raise ReplayMissing(f"material {key[1][:12]} has two different recorded outputs")
+        out[key] = item["output"]
+    return out
 
 
 # --- scoring ------------------------------------------------------------------------------
@@ -751,9 +806,14 @@ def _sha(text: str) -> str:
 # --- report -------------------------------------------------------------------------------
 
 
+def report_name() -> str:
+    """Reports of earlier gates keep their names (gate v1: no suffix)."""
+    return f"claim-extraction-v1-fast-thinking-off-gate-{CLAIM_GATE_VERSION.rsplit('/v', 1)[1]}"
+
+
 def write_report(result: dict[str, Any]) -> tuple[Path, Path, Path]:
     outputs = result.pop("outputs")
-    name = "claim-extraction-v1-fast-thinking-off"
+    name = report_name()
     REPORTS.mkdir(parents=True, exist_ok=True)
     RUNS.mkdir(parents=True, exist_ok=True)
     paths = (REPORTS / f"{name}.json", REPORTS / f"{name}.md", RUNS / f"{name}-outputs.json")
@@ -788,8 +848,11 @@ def markdown(r: dict[str, Any]) -> str:
             f"(sha256 `{m['dataset']['sha256'][:12]}…`), prompts {', '.join(f'`{p}`' for p in m['prompts'])}, "
             f"gates {', '.join(f'`{g}`' for g in m['gates'])}, model `{m['model']}`, thinking off, "
             f"temperature 0, output cap {m['output_token_cap_per_request']} tokens, spend cap "
-            f"${m['spend_cap_usd']}, run {m['run_at']}. Assessments {m['assessments']}. "
-            "Real Nebius Token Factory calls; every number below is measured."
+            f"${m['spend_cap_usd']}, run {m['run_at']}. Assessments {m['assessments']}. "(
+                "Recorded outputs replayed through the current gate: no model call."
+                if m["model"].startswith("replay:")
+                else "Real Nebius Token Factory calls; every number below is measured."
+            )
         ),
         "",
         (
@@ -873,6 +936,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--live", action="store_true", help="make the paid model calls")
     parser.add_argument("--spend-cap", type=Decimal, default=MAX_SPEND_USD)
     parser.add_argument("--expect-calls", type=int, help="refuse unless the plan has this many")
+    parser.add_argument(
+        "--replay-outputs",
+        type=Path,
+        help="replay a live run's recorded outputs through the current gate (no model call)",
+    )
     args = parser.parse_args(argv)
     settings = get_settings()
     golden = load_golden()
@@ -885,7 +953,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         finally:
             await provider.aclose()
 
-    info = asyncio.run(catalog())
+    info = (
+        ModelInfo("replay:recorded-claim-outputs", None, Decimal(0), Decimal(0))
+        if args.replay_outputs
+        else asyncio.run(catalog())  # no network for a replay
+    )
     planned = plan_calls(golden)
     plan = describe_plan(
         planned, info, settings.ai_max_attempts, settings.ai_max_repair_attempts, args.spend_cap
@@ -893,6 +965,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.expect_calls is not None and args.expect_calls != len(planned):
         plan["problems"].append(f"{len(planned)} calls planned, {args.expect_calls} expected")
     print(json.dumps({"plan": plan}, indent=2))
+    if args.replay_outputs:
+        recorded = json.loads(args.replay_outputs.read_text(encoding="utf-8"))
+        replay = ClaimReplayProvider(recorded_by_material(recorded))
+        result = asyncio.run(
+            run_live(info, settings, golden, args.spend_cap, len(planned), model=replay)
+        )
+        result.pop("outputs")
+        RUNS.mkdir(parents=True, exist_ok=True)
+        gate = CLAIM_GATE_VERSION.replace("/", "-")
+        out = RUNS / f"{args.replay_outputs.stem}-replay-{gate}.json"
+        out.write_text(
+            json.dumps(result, indent=2, sort_keys=True, default=str) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        print(json.dumps({"status": "replayed", "result": out.as_posix()}, indent=2))
+        print(markdown(result))
+        return 0
     if plan["problems"] or not args.live:
         return 4 if plan["problems"] else 0
     try:

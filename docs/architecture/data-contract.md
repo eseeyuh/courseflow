@@ -165,6 +165,10 @@ A `ModelCall` belongs to a `WorkflowRun` when made inside one. Per-attempt detai
 | MaterialMapping | The material genuinely teaches or explains the requirement; the span identifies where. |
 | ChangeEvent impact | The changed version can be traced to the affected object(s). |
 
+**Quote location.** Evidence is always the span's original text between exact code-point offsets, never the model's quote. Assessment facts (`assessment-gate/v3`) need an exact substring. Requirements and obligations (`claim-gate/v2`) also accept a quote whose whitespace differs: any run of whitespace in the quote matches any run of whitespace in the span (a wrapped PDF line), while case, punctuation, hyphens and characters must match exactly. Every distinct match is a location, so a quote that matches more than once is `needs_review` (`non_unique_quote_location`). Injection overlap is checked on the resolved original offsets.
+
+**One sentence, one requirement.** A requirement is the one source sentence its quote is evidence for. A quote merged with the lead-in above its list item starts at the item, and each location is cut to that sentence, so merged quotation text never creates a merged requirement or supports a neighbouring one. A list item's requirement wording may come from the lead-in the source structure ties to it (the line introducing the list in the same span, or the section's heading span), derived deterministically, never from the model.
+
 ## 6. Stability rules
 
 The following must stay stable after v0.1.0. Changes need a migration, an explanation, and an ADR if architectural:
