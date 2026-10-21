@@ -222,6 +222,7 @@ class RejectionReason(StrEnum):
     WEIGHTING_UNSUPPORTED = "weighting_unsupported"
     SCHEMA_VIOLATION = "schema_violation"
     MODEL_DATE_MISMATCH = "model_date_mismatch"
+    MODEL_DATE_INVALID = "model_date_invalid"  # not a calendar date (2026-13-01)
     MODEL_TIME_MISMATCH = "model_time_mismatch"
     MODEL_TIME_INVALID = "model_time_invalid"
     MONTH_ONLY = "month_only"  # a month, never a date
