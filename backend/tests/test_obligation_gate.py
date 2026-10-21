@@ -381,3 +381,36 @@ def test_process_obligations_are_not_mistaken_for_content(
     )
     (gated,) = result.obligations
     assert gated.modality is ObligationModality.MANDATORY
+
+
+# --- obligation-extraction/v2 few-shot examples ---------------------------------------------
+
+
+def test_the_few_shot_examples_are_what_the_gate_decides() -> None:
+    """The examples in the prompt must not teach anything the gate contradicts."""
+    import json
+    import re
+
+    from app.ai.prompts import load_prompt
+
+    system = load_prompt("obligation-extraction/v2").system
+    materials = re.findall(r"Material:\n\[S1\] [^\n]*\n(.*?)\nAnswer", system, re.DOTALL)
+    answers = re.findall(r'^\{"obligations".*\}$', system, re.MULTILINE)
+    gated = [
+        gate_obligations(
+            _claims(material), ObligationExtraction.model_validate(json.loads(answer)), LONDON
+        )
+        for material, answer in zip(materials, answers, strict=True)
+    ]
+    mandatory, permissive, content = gated
+    assert [(o.modality, o.review_reason) for o in mandatory.obligations] == [
+        (ObligationModality.MANDATORY, None)
+    ]
+    assert [(o.modality, o.review_reason) for o in permissive.obligations] == [
+        (None, R.PERMISSIVE_WORDING)
+    ]
+    assert content.obligations == []
+    # Had the model proposed the content example, the gate rejects it.
+    essay = "Your essay must include a reference list in Harvard style."
+    rejected = gate_obligations(_claims(essay), _obligation(_ref("S1", essay)), LONDON)
+    assert rejected.rejected == {"obligation:wrong_claim_type": 1}

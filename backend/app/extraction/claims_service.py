@@ -124,11 +124,16 @@ class ClaimExtractionService:
         role: ModelRole = ModelRole.FAST,
         temperature: float | None = 0.0,
         thinking: bool | None = None,
+        prompt_version: str | None = None,
     ) -> None:
+        """``prompt_version`` overrides the task's default prompt (an evaluated
+        variant of the same task, e.g. ``obligation-extraction/v2``)."""
         self._sessions = session_factory
         self._provider = provider
         self._spec = TASKS[task]
-        self._prompt = load_prompt(self._spec.prompt_version)
+        self._prompt = load_prompt(prompt_version or self._spec.prompt_version)
+        if not self._prompt.version.startswith(self._spec.prompt_version.rsplit("/", 1)[0]):
+            raise ValueError(f"{self._prompt.version} is not a {task} prompt")
         self._role = role
         self._temperature = temperature
         self._thinking = thinking

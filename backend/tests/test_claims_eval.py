@@ -195,3 +195,19 @@ def test_reports_are_named_by_gate_version() -> None:
     from app.evaluation.claims.run import report_name
 
     assert report_name() == "claim-extraction-v1-fast-thinking-off-gate-v3"
+
+
+def test_an_obligation_variant_plans_only_obligation_calls(golden: GoldenDataset) -> None:
+    from app.evaluation.claims.run import EvalOptions, report_name
+
+    variant = EvalOptions(("obligations",), "obligation-extraction/v2")
+    planned = plan_calls(golden, variant)
+    assert [p.task for p in planned].count("obligations") == 12
+    assert planned[-1].task == "control" and len(planned) == 13
+    assert variant.prompt_for("control") == "obligation-extraction/v2"
+    assert report_name(variant) == "obligation-extraction-v2-obligations-fast-thinking-off-gate-v3"
+    # The few-shot examples cost input tokens on every call.
+    baseline = plan_calls(golden, EvalOptions(("obligations",)))
+    assert sum(p.estimated_input_tokens for p in planned) > sum(
+        p.estimated_input_tokens for p in baseline
+    )

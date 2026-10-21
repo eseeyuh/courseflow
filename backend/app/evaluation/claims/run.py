@@ -144,22 +144,44 @@ def _refs(golden: GoldenDataset, course: str) -> tuple[AssessmentRef, ...]:
     )
 
 
-def plan_calls(golden: GoldenDataset) -> list[PlannedCall]:
+@dataclass(frozen=True, slots=True)
+class EvalOptions:
+    """Which tasks a run makes calls for, and with which obligation prompt (an
+    evaluated variant such as ``obligation-extraction/v2``)."""
+
+    tasks: tuple[str, ...] = ("requirements", "obligations")
+    obligation_prompt: str = TASKS["obligations"].prompt_version
+
+    def prompt_for(self, task: str) -> str:
+        if task in ("obligations", "control"):
+            return self.obligation_prompt
+        return TASKS[task].prompt_version  # type: ignore[index]
+
+    @property
+    def is_default(self) -> bool:
+        return self == EvalOptions()
+
+
+DEFAULT_OPTIONS = EvalOptions()
+
+
+def plan_calls(golden: GoldenDataset, options: EvalOptions = DEFAULT_OPTIONS) -> list[PlannedCall]:
     """In live order: requirements (initial briefs), obligations (initial
-    versions, then later ones), then the injection control."""
+    versions, then later ones), then the injection control; only the tasks
+    the options name."""
     packed = corpus_units(golden)
     types = {(c.ref, r.key): r.type for c in golden.corpus.courses for r in c.resources}
     order = sorted(packed, key=lambda w: (w[2], w[0], w[1]))
     planned: list[PlannedCall] = []
 
     def add(task: str, where: tuple[str, str, int], unit: Any) -> None:
-        prompt = load_prompt(TASKS["obligations" if task == "control" else task].prompt_version)  # type: ignore[index]
+        prompt = load_prompt(options.prompt_for(task))
         messages = build_claim_messages(
             prompt, ClaimUnit(unit, _refs(golden, where[0])), nonce="0" * 16
         )
         planned.append(PlannedCall(task, where, sum(estimate_tokens(m.content) for m in messages)))
 
-    for task in ("requirements", "obligations"):
+    for task in options.tasks:
         allowed = TASKS[task].resource_types  # type: ignore[index]
         for where in order:
             if task == "requirements" and where[2] > 1:
@@ -603,6 +625,7 @@ async def _injection_control(
     sessions: async_sessionmaker[AsyncSession],
     course_id: uuid.UUID,
     zone: str,
+    prompt_version: str = TASKS["obligations"].prompt_version,
 ) -> dict[str, Any]:
     """The injection unit once more without its injection span, through the
     obligation prompt: the gated result must not change."""
@@ -619,7 +642,7 @@ async def _injection_control(
             return {"control": "not_run: the research methods lecture is missing"}
         (claim_unit,) = await load_claim_units(session, course_id, version_id)
     control_unit = ClaimUnit(without_injection(claim_unit.unit), claim_unit.assessments)
-    prompt = load_prompt(TASKS["obligations"].prompt_version)
+    prompt = load_prompt(prompt_version)
     try:
         control = await call_structured_recorded(
             provider, sessions,
@@ -649,6 +672,7 @@ async def run_live(
     spend_cap: Decimal,
     max_calls: int,
     model: Any = None,
+    options: EvalOptions = DEFAULT_OPTIONS,
 ) -> dict[str, Any]:
     """The live run; model replaces the Nebius provider (an offline dry run)."""
     from app.ai.nebius import NebiusTokenFactoryProvider
@@ -695,8 +719,14 @@ async def run_live(
             sessions, replay, thinking=False, prompt_version=ASSESSMENT_PROMPT
         )
         services = {
-            task: ClaimExtractionService(sessions, provider, task, thinking=False)  # type: ignore[arg-type]
-            for task in ("requirements", "obligations")
+            task: ClaimExtractionService(
+                sessions,
+                provider,
+                task,
+                thinking=False,
+                prompt_version=options.prompt_for(task),  # type: ignore[arg-type]
+            )
+            for task in options.tasks
         }
         runs: list[dict[str, Any]] = []
 
@@ -711,7 +741,7 @@ async def run_live(
                 courses = dict((await session.execute(select(Course.external_id, Course.id))).all())
             for ref in sorted(courses):
                 await assess.extract_course(courses[ref])
-            for task in ("requirements", "obligations"):
+            for task in options.tasks:
                 for ref in sorted(courses):
                     await extract(task, courses[ref])
             await seed(sessions, store, limits=production_limits(), indexer=indexer, state="final")
@@ -727,11 +757,15 @@ async def run_live(
                 versions = [v for c, v in later if c == courses[ref]]
                 if versions:
                     await assess.extract_course(courses[ref], versions)
-                    await extract("obligations", courses[ref], versions)
+                    if "obligations" in options.tasks:
+                        await extract("obligations", courses[ref], versions)
             injection = await _injection_control(
-                provider, sessions, courses["msd7000"], NORTHBRIDGE_TIMEZONE
-            )
-        return await assemble(sessions, golden, info, started, injection, runs, provider, spend_cap)
+                provider, sessions, courses["msd7000"], NORTHBRIDGE_TIMEZONE,
+                options.prompt_for("control"),
+            )  # fmt: skip
+        return await assemble(
+            sessions, golden, info, started, injection, runs, provider, spend_cap, options
+        )
     finally:
         if model is None:
             await inner.aclose()
@@ -747,8 +781,9 @@ async def assemble(
     runs: list[dict[str, Any]],
     provider: Any,
     spend_cap: Decimal,
+    options: EvalOptions = DEFAULT_OPTIONS,
 ) -> dict[str, Any]:
-    prompts = [TASKS[t].prompt_version for t in ("requirements", "obligations")]
+    prompts = [options.prompt_for(t) for t in options.tasks]
     async with sessions() as session:
         requirements, obligations = await stored_claims(session)
         locations = await label_locations(
@@ -770,7 +805,12 @@ async def assemble(
             1 for claim in (*requirements, *obligations) if claim.matches(injection_span)
         )
     return {
-        "requirements": score_requirements(golden, requirements, locations),
+        # None: not run in this evaluation (see meta.tasks).
+        "requirements": (
+            score_requirements(golden, requirements, locations)
+            if "requirements" in options.tasks
+            else None
+        ),
         "obligations": score_obligations(golden, obligations, locations),
         "injection": injection | {"claims_with_evidence_on_injection_text": on_injection},
         "runs": runs,
@@ -781,8 +821,9 @@ async def assemble(
                 "version": golden.manifest.dataset_version,
                 "sha256": golden.sha256,
             },
+            "tasks": list(options.tasks),
             "prompts": prompts,
-            "gates": [TASKS[t].gate_version for t in ("requirements", "obligations")],
+            "gates": [TASKS[t].gate_version for t in options.tasks],  # type: ignore[index]
             "assessments": f"replayed: {RECORDED_ASSESSMENTS.name}",
             "model_role": "fast",
             "model": info.id,
@@ -806,14 +847,22 @@ def _sha(text: str) -> str:
 # --- report -------------------------------------------------------------------------------
 
 
-def report_name() -> str:
-    """Reports of earlier gates keep their names (gate v1: no suffix)."""
-    return f"claim-extraction-v1-fast-thinking-off-gate-{CLAIM_GATE_VERSION.rsplit('/', 1)[1]}"
+def report_name(options: EvalOptions = DEFAULT_OPTIONS) -> str:
+    """Reports of earlier gates keep their names (gate v1: no suffix); a
+    variant is named by the prompt it evaluates."""
+    gate = CLAIM_GATE_VERSION.rsplit("/", 1)[1]
+    if options.is_default:
+        return f"claim-extraction-v1-fast-thinking-off-gate-{gate}"
+    prompt = options.obligation_prompt.replace("/", "-")
+    tasks = "-".join(options.tasks)
+    return f"{prompt}-{tasks}-fast-thinking-off-gate-{gate}"
 
 
-def write_report(result: dict[str, Any]) -> tuple[Path, Path, Path]:
+def write_report(
+    result: dict[str, Any], options: EvalOptions = DEFAULT_OPTIONS
+) -> tuple[Path, Path, Path]:
     outputs = result.pop("outputs")
-    name = report_name()
+    name = report_name(options)
     REPORTS.mkdir(parents=True, exist_ok=True)
     RUNS.mkdir(parents=True, exist_ok=True)
     paths = (REPORTS / f"{name}.json", REPORTS / f"{name}.md", RUNS / f"{name}-outputs.json")
@@ -833,6 +882,30 @@ def _extras(rows: list[dict[str, Any]]) -> list[str]:
         f"{r['where']}: {r['text']}"
         + (f" (overlaps {r['overlaps_labels']})" if r.get("overlaps_labels") else "")
         for r in rows
+    ]
+
+
+def _requirement_lines(req: dict[str, Any] | None) -> list[str]:
+    if req is None:
+        return ["## Requirements", "", "- Not run in this evaluation (obligations only).", ""]
+    return [
+        "## Requirements",
+        "",
+        (
+            f"- Labelled recall (verified): **{req['recall_verified']}/{req['labelled']}**; "
+            f"any status: {req['recall_any_status']}/{req['labelled']}. "
+            f"Missed: {req['missed'] or 'none'}."
+        ),
+        f"- Stored: {req['stored']}.",
+        (
+            f"- Needs review: {len(req['needs_review'])}; "
+            f"unlabelled for review: {len(req['unlabelled_for_review'])}."
+        ),
+        *_extras(req["needs_review"]),
+        "",
+        "Unlabelled for review:",
+        *(_extras(req["unlabelled_for_review"]) or ["- none"]),
+        "",
     ]
 
 
@@ -861,19 +934,7 @@ def markdown(r: dict[str, Any]) -> str:
             "a metric. Every other extracted claim is listed for review; no precision or F1 is computed."
         ),
         "",
-        "## Requirements",
-        "",
-        (
-            f"- Labelled recall (verified): **{req['recall_verified']}/{req['labelled']}**; "
-            f"any status: {req['recall_any_status']}/{req['labelled']}. Missed: {req['missed'] or 'none'}."
-        ),
-        f"- Stored: {req['stored']}.",
-        f"- Needs review: {len(req['needs_review'])}; unlabelled for review: {len(req['unlabelled_for_review'])}.",
-        *_extras(req["needs_review"]),
-        "",
-        "Unlabelled for review:",
-        *(_extras(req["unlabelled_for_review"]) or ["- none"]),
-        "",
+        *_requirement_lines(req),
         "## Obligations",
         "",
         (
@@ -938,6 +999,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--spend-cap", type=Decimal, default=MAX_SPEND_USD)
     parser.add_argument("--expect-calls", type=int, help="refuse unless the plan has this many")
     parser.add_argument(
+        "--tasks",
+        choices=["all", "obligations"],
+        default="all",
+        help="obligations: an obligation-only variant run (requirements not called)",
+    )
+    parser.add_argument("--obligation-prompt", default=TASKS["obligations"].prompt_version)
+    parser.add_argument(
         "--replay-outputs",
         type=Path,
         help="replay a live run's recorded outputs through the current gate (no model call)",
@@ -959,7 +1027,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.replay_outputs
         else asyncio.run(catalog())  # no network for a replay
     )
-    planned = plan_calls(golden)
+    options = EvalOptions(
+        ("obligations",) if args.tasks == "obligations" else ("requirements", "obligations"),
+        args.obligation_prompt,
+    )
+    planned = plan_calls(golden, options)
     plan = describe_plan(
         planned, info, settings.ai_max_attempts, settings.ai_max_repair_attempts, args.spend_cap
     )
@@ -970,7 +1042,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         recorded = json.loads(args.replay_outputs.read_text(encoding="utf-8"))
         replay = ClaimReplayProvider(recorded_by_material(recorded))
         result = asyncio.run(
-            run_live(info, settings, golden, args.spend_cap, len(planned), model=replay)
+            run_live(
+                info, settings, golden, args.spend_cap, len(planned), model=replay, options=options
+            )
         )
         result.pop("outputs")
         RUNS.mkdir(parents=True, exist_ok=True)
@@ -987,11 +1061,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if plan["problems"] or not args.live:
         return 4 if plan["problems"] else 0
     try:
-        result = asyncio.run(run_live(info, settings, golden, args.spend_cap, len(planned)))
+        result = asyncio.run(
+            run_live(info, settings, golden, args.spend_cap, len(planned), options=options)
+        )
     except (BudgetExceeded, CallLimitExceeded) as refused:
         print(json.dumps({"status": "refused", "reason": str(refused)}), file=sys.stderr)
         return 5
-    paths = write_report(result)
+    paths = write_report(result, options)
     print(json.dumps({"status": "written", "files": [p.as_posix() for p in paths]}, indent=2))
     return 0
 
