@@ -10,12 +10,45 @@ from pydantic import BaseModel
 from app.api.schemas.assessment import EvidenceRead
 from app.domain.enums import (
     DeadlinePrecision,
+    MappingRelation,
     ObligationCategory,
     ObligationModality,
+    ResourceType,
     ReviewReason,
     TimezoneSource,
     VerificationStatus,
 )
+
+
+class MaterialMappingRead(BaseModel):
+    """Where to study for a requirement: a retrieved teaching span the
+    verifier selected. ``quote`` is ``source_span.excerpt[quote_start:quote_end]``
+    (the part of the span retrieval returned), never model text; ``rationale``
+    is navigation only. A suggestion with lineage, not a verified fact;
+    ``retrieval_score`` is retriever-specific, never a confidence."""
+
+    id: uuid.UUID
+    relation: MappingRelation
+    rationale: str
+    quote: str
+    source_span_id: uuid.UUID
+    page_number: int | None
+    slide_number: int | None
+    section_path: str | None
+    resource_id: uuid.UUID
+    resource_title: str
+    resource_type: ResourceType
+    resource_version_id: uuid.UUID
+    version_number: int
+    current_version: bool
+    retrieval_mode: str
+    retrieval_rank: int
+    retrieval_score: float
+    query_model_call_id: uuid.UUID | None
+    verifier_model_call_id: uuid.UUID
+    verifier_model: str
+    verifier_prompt_version: str
+    workflow_run_id: uuid.UUID
 
 
 class RequirementRead(BaseModel):
@@ -32,6 +65,9 @@ class RequirementRead(BaseModel):
     review_reason: ReviewReason | None
     supported_by_current_version: bool
     evidence: list[EvidenceRead]
+    # Teaching material to study for it, in source order; empty when none
+    # was found or the verifier selected none.
+    materials: list[MaterialMappingRead] = []
 
 
 class DueRead(BaseModel):

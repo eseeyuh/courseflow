@@ -8,7 +8,9 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.deps import SessionDep
 from app.api.schemas.assessment import AssessmentRead
+from app.api.schemas.claims import RequirementRead
 from app.db.assessments import course_assessments
+from app.db.claims import course_requirements
 from app.db.models import Assessment, Course
 
 router = APIRouter(tags=["assessments"])
@@ -30,3 +32,15 @@ async def get_assessment(session: SessionDep, assessment_id: uuid.UUID) -> Asses
         raise HTTPException(status_code=404, detail="assessment not found")
     (read,) = await course_assessments(session, assessment.course_id, assessment_id=assessment_id)
     return read
+
+
+@router.get("/assessments/{assessment_id}/requirements")
+async def get_assessment_requirements(
+    session: SessionDep, assessment_id: uuid.UUID
+) -> list[RequirementRead]:
+    """One assessment's requirements, each with its evidence and the teaching
+    material mapped to it (exact span, location, lineage)."""
+    assessment = await session.get(Assessment, assessment_id)
+    if assessment is None:
+        raise HTTPException(status_code=404, detail="assessment not found")
+    return await course_requirements(session, assessment.course_id, assessment_id=assessment_id)
