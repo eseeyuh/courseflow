@@ -93,3 +93,41 @@ def test_invalid_origins_rejected_at_startup(monkeypatch: pytest.MonkeyPatch, va
 
     with pytest.raises(ValidationError, match="cors_allowed_origins"):
         Settings(_env_file=None, database_url=UNREACHABLE_DATABASE_URL)  # type: ignore[call-arg, arg-type]
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT"])
+async def test_preflight_allows_the_demo_writes_from_the_frontend_only(
+    cors_client: httpx.AsyncClient, method: str
+) -> None:
+    headers = {
+        "Access-Control-Request-Method": method,
+        "Access-Control-Request-Headers": "content-type",
+    }
+    allowed = await cors_client.options(
+        "/api/v1/study-states", headers={"Origin": FRONTEND, **headers}
+    )
+    rejected = await cors_client.options(
+        "/api/v1/study-states", headers={"Origin": OTHER_SITE, **headers}
+    )
+
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == FRONTEND
+    assert rejected.status_code == 400
+
+
+@pytest.mark.parametrize("method", ["DELETE", "PATCH"])
+async def test_preflight_refuses_other_writes(cors_client: httpx.AsyncClient, method: str) -> None:
+    response = await cors_client.options(
+        "/api/v1/study-states",
+        headers={"Origin": FRONTEND, "Access-Control-Request-Method": method},
+    )
+    assert response.status_code == 400
+
+
+async def test_preflight_refuses_other_request_headers(cors_client: httpx.AsyncClient) -> None:
+    response = await cors_client.options(
+        "/api/v1/study-states",
+        headers={"Origin": FRONTEND, "Access-Control-Request-Method": "PUT",
+                 "Access-Control-Request-Headers": "authorization"},
+    )  # fmt: skip
+    assert response.status_code == 400

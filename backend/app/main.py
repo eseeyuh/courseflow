@@ -57,11 +57,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     # CORS lets the listed browser origins (the web frontend) READ responses.
     # It is not authentication: non-browser clients ignore it entirely.
-    # Read-only API today: GET only, no cookies/credentials.
+    # GET for reads; POST and PUT for the demo operations (start the demo
+    # workflow, set a study state), JSON bodies only. No cookies/credentials,
+    # no other method, only the listed origins.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST", "PUT"],
+        allow_headers=["Content-Type"],
         allow_credentials=False,
     )
     app.include_router(health.router)
