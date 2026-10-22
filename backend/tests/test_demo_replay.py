@@ -25,7 +25,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.ai.embeddings import EmbeddingSpace
 from app.ai.nebius import NebiusTokenFactoryProvider
 from app.ai.nebius_embeddings import PROVIDER_NAME, NebiusEmbeddingProvider
-from app.db.models import MaterialMapping, Obligation, Resource, ResourceVersion, SourceSpan
+from app.db.models import (
+    MaterialMapping,
+    Obligation,
+    Resource,
+    ResourceVersion,
+    SourceSpan,
+    WorkflowRun,
+)
 from app.demo import recordings
 from app.demo.intelligence import build_demo_intelligence
 from app.domain.enums import ObligationCategory, VerificationStatus, WorkflowRunStatus
@@ -103,8 +110,12 @@ async def test_a_clean_clone_rebuilds_the_demo_intelligence_offline(
     build = await build_demo_intelligence(sessions, LocalRawObjectStore(raw), SPACE)
 
     assert sorted(build.courses) == ["aml7001", "msd7000"]
-    statuses = {run["status"] for runs in build.runs.values() for run in runs}
-    assert statuses == {WorkflowRunStatus.SUCCEEDED.value}
+    async with sessions() as session:
+        runs = (await session.scalars(select(WorkflowRun))).all()
+    assert {r.status for r in runs} == {
+        WorkflowRunStatus.SUCCEEDED
+    }  # the workflow and its children
+    assert sorted(build.runs) == ["aml7001", "msd7000"]
     # Every recording was read, and nothing that is not committed.
     tracked = _tracked()
     assert {p.resolve() for p in recordings.ALL} <= set(reads)
