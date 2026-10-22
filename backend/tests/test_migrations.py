@@ -56,8 +56,9 @@ EXPECTED_TABLES = {
     "study_states",
     "study_plans",
     "study_tasks",
+    "change_events",
 }
-HEAD = "0011"
+HEAD = "0012"
 
 EXPECTED_SOURCE_SPAN_CHECKS = {
     "ck_source_spans_locator_present",
@@ -1042,3 +1043,13 @@ def test_0011_upgrade_downgrade_upgrade(db_at_0007: URL) -> None:
     assert not {"study_states", "study_plans", "study_tasks"} & _state(db_at_0007).tables
     _assert_existing_data_intact(db_at_0007)
     migrate(db_at_0007, "0011")
+
+
+def test_0012_upgrade_downgrade_upgrade(db_at_0007: URL) -> None:
+    migrate(db_at_0007, "0012")
+    assert "change_events" in _state(db_at_0007).tables
+    assert "uq_change_events_new_version" in _state(db_at_0007).uniques
+    downgrade(db_at_0007, "0011")
+    assert "change_events" not in _state(db_at_0007).tables
+    _assert_existing_data_intact(db_at_0007)
+    migrate(db_at_0007, "0012")

@@ -37,7 +37,11 @@ from app.db.models import (
 from app.demo.intelligence import DemoReplay
 from app.domain.enums import WorkflowRunStatus
 from app.ingestion.storage import LocalRawObjectStore
-from app.orchestration.workflow import STEPS, CourseIntelligenceWorkflow, UnknownStepError
+from app.orchestration.workflow import (
+    DEFAULT_STEPS,
+    CourseIntelligenceWorkflow,
+    UnknownStepError,
+)
 from app.reasoning import dependencies
 from tests.test_demo_replay import SPACE
 
@@ -102,7 +106,7 @@ async def test_the_full_offline_workflow_through_the_api_twice(
     for run in first["runs"]:
         assert run["status"] == "succeeded" and run["finished_at"] is not None
         trace = run["summary"]
-        assert [step["name"] for step in trace["steps"]] == list(STEPS)  # every step, in order
+        assert [step["name"] for step in trace["steps"]] == list(DEFAULT_STEPS)  # in order
         assert all(step["status"] == "succeeded" for step in trace["steps"])
         assert trace["failed_step"] is None and trace["current_step"] is None
         assert trace["mode"] == "replay"

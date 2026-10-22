@@ -45,14 +45,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import Course, Institution, WorkflowRun
 from app.demo.intelligence import DemoReplay, StepOutcome
-from app.domain.enums import LmsType, WorkflowRunStatus
+from app.domain.enums import LmsType, ResourceType, WorkflowRunStatus
 from app.extraction.validation import validate_course_intelligence
+from app.mapping.candidates import TEACHING_RESOURCE_TYPES
 from app.reasoning.conflicts import detect_course_conflicts
 from app.reasoning.dependencies import derive_course_dependencies
 
 WORKFLOW_VERSION = "course-intelligence/v1"
 StepName = Literal[
     "ingest",
+    "sync",
     "assessments",
     "claims",
     "mapping",
@@ -62,11 +64,16 @@ StepName = Literal[
     "plan",
 ]
 STEPS: tuple[StepName, ...] = (
-    "ingest", "assessments", "claims", "mapping", "dependencies", "conflicts", "validation",
-    "plan",
+    "ingest", "sync", "assessments", "claims", "mapping", "dependencies", "conflicts",
+    "validation", "plan",
 )  # fmt: skip
+# The default run: everything but a sync. A sync run: the changes, then what they affect.
+DEFAULT_STEPS: tuple[StepName, ...] = tuple(s for s in STEPS if s != "sync")
+SYNC_STEPS: tuple[StepName, ...] = tuple(s for s in STEPS if s != "ingest")
 # Run once for every course, outside the per-course loop.
-GLOBAL_STEPS = frozenset({"ingest", "plan"})
+GLOBAL_STEPS = frozenset({"ingest", "sync", "plan"})
+# A changed version of one of these types changes what material mapping reads.
+MAPPING_INPUTS = frozenset({ResourceType.BRIEF, *TEACHING_RESOURCE_TYPES})
 
 
 class UnknownStepError(ValueError):
@@ -90,7 +97,7 @@ class StepFailed(RuntimeError):
 def allowed_steps(steps: Sequence[str] | None) -> list[str]:
     """The requested steps in the fixed order; UnknownStepError for any name
     outside the allowlist (or none at all)."""
-    requested = list(STEPS if steps is None else steps)
+    requested = list(DEFAULT_STEPS if steps is None else steps)
     unknown = [name for name in requested if name not in STEPS]
     if unknown or not requested:
         raise UnknownStepError(unknown or ["<none>"])
@@ -145,6 +152,8 @@ class WorkflowTrace(BaseModel):
     workflow_version: Literal["course-intelligence/v1"] = WORKFLOW_VERSION
     mode: str
     requested_steps: list[str]
+    # A sync run processes only the versions it brought in.
+    changed_version_ids: list[uuid.UUID] | None = None
     current_step: str | None = None
     failed_step: str | None = None
     error_category: str | None = None
@@ -157,12 +166,12 @@ class WorkflowResult:
     runs: dict[str, uuid.UUID] = field(default_factory=dict)  # course ref -> run ID
     traces: dict[str, WorkflowTrace] = field(default_factory=dict)
     statuses: dict[str, WorkflowRunStatus] = field(default_factory=dict)
+    changed: dict[str, list[uuid.UUID]] = field(default_factory=dict)  # sync: new versions
 
     @property
     def succeeded(self) -> bool:
-        return bool(self.statuses) and all(
-            s is WorkflowRunStatus.SUCCEEDED for s in self.statuses.values()
-        )
+        """Every run succeeded (a sync that brought nothing has none)."""
+        return all(s is WorkflowRunStatus.SUCCEEDED for s in self.statuses.values())
 
     def status_by_course(self) -> dict[str, str]:
         return {ref: status.value for ref, status in self.statuses.items()}
@@ -176,12 +185,29 @@ class CourseIntelligenceWorkflow:
         self._sessions = sessions
         self._replay = replay
 
-    def _registry(self, courses: dict[str, uuid.UUID]) -> dict[str, CourseStep]:
-        """The allowlisted per-course steps: each one existing service call."""
+    def _registry(
+        self, courses: dict[str, uuid.UUID], changed: dict[uuid.UUID, list[uuid.UUID]] | None
+    ) -> dict[str, CourseStep]:
+        """The allowlisted per-course steps: each one existing service call.
+        ``changed``: a sync's new versions per course; extraction reads only
+        those, and mapping runs only if one is a brief or teaching material."""
         replay, sessions = self._replay, self._sessions
 
+        def scope(course_id: uuid.UUID) -> list[uuid.UUID] | None:
+            return None if changed is None else changed.get(course_id, [])
+
+        async def assessments(course_id: uuid.UUID) -> StepOutcome:
+            return await replay.assessments(course_id, scope(course_id))
+
+        async def claims(course_id: uuid.UUID) -> StepOutcome:
+            return await replay.claims(course_id, scope(course_id))
+
         async def mapping(course_id: uuid.UUID) -> StepOutcome:
-            return await replay.mapping(course_id, courses)
+            versions = scope(course_id)
+            if versions is not None and not await replay.changed_types(versions) & MAPPING_INPUTS:
+                return StepOutcome(WorkflowRunStatus.SUCCEEDED, (),
+                                   {"skipped": "no brief or teaching material changed"})  # fmt: skip
+            return await replay.mapping(course_id, await self._demo_courses())
 
         async def dependencies(course_id: uuid.UUID) -> StepOutcome:
             r = await derive_course_dependencies(sessions, course_id)
@@ -211,8 +237,8 @@ class CourseIntelligenceWorkflow:
             return outcome
 
         return {
-            "assessments": replay.assessments,
-            "claims": replay.claims,
+            "assessments": assessments,
+            "claims": claims,
             "mapping": mapping,
             "dependencies": dependencies,
             "conflicts": conflicts,
@@ -225,18 +251,33 @@ class CourseIntelligenceWorkflow:
         ordered = allowed_steps(steps)
 
         started = datetime.now(UTC)
+        first: dict[str, tuple[str, StepOutcome, datetime, datetime]] = {}
         if "ingest" in ordered:
             courses, ingest = await self._replay.ingest(reset=reset)
+            first |= {ref: ("ingest", o, started, datetime.now(UTC)) for ref, o in ingest.items()}
         else:
-            courses, ingest = await self._demo_courses(), {}
-        finished = datetime.now(UTC)
-        result = WorkflowResult(courses)
+            courses = await self._demo_courses()
+        changed: dict[str, list[uuid.UUID]] = {}
+        if "sync" in ordered:
+            synced_at = datetime.now(UTC)
+            affected, outcomes, changed = await self._replay.sync()
+            if "ingest" not in ordered:
+                courses = affected  # only what the sync changed is processed
+            first |= {ref: ("sync", o, synced_at, datetime.now(UTC)) for ref, o in outcomes.items()}
+        result = WorkflowResult(courses, changed=changed)
+        if not courses:  # a sync that brought nothing: no run, no new plan
+            return result
         for ref in sorted(courses):
             trace = WorkflowTrace(mode=self._replay.mode, requested_steps=ordered)
-            if ref in ingest:
-                trace.steps.append(_trace("ingest", ingest[ref], started, finished))
+            if "sync" in ordered and "ingest" not in ordered:
+                trace.changed_version_ids = changed.get(ref, [])
+            if ref in first:
+                name, outcome, began, ended = first[ref]
+                trace.steps.append(_trace(name, outcome, began, ended))
             result.traces[ref] = trace
             result.runs[ref] = await self._start(courses[ref], trace, started)
+        if changed:
+            await self._link_changes(result)
 
         try:
             return await self._steps(result, ordered)
@@ -249,7 +290,13 @@ class CourseIntelligenceWorkflow:
 
     async def _steps(self, result: WorkflowResult, ordered: list[str]) -> WorkflowResult:
         courses = result.courses
-        registry = self._registry(courses)
+        scoped = "sync" in ordered and "ingest" not in ordered
+        registry = self._registry(
+            courses,
+            {courses[ref]: versions for ref, versions in result.changed.items()}
+            if scoped
+            else None,
+        )
         for name in ordered:
             if name in GLOBAL_STEPS:
                 continue
@@ -290,12 +337,13 @@ class CourseIntelligenceWorkflow:
         started = datetime.now(UTC)
         try:
             async with self._sessions() as session, session.begin():
-                tasks = await compute_plan(session, self._replay.as_of)
-                first = result.runs[min(result.courses)]
-                plan_id = await save_plan(session, tasks, self._replay.as_of, first)
+                as_of = await self._replay.clock()
+                tasks = await compute_plan(session, as_of)
+                first = result.runs[min(result.courses)] if result.courses else None
+                plan_id = await save_plan(session, tasks, as_of, first)
             statuses = [t.status.value for t in tasks]
             outcome = StepOutcome(WorkflowRunStatus.SUCCEEDED, (), {
-                "plan_id": str(plan_id), "as_of": self._replay.as_of.isoformat(),
+                "plan_id": str(plan_id), "as_of": as_of.isoformat(),
                 "tasks": len(tasks), "blocked": statuses.count("blocked"),
                 "completed": statuses.count("completed"),
             })  # fmt: skip
@@ -309,6 +357,20 @@ class CourseIntelligenceWorkflow:
         for ref in sorted(result.courses):
             result.traces[ref].steps.append(_trace("plan", outcome, started, datetime.now(UTC)))
         return True
+
+    async def _link_changes(self, result: WorkflowResult) -> None:
+        """Each new ChangeEvent names the run that propagates it."""
+        from sqlalchemy import update
+
+        from app.db.models import ChangeEvent
+
+        async with self._sessions() as session, session.begin():
+            for ref, versions in result.changed.items():
+                await session.execute(
+                    update(ChangeEvent)
+                    .where(ChangeEvent.new_version_id.in_(versions))
+                    .values(workflow_run_id=result.runs[ref])
+                )
 
     async def _demo_courses(self) -> dict[str, uuid.UUID]:
         async with self._sessions() as session:

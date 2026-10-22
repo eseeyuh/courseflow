@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.ai.embeddings import EmbeddingInput, EmbeddingSpace, query_input
@@ -106,30 +108,146 @@ class DemoReplay:
         self._search: SearchService | None = None
         self.mapping_results: list[MappingRunResult] = []
 
-    @property
-    def as_of(self) -> datetime:
-        """The demo clock: the connector's initial sync, never the wall clock."""
+    @staticmethod
+    def _connector() -> Any:
         from app.connectors.demo import DemoConnector
         from app.demo.generate import DATA_ROOT
 
-        return DemoConnector(DATA_ROOT).manifest.initial_sync_at
+        return DemoConnector(DATA_ROOT)
 
-    async def ingest(self, *, reset: bool) -> tuple[dict[str, uuid.UUID], dict[str, StepOutcome]]:
-        """Seed and index every demo course: (course ref -> ID, outcome)."""
-        from app.demo.seed import seed
+    @classmethod
+    def initial_sync_at(cls) -> datetime:
+        return cls._connector().manifest.initial_sync_at  # type: ignore[no-any-return]
+
+    @classmethod
+    def final_sync_at(cls) -> datetime:
+        """The demo sync time: the last change the connector publishes."""
+        manifest = cls._connector().manifest
+        return max(
+            v.published_at for c in manifest.courses for r in c.resources for v in r.versions
+        )
+
+    async def clock(self) -> datetime:
+        """The demo clock, from the stored state, never the wall clock: the
+        initial sync until a sync has brought changes in, then the sync time."""
+        from sqlalchemy import func
+
+        from app.db.models import ChangeEvent
+
+        async with self.sessions() as session:
+            synced = await session.scalar(select(func.count()).select_from(ChangeEvent))
+        return self.final_sync_at() if synced else self.initial_sync_at()
+
+    def _indexer(self) -> Any:
         from app.demo.snapshot import load_demo_replay
-        from app.evaluation.retrieval.resolve import production_limits
         from app.retrieval.indexing import IndexingService
 
-        indexer = IndexingService(
+        return IndexingService(
             self.sessions,
             load_demo_replay(self._space, max_batch_items=64, path=recordings.DOCUMENT_EMBEDDINGS),
             batch_max_items=64,
             batch_max_estimated_tokens=32_000,
         )
+
+    async def sync(
+        self,
+    ) -> tuple[dict[str, uuid.UUID], dict[str, StepOutcome], dict[str, list[uuid.UUID]]]:
+        """Bring every demo course to the connector's final state through the
+        real versioning path, index the new versions, and record one
+        ChangeEvent per version not recorded yet. Returns the affected
+        courses (ref -> ID), each one's outcome and its new version IDs.
+        Syncing again brings and records nothing."""
+        from app.connectors.sync import apply_changes
+        from app.db.models import ChangeEvent, Institution, Resource, ResourceVersion
+        from app.domain.enums import ChangeType, LmsType
+        from app.evaluation.retrieval.resolve import production_limits
+
+        connector = self._connector()
+        initial, observed = self.initial_sync_at(), self.final_sync_at()
+        async with self.sessions() as session:
+            demo = dict(
+                (
+                    await session.execute(
+                        select(Course.external_id, Course.id)
+                        .join(Institution, Institution.id == Course.institution_id)
+                        .where(Institution.lms_type == LmsType.DEMO)
+                    )
+                ).all()
+            )
+        courses, outcomes, changed = {}, {}, {}
+        indexer = self._indexer()
+        for ref in sorted(demo):
+            course_id = demo[ref]
+            await apply_changes(self.sessions, self._store, connector, course_id, ref, initial,
+                                limits=production_limits())  # fmt: skip
+            index = await indexer.index_course(course_id)
+            later = {
+                f"{c.ref}:{r.key}:{v.version}"
+                for c in connector.manifest.courses if c.ref == ref
+                for r in c.resources for v in r.versions if v.published_at > initial
+            }  # fmt: skip
+            created: list[ChangeEvent] = []
+            async with self.sessions() as session, session.begin():
+                rows = (
+                    await session.execute(
+                        select(Resource, ResourceVersion)
+                        .join(ResourceVersion, ResourceVersion.resource_id == Resource.id)
+                        .where(Resource.course_id == course_id)
+                        .order_by(Resource.source_uri, ResourceVersion.version_number)
+                    )
+                ).all()
+                recorded = set((await session.scalars(select(ChangeEvent.new_version_id))).all())
+                versions = {(r.id, v.version_number): v for r, v in rows}
+                for resource, version in rows:
+                    key = f"{ref}:{resource.source_uri.rsplit('/', 1)[1]}:{version.version_number}"
+                    if key not in later or version.id in recorded:
+                        continue
+                    old = versions.get((resource.id, version.version_number - 1))
+                    event = ChangeEvent(
+                        course_id=course_id, resource_id=resource.id,
+                        change_type=ChangeType.UPDATED if old else ChangeType.ADDED,
+                        old_version_id=old.id if old else None, new_version_id=version.id,
+                        old_content_hash=old.content_hash if old else None,
+                        new_content_hash=version.content_hash, observed_at=observed,
+                    )  # fmt: skip
+                    session.add(event)
+                    created.append(event)
+                await session.flush()
+            if created:
+                courses[ref] = course_id
+                changed[ref] = [e.new_version_id for e in created]
+                outcomes[ref] = StepOutcome(
+                    WorkflowRunStatus.SUCCEEDED,
+                    (index.run_id,),
+                    {"change_event_ids": [str(e.id) for e in created],
+                     "new_version_ids": [str(e.new_version_id) for e in created],
+                     "observed_at": observed.isoformat()},
+                )  # fmt: skip
+        return courses, outcomes, changed
+
+    async def changed_types(self, version_ids: Sequence[uuid.UUID]) -> set[Any]:
+        from app.db.models import Resource, ResourceVersion
+
+        async with self.sessions() as session:
+            return set(
+                (
+                    await session.scalars(
+                        select(Resource.type)
+                        .join(ResourceVersion, ResourceVersion.resource_id == Resource.id)
+                        .where(ResourceVersion.id.in_(version_ids))
+                    )
+                ).all()
+            )
+
+    async def ingest(self, *, reset: bool) -> tuple[dict[str, uuid.UUID], dict[str, StepOutcome]]:
+        """Seed and index every demo course: (course ref -> ID, outcome)."""
+        from app.demo.seed import seed
+        from app.evaluation.retrieval.resolve import production_limits
+
         summary = await seed(
-            self.sessions, self._store, limits=production_limits(), indexer=indexer, reset=reset
-        )
+            self.sessions, self._store, limits=production_limits(), indexer=self._indexer(),
+            reset=reset,
+        )  # fmt: skip
         courses, outcomes = {}, {}
         for entry in summary["courses"]:
             courses[entry["course"]] = uuid.UUID(entry["course_id"])
@@ -144,7 +262,9 @@ class DemoReplay:
         self._search = None  # the requirements, so the mapping queries, may change
         return courses, outcomes
 
-    async def assessments(self, course_id: uuid.UUID) -> StepOutcome:
+    async def assessments(
+        self, course_id: uuid.UUID, version_ids: Sequence[uuid.UUID] | None = None
+    ) -> StepOutcome:
         from app.evaluation.assessments import run as assessments_run
         from app.evaluation.assessments.run import EvalConfig, ReplayProvider, assign_outputs
         from app.evaluation.northbridge.labels import load_golden
@@ -157,22 +277,26 @@ class DemoReplay:
         service = AssessmentExtractionService(
             self.sessions, provider, thinking=False, prompt_version=recordings.ASSESSMENT_PROMPT
         )
-        result = await service.extract_course(course_id)
+        result = await service.extract_course(course_id, version_ids)
         s = result.summary
         return StepOutcome(result.status, (result.run_id,),
-                           {"created": s.assessments_created, "merged": s.assessments_merged,
+                           {"versions": s.versions, "created": s.assessments_created,
+                            "merged": s.assessments_merged, "deadlines_created": s.deadlines_created,
                             "units_failed": s.units_failed})  # fmt: skip
 
-    async def claims(self, course_id: uuid.UUID) -> StepOutcome:
+    async def claims(
+        self, course_id: uuid.UUID, version_ids: Sequence[uuid.UUID] | None = None
+    ) -> StepOutcome:
         from app.extraction.claims_service import ClaimExtractionService
 
         runs, counts, statuses = [], {}, []
         for task in ("requirements", "obligations"):
             service = ClaimExtractionService(self.sessions, self._claims, task, thinking=False)
-            result = await service.extract_course(course_id)
+            result = await service.extract_course(course_id, version_ids)
             runs.append(result.run_id)
             statuses.append(result.status)
-            counts[task] = {"created": result.summary.created, "merged": result.summary.merged,
+            counts[task] = {"versions": result.summary.versions,
+                            "created": result.summary.created, "merged": result.summary.merged,
                             "units_failed": result.summary.units_failed}  # fmt: skip
         failed = WorkflowRunStatus.FAILED in statuses
         return StepOutcome(

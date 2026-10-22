@@ -18,6 +18,7 @@ Academic and trust layers:
     Course -> DependencyEdge (obligation / assessment / milestone ends) -> EvidenceLink
     Assessment -> Conflict -> AssessmentDeadline (every disagreeing side)
     StudyState -> SourceSpan (a mapped teaching target); StudyPlan -> StudyTask
+    ChangeEvent -> ResourceVersion (old, new): one per version a sync brought in
 An Assessment is canonical per course; every source that states it, its
 weighting or a deadline adds an EvidenceLink instead of a duplicate row.
 Sources that disagree on a deadline give one AssessmentDeadline each: the
@@ -63,6 +64,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, CreatedAt, Timestamps, UUIDPrimaryKey, str_enum
 from app.domain.enums import (
     BlockKind,
+    ChangeType,
     ConflictField,
     ConflictStatus,
     CourseStatus,
@@ -1253,3 +1255,45 @@ class StudyTask(UUIDPrimaryKey, CreatedAt, Base):
     target_span_ids: Mapped[list[str]] = mapped_column(JSONB)
 
     plan: Mapped[StudyPlan] = relationship(back_populates="tasks", lazy="raise")
+
+
+# --- change layer ---------------------------------------------------------------------
+
+
+class ChangeEvent(UUIDPrimaryKey, CreatedAt, Base):
+    """A resource version a sync brought in: the real version state before and
+    after, never a semantic diff. One per new version, so syncing again
+    records nothing. ``observed_at`` is the sync's (demo) time;
+    ``workflow_run_id`` is the run that propagated it."""
+
+    __tablename__ = "change_events"
+    __table_args__ = (
+        UniqueConstraint("new_version_id", name="uq_change_events_new_version"),
+        CheckConstraint(
+            "(change_type = 'added') = (old_version_id IS NULL)", name="added_has_no_old_version"
+        ),
+        CheckConstraint(
+            "old_content_hash IS NULL OR old_content_hash <> new_content_hash",
+            name="content_changed",
+        ),
+    )
+
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("courses.id", ondelete="CASCADE"), index=True
+    )
+    resource_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("resources.id", ondelete="CASCADE"), index=True
+    )
+    change_type: Mapped[ChangeType] = mapped_column(str_enum(ChangeType, "change_type"))
+    old_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("resource_versions.id", ondelete="CASCADE")
+    )
+    new_version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("resource_versions.id", ondelete="CASCADE")
+    )
+    old_content_hash: Mapped[str | None] = mapped_column(Text)
+    new_content_hash: Mapped[str] = mapped_column(Text)
+    observed_at: Mapped[datetime]
+    workflow_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflow_runs.id", ondelete="SET NULL"), index=True
+    )

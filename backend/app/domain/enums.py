@@ -221,6 +221,11 @@ class StudyTaskStatus(StrEnum):
     COMPLETED = "completed"
 
 
+class ChangeType(StrEnum):
+    ADDED = "added"  # a new resource
+    UPDATED = "updated"  # a new version of a known resource
+
+
 class MappingRelation(StrEnum):
     """How a requirement relates to the teaching material it is mapped to."""
 

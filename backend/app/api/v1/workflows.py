@@ -16,6 +16,7 @@ from app.db.models import Course, WorkflowRun
 from app.demo.intelligence import DemoReplay
 from app.domain.enums import WorkflowRunStatus
 from app.orchestration.workflow import (
+    SYNC_STEPS,
     WORKFLOW_VERSION,
     CourseIntelligenceWorkflow,
     UnknownStepError,
@@ -105,6 +106,80 @@ async def start_demo_workflow(
     ).all()
     return DemoWorkflowStarted(
         succeeded=result.succeeded,
+        runs=sorted((_read(r) for r in runs), key=lambda r: str(r.course_id)),
+    )
+
+
+class SyncedVersion(BaseModel):
+    change_event_id: uuid.UUID
+    course_id: uuid.UUID
+    resource_id: uuid.UUID
+    resource_title: str
+    old_version: int | None
+    new_version: int
+
+
+class DemoSyncResult(BaseModel):
+    """What the sync brought in and the runs that propagated it. A sync
+    that brings nothing new returns no changes and starts no run."""
+
+    succeeded: bool
+    observed_at: datetime
+    changes: list[SyncedVersion]
+    affected_course_ids: list[uuid.UUID]
+    runs: list[WorkflowRunRead]
+
+
+@router.post("/demo/sync")
+async def sync_demo(session: SessionDep, replay: DemoReplayDep) -> DemoSyncResult:
+    """Move the demo courses to the connector's final state through the real
+    versioning path, then reprocess what changed (replayed recordings: no
+    network, no spend)."""
+    from app.db.models import ChangeEvent, Resource, ResourceVersion
+
+    if _DEMO_LOCK.locked():
+        raise HTTPException(status_code=409, detail="a demo workflow is already running")
+    async with _DEMO_LOCK:
+        result = await CourseIntelligenceWorkflow(replay.sessions, replay).run(steps=SYNC_STEPS)
+    versions = [v for vs in result.changed.values() for v in vs]
+    rows = (
+        await session.execute(
+            select(ChangeEvent, Resource.title)
+            .join(Resource, Resource.id == ChangeEvent.resource_id)
+            .where(ChangeEvent.new_version_id.in_(versions))
+            .order_by(Resource.source_uri)
+        )
+    ).all()
+    numbers = dict(
+        (
+            await session.execute(
+                select(ResourceVersion.id, ResourceVersion.version_number).where(
+                    ResourceVersion.id.in_(
+                        [e.new_version_id for e, _ in rows]
+                        + [e.old_version_id for e, _ in rows if e.old_version_id]
+                    )
+                )
+            )
+        ).all()
+    )
+    runs = (
+        await session.scalars(select(WorkflowRun).where(WorkflowRun.id.in_(result.runs.values())))
+    ).all()
+    return DemoSyncResult(
+        succeeded=result.succeeded,
+        observed_at=replay.final_sync_at(),
+        changes=[
+            SyncedVersion(
+                change_event_id=e.id,
+                course_id=e.course_id,
+                resource_id=e.resource_id,
+                resource_title=title,
+                old_version=numbers.get(e.old_version_id) if e.old_version_id else None,
+                new_version=numbers[e.new_version_id],
+            )
+            for e, title in rows
+        ],
+        affected_course_ids=sorted(result.courses.values(), key=str),
         runs=sorted((_read(r) for r in runs), key=lambda r: str(r.course_id)),
     )
 

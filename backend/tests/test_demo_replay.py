@@ -108,6 +108,13 @@ async def test_a_clean_clone_rebuilds_the_demo_intelligence_offline(
     raw = tmp_path / "raw"
     raw.mkdir()
     build = await build_demo_intelligence(sessions, LocalRawObjectStore(raw), SPACE)
+    # ... and the LMS sync to the final state, from the same recordings.
+    from app.demo.intelligence import DemoReplay
+    from app.orchestration.workflow import SYNC_STEPS, CourseIntelligenceWorkflow
+
+    replay = DemoReplay(sessions, LocalRawObjectStore(raw), SPACE)
+    synced = await CourseIntelligenceWorkflow(sessions, replay).run(steps=SYNC_STEPS)
+    assert synced.succeeded and sum(len(v) for v in synced.changed.values()) == 2
 
     assert sorted(build.courses) == ["aml7001", "msd7000"]
     async with sessions() as session:
