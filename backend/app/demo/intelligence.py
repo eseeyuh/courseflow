@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -104,6 +105,14 @@ class DemoReplay:
         self._verifier = MappingReplayProvider.from_recorded(_load(recordings.MAPPING_OUTPUTS))
         self._search: SearchService | None = None
         self.mapping_results: list[MappingRunResult] = []
+
+    @property
+    def as_of(self) -> datetime:
+        """The demo clock: the connector's initial sync, never the wall clock."""
+        from app.connectors.demo import DemoConnector
+        from app.demo.generate import DATA_ROOT
+
+        return DemoConnector(DATA_ROOT).manifest.initial_sync_at
 
     async def ingest(self, *, reset: bool) -> tuple[dict[str, uuid.UUID], dict[str, StepOutcome]]:
         """Seed and index every demo course: (course ref -> ID, outcome)."""

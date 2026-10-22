@@ -106,8 +106,9 @@ async def test_the_full_offline_workflow_through_the_api_twice(
         assert all(step["status"] == "succeeded" for step in trace["steps"])
         assert trace["failed_step"] is None and trace["current_step"] is None
         assert trace["mode"] == "replay"
-        validation = trace["steps"][-1]["counts"]
-        assert validation["errors"] == 0
+        steps = {step["name"]: step for step in trace["steps"]}
+        assert steps["validation"]["counts"]["errors"] == 0
+        assert steps["plan"]["counts"]["tasks"] > 0
         fetched = (await client.get(f"/api/v1/workflow-runs/{run['id']}")).json()
         assert fetched == run
         listed = (await client.get(f"/api/v1/courses/{run['course_id']}/workflow-runs")).json()
@@ -176,3 +177,13 @@ async def test_a_failing_step_fails_the_run_and_writes_nothing(
     assert state["DependencyEdge"] == 0  # the failed step left nothing behind
     assert state["Conflict"] == 0  # later steps never ran
     assert state["MaterialMapping"] > 0  # earlier steps' committed work stays
+
+
+async def test_the_demo_workflow_endpoint_is_refused_in_production(settings: Any) -> None:
+    from app.main import create_app
+    from tests.conftest import _serve
+
+    production = settings.model_copy(update={"app_env": "production"})
+    async with _serve(create_app(production)) as client:
+        response = await client.post("/api/v1/demo/workflow-runs", json={})
+    assert response.status_code == 404

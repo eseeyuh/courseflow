@@ -8,7 +8,7 @@ existing services, in a fixed order, with one traced WorkflowRun per course.
 Steps (``STEPS``, the allowlist, in execution order):
 
     ingest -> assessments -> claims -> mapping -> dependencies -> conflicts
-    -> validation
+    -> validation -> plan
 
 A step is a call into an existing service; no business logic lives here.
 Each service keeps its own child WorkflowRun, ModelCalls and transaction
@@ -18,7 +18,9 @@ boundaries, so a failed step leaves only what its service commits per unit
 cover every course).
 
 Ingest creates the courses, so each course's run starts after it; the
-ingest step is the first entry of its trace. The workflow never retries
+ingest step is the first entry of its trace. ``plan`` is one cross-course
+study plan, saved as a snapshot at the replay's demo clock (``as_of``);
+it is recorded in every course's trace. The workflow never retries
 (retries are the provider layer's, bounded there) and never loops: a step
 that raises, or whose child run failed, or a validation with errors, stops
 it. That course's run is failed with the step and a deterministic error
@@ -50,11 +52,21 @@ from app.reasoning.dependencies import derive_course_dependencies
 
 WORKFLOW_VERSION = "course-intelligence/v1"
 StepName = Literal[
-    "ingest", "assessments", "claims", "mapping", "dependencies", "conflicts", "validation"
+    "ingest",
+    "assessments",
+    "claims",
+    "mapping",
+    "dependencies",
+    "conflicts",
+    "validation",
+    "plan",
 ]
 STEPS: tuple[StepName, ...] = (
     "ingest", "assessments", "claims", "mapping", "dependencies", "conflicts", "validation",
+    "plan",
 )  # fmt: skip
+# Run once for every course, outside the per-course loop.
+GLOBAL_STEPS = frozenset({"ingest", "plan"})
 
 
 class UnknownStepError(ValueError):
@@ -239,7 +251,7 @@ class CourseIntelligenceWorkflow:
         courses = result.courses
         registry = self._registry(courses)
         for name in ordered:
-            if name == "ingest":
+            if name in GLOBAL_STEPS:
                 continue
             for ref in sorted(courses):
                 trace = result.traces[ref]
@@ -260,11 +272,43 @@ class CourseIntelligenceWorkflow:
                     await self._fail(result, ref, name, step.error_category)
                     return result
                 trace.steps.append(_trace(name, outcome, step_started, datetime.now(UTC)))
+        if "plan" in ordered and not await self._plan(result):
+            return result
         for ref in sorted(courses):
             result.traces[ref].current_step = None
             await self._finish(result.runs[ref], result.traces[ref], WorkflowRunStatus.SUCCEEDED)
             result.statuses[ref] = WorkflowRunStatus.SUCCEEDED
         return result
+
+    async def _plan(self, result: WorkflowResult) -> bool:
+        """The cross-course plan, saved once; False if it failed."""
+        from app.planning.store import compute_plan, save_plan
+
+        for ref in sorted(result.courses):
+            result.traces[ref].current_step = "plan"
+            await self._save(result.runs[ref], result.traces[ref])
+        started = datetime.now(UTC)
+        try:
+            async with self._sessions() as session, session.begin():
+                tasks = await compute_plan(session, self._replay.as_of)
+                first = result.runs[min(result.courses)]
+                plan_id = await save_plan(session, tasks, self._replay.as_of, first)
+            statuses = [t.status.value for t in tasks]
+            outcome = StepOutcome(WorkflowRunStatus.SUCCEEDED, (), {
+                "plan_id": str(plan_id), "as_of": self._replay.as_of.isoformat(),
+                "tasks": len(tasks), "blocked": statuses.count("blocked"),
+                "completed": statuses.count("completed"),
+            })  # fmt: skip
+        except Exception as exc:  # noqa: BLE001 - classified, recorded, then stop
+            step = _trace("plan", StepOutcome(WorkflowRunStatus.FAILED), started, datetime.now(UTC))
+            step.error_category, step.error_type = classify(exc), type(exc).__name__
+            for ref in sorted(result.courses):
+                result.traces[ref].steps.append(step)
+            await self._fail(result, "", "plan", step.error_category)
+            return False
+        for ref in sorted(result.courses):
+            result.traces[ref].steps.append(_trace("plan", outcome, started, datetime.now(UTC)))
+        return True
 
     async def _demo_courses(self) -> dict[str, uuid.UUID]:
         async with self._sessions() as session:
