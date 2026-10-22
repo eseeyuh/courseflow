@@ -64,6 +64,12 @@ class DeadlineRead(BaseModel):
     review_reason: ReviewReason | None
     supported_by_current_version: bool
     evidence: list[EvidenceRead]
+    # Active: counts now (verified, current evidence, not superseded). A
+    # superseded deadline stays visible as history, with what replaced it.
+    active: bool = False
+    superseded_by_deadline_id: uuid.UUID | None = None
+    superseded_by_quote: str | None = None
+    superseded_by_source_span_id: uuid.UUID | None = None
 
 
 class AssessmentRead(BaseModel):

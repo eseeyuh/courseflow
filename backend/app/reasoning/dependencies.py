@@ -6,8 +6,8 @@
 (``dependency-rules/v1``). No model call: the ordering is read from the
 source text by fixed rules, so no end can be invented.
 
-Rules, each on one verified ``obligation`` evidence quote of a verified
-obligation:
+Rules, each on one verified ``obligation`` evidence quote, in a current
+version, of a verified obligation:
 
 - ``before-submitting``: the obligation is linked to an assessment and its
   quote says "before you submit your <that assessment>". Edge: obligation
@@ -40,6 +40,8 @@ from app.db.models import (
     DependencyEdge,
     EvidenceLink,
     Obligation,
+    Resource,
+    ResourceVersion,
     SourceSpan,
 )
 from app.domain.enums import (
@@ -168,14 +170,18 @@ async def obligation_facts(session: AsyncSession, course_id: uuid.UUID) -> list[
             )
         )
     ).all()
+    # Current wording only: evidence in a superseded version is history.
     links = (
         await session.execute(
             select(EvidenceLink, SourceSpan.excerpt)
             .join(SourceSpan, SourceSpan.id == EvidenceLink.source_span_id)
+            .join(ResourceVersion, ResourceVersion.id == SourceSpan.resource_version_id)
+            .join(Resource, Resource.id == ResourceVersion.resource_id)
             .where(
                 EvidenceLink.obligation_id.in_([o.id for o, _ in rows]),
                 EvidenceLink.field == EvidenceField.OBLIGATION,
                 EvidenceLink.verification_status == VerificationStatus.VERIFIED,
+                Resource.current_version_id == ResourceVersion.id,
             )
             .order_by(EvidenceLink.source_span_id, EvidenceLink.quote_start)
         )

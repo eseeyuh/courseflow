@@ -54,6 +54,7 @@ from app.db.models import (
     Conflict,
     Course,
     DependencyEdge,
+    EvidenceLink,
     MaterialMapping,
     Obligation,
     Resource,
@@ -193,11 +194,29 @@ async def load_facts(session: AsyncSession, learner: str = LEARNER) -> PlanFacts
             for e in facts.edges
             if e.prerequisite_kind is DependencyNodeKind.MILESTONE
         }
+        # Only obligations a current version still states.
+        current = set(
+            (
+                await session.scalars(
+                    select(EvidenceLink.obligation_id)
+                    .join(SourceSpan, SourceSpan.id == EvidenceLink.source_span_id)
+                    .join(ResourceVersion, ResourceVersion.id == SourceSpan.resource_version_id)
+                    .join(Resource, Resource.id == ResourceVersion.resource_id)
+                    .where(
+                        Resource.course_id == course.id,
+                        Resource.current_version_id == ResourceVersion.id,
+                        EvidenceLink.verification_status == VerificationStatus.VERIFIED,
+                        EvidenceLink.obligation_id.is_not(None),
+                    )
+                )
+            ).all()
+        )
         for o in (
             await session.scalars(
                 select(Obligation).where(
                     Obligation.course_id == course.id,
                     Obligation.status == VerificationStatus.VERIFIED,
+                    Obligation.id.in_(current),
                 )
             )
         ).all():
@@ -210,7 +229,10 @@ async def load_facts(session: AsyncSession, learner: str = LEARNER) -> PlanFacts
             .join(ResourceVersion, ResourceVersion.id == SourceSpan.resource_version_id)
             .join(Resource, Resource.id == ResourceVersion.resource_id)
             .join(Assessment, Assessment.id == AssessmentRequirement.assessment_id)
-            .where(Assessment.course_id == course.id)
+            .where(
+                Assessment.course_id == course.id,
+                Resource.current_version_id == ResourceVersion.id,
+            )
             .order_by(Resource.source_uri, SourceSpan.ordinal)
         )
         for assessment_id, span, resource in rows:

@@ -101,8 +101,24 @@ async def course_assessments(
             by_deadline[link.assessment_deadline_id].append(read)
         elif link.assessment_id is not None:
             by_assessment[link.assessment_id].append(read)
+    from app.reasoning.conflicts import active_deadlines
+    from app.reasoning.supersession import superseded_deadlines
+
+    active = {d.id for ds in (await active_deadlines(session, course_id)).values() for d in ds}
+    superseded = await superseded_deadlines(session, course_id)
+    statements = {
+        span.id: span
+        for span in (
+            await session.scalars(
+                select(SourceSpan).where(
+                    SourceSpan.id.in_({s.span_id for s in superseded.values()})
+                )
+            )
+        ).all()
+    }
     deadline_reads: dict[uuid.UUID, list[DeadlineRead]] = defaultdict(list)
     for d in deadlines:
+        by = superseded.get(d.id)
         deadline_reads[d.assessment_id].append(
             DeadlineRead(
                 id=d.id,
@@ -116,6 +132,12 @@ async def course_assessments(
                 review_reason=d.review_reason,
                 supported_by_current_version=any(e.current_version for e in by_deadline[d.id]),
                 evidence=by_deadline[d.id],
+                active=d.id in active,
+                superseded_by_deadline_id=by.by_deadline_id if by else None,
+                superseded_by_quote=(
+                    statements[by.span_id].excerpt[by.quote_start : by.quote_end] if by else None
+                ),
+                superseded_by_source_span_id=by.span_id if by else None,
             )
         )
     return [

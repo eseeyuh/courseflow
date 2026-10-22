@@ -4,8 +4,9 @@
 
 """Deadline conflicts (``conflict-rules/v1``), detected deterministically.
 
-A deadline is active when it is verified and has verified ``deadline``
-evidence in a current resource version. An assessment whose active
+A deadline is active when it is verified, has verified ``deadline``
+evidence in a current resource version, and no current source supersedes
+it (``supersession``). An assessment whose active
 deadlines state different local dates or times is in conflict: one
 Conflict per (assessment, ``deadline``) holds every active deadline as a
 side, each with its own evidence. No value is chosen and none is stored.
@@ -45,6 +46,7 @@ from app.domain.enums import (
     WorkflowRunStatus,
 )
 from app.reasoning.runs import finish_run, start_run
+from app.reasoning.supersession import superseded_deadlines
 
 RULES_VERSION = "conflict-rules/v1"
 
@@ -71,9 +73,11 @@ async def active_deadlines(
             .distinct()
         )
     ).all()
+    superseded = await superseded_deadlines(session, course_id)
     out: dict[uuid.UUID, list[AssessmentDeadline]] = defaultdict(list)
     for deadline in sorted(rows, key=lambda d: (d.due_date, d.due_time or datetime.min.time())):
-        out[deadline.assessment_id].append(deadline)
+        if deadline.id not in superseded:
+            out[deadline.assessment_id].append(deadline)
     return out
 
 
