@@ -331,3 +331,192 @@ async def test_an_obligation_due_date_must_match_its_zone(
         obligation.due_precision = DeadlinePrecision.DATETIME
         obligation.due_at = datetime(2026, 11, 16, 13, 0, tzinfo=UTC)  # GMT: should be 12:00
     assert IssueCode.INSTANT_MISMATCH in await _codes(sessions, course)
+
+
+# --- validator metrics (P1-B) -------------------------------------------------------------
+
+
+async def test_metrics_are_zero_filled_by_severity_and_code_when_clean(
+    sessions: async_sessionmaker[AsyncSession], course: Course_
+) -> None:
+    await _extracted(sessions, course)
+    metrics = (await _validate(sessions, course)).as_dict()["metrics"]
+    assert set(metrics) == {"error", "warning"}
+    assert sum(metrics["error"].values()) == sum(metrics["warning"].values()) == 0
+    every = [*metrics["error"], *metrics["warning"]]
+    assert sorted(every) == sorted(code.value for code in IssueCode)
+    assert list(metrics["error"]) == sorted(metrics["error"])  # a fixed order
+
+
+async def test_metrics_count_a_corrupted_fixture_exactly(
+    sessions: async_sessionmaker[AsyncSession], course: Course_
+) -> None:
+    await _extracted(sessions, course)
+    async with sessions() as session, session.begin():
+        await session.execute(
+            update(EvidenceLink)
+            .where(EvidenceLink.assessment_requirement_id.is_not(None))
+            .values(model_call_id=None)  # every requirement link: 2 requirements x 2 links
+        )
+        deadline = await session.scalar(select(AssessmentDeadline))
+        assert deadline is not None and deadline.due_at is not None
+        deadline.due_at += timedelta(minutes=30)
+    report = await _validate(sessions, course)
+    metrics = report.as_dict()["metrics"]
+    assert metrics["error"]["lineage_missing"] == 4
+    assert metrics["error"]["instant_mismatch"] == 1
+    assert sum(metrics["error"].values()) == 5 and sum(metrics["warning"].values()) == 0
+    assert report.as_dict() == (await _validate(sessions, course)).as_dict()  # deterministic
+
+
+# --- review fixes: validator false negatives ----------------------------------------------
+
+
+@pytest.mark.parametrize("tamper", ["weighting", "obligation_due", "foreign_call"])
+async def test_values_and_proposing_calls_need_their_own_support(
+    sessions: async_sessionmaker[AsyncSession], course: Course_, tmp_path: Path, tamper: str
+) -> None:
+    await _extracted(sessions, course)
+    async with sessions() as session, session.begin():
+        obligation = await session.scalar(select(Obligation).where(Obligation.status == V.VERIFIED))
+        assessment = await session.scalar(select(Assessment))
+        assert obligation is not None and assessment is not None
+        if tamper == "weighting":
+            assessment.weighting_percent = 50  # no weighting evidence anywhere
+        elif tamper == "obligation_due":
+            obligation.due_date = date(2026, 11, 16)
+            obligation.due_timezone = "Europe/London"
+            obligation.due_timezone_source = TimezoneSource.INSTITUTION_DEFAULT
+            obligation.due_precision = DeadlinePrecision.DATE
+    if tamper == "foreign_call":
+        other = Course_(sessions, tmp_path)
+        await other.create()
+        await other.ingest("brief", BRIEF_WITH_DEADLINE, ResourceType.BRIEF)
+        await AssessmentExtractionService(sessions, FakeModel(respond)).extract_course(other.id)
+        async with sessions() as session, session.begin():
+            call = await session.scalar(
+                select(EvidenceLink.model_call_id)
+                .join(Assessment, Assessment.id == EvidenceLink.assessment_id)
+                .where(Assessment.course_id == other.id)
+            )
+            await session.execute(
+                update(Obligation).where(Obligation.id == obligation.id).values(model_call_id=call)
+            )
+    codes = await _codes(sessions, course)
+    expected = (
+        IssueCode.LINEAGE_INCONSISTENT
+        if tamper == "foreign_call"
+        else IssueCode.VALUE_WITHOUT_EVIDENCE
+    )
+    assert expected in codes
+
+
+async def test_needs_review_evidence_on_injected_text_is_an_error_too(
+    sessions: async_sessionmaker[AsyncSession], course: Course_
+) -> None:
+    await _extracted(sessions, course)
+    async with sessions() as session, session.begin():
+        span = await session.scalar(
+            select(SourceSpan).where(SourceSpan.excerpt.contains("IGNORE ALL PREVIOUS"))
+        )
+        link = await session.scalar(
+            select(EvidenceLink).where(EvidenceLink.assessment_requirement_id.is_not(None)).limit(1)
+        )
+        assert span is not None and link is not None
+        link.source_span_id, link.quote_start, link.quote_end = span.id, 0, 10
+        link.verification_status = V.NEEDS_REVIEW
+        link.review_reason = "non_unique_quote_location"  # type: ignore[assignment]
+    assert IssueCode.EVIDENCE_ON_INJECTION in await _codes(sessions, course)
+
+
+# --- claim fingerprints (P1-A) ------------------------------------------------------------
+
+
+async def _fingerprints(sessions: async_sessionmaker[AsyncSession], course: Course_) -> Any:
+    from app.extraction.fingerprint import course_fingerprints
+
+    async with sessions() as session:
+        found = await course_fingerprints(session, course.id)
+    return {kind: sorted(by_id.values()) for kind, by_id in found.items()}
+
+
+async def test_a_fresh_extraction_gives_the_same_fingerprints_with_new_ids(
+    sessions: async_sessionmaker[AsyncSession], course: Course_
+) -> None:
+    await _extract(sessions, course, respond)
+    first = await _fingerprints(sessions, course)
+    async with sessions() as session, session.begin():
+        await session.execute(Obligation.__table__.delete())
+        await session.execute(Assessment.__table__.delete())  # requirements, deadlines cascade
+    await _extract(sessions, course, respond)  # new rows, new ModelCalls, new runs
+    assert await _fingerprints(sessions, course) == first
+    assert all(first.values()) and len({fp for fps in first.values() for fp in fps}) == sum(
+        len(fps) for fps in first.values()
+    )
+
+
+async def test_more_evidence_or_a_new_version_leaves_the_fingerprint(
+    sessions: async_sessionmaker[AsyncSession], course: Course_
+) -> None:
+    await _extract(sessions, course, respond)
+    before = await _fingerprints(sessions, course)
+    # The same handbook sentence in a new version: new spans, new links, same claims.
+    await course.ingest("handbook", HANDBOOK_V1 + b" ", ResourceType.HANDBOOK)
+    await ClaimExtractionService(sessions, FakeModel(respond), "obligations").extract_course(
+        course.id
+    )
+    assert await _fingerprints(sessions, course) == before
+
+
+def test_a_meaningful_change_changes_the_fingerprint() -> None:
+    from app.extraction.fingerprint import (
+        assessment_fingerprint,
+        deadline_fingerprint,
+        obligation_fingerprint,
+        requirement_fingerprint,
+    )
+    from app.extraction.statements import statement_key
+
+    course = ("lms", "demo", "Northbridge University", "msd7000")
+    other = ("lms", "demo", "Northbridge University", "aml7001")
+    noon, one = time(12, 0), time(13, 0)
+    day = date(2026, 11, 30)
+    key = statement_key("A focused research question.")
+    assert assessment_fingerprint(course, "project specification") != assessment_fingerprint(
+        other, "project specification"
+    )
+    assert deadline_fingerprint(course, "project specification", day, noon, "Europe/London") != (
+        deadline_fingerprint(course, "project specification", day, one, "Europe/London")
+    )
+    assert deadline_fingerprint(course, "a", day, None, None) != deadline_fingerprint(
+        course, "a", day, noon, None
+    )
+    assert requirement_fingerprint(course, "a", key) != requirement_fingerprint(
+        course, "a", statement_key("A methodology.")
+    )
+    assert requirement_fingerprint(course, "a", key) != requirement_fingerprint(course, "b", key)
+    assert obligation_fingerprint(course, key) != requirement_fingerprint(course, "", key)
+    # Stable: the same inputs, the same digest, every time.
+    assert obligation_fingerprint(course, key) == obligation_fingerprint(tuple(course), key)
+
+
+async def test_a_failure_after_a_partial_write_leaves_nothing(
+    sessions: async_sessionmaker[AsyncSession], course: Course_, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.db.models import WorkflowRun
+    from app.extraction import claims_service
+
+    original = claims_service.persist_obligations
+
+    async def fail_after_writing(*args: Any, **kwargs: Any) -> Any:
+        await original(*args, **kwargs)  # rows and links written in the unit's transaction
+        raise RuntimeError("the database went away")
+
+    monkeypatch.setattr(claims_service, "persist_obligations", fail_after_writing)
+    service = ClaimExtractionService(sessions, FakeModel(respond), "obligations")
+    with pytest.raises(RuntimeError, match="went away"):
+        await service.extract_course(course.id)
+    assert (await _counts(sessions))[3:] == [0, 0]  # no obligation, no link
+    async with sessions() as session:
+        (run,) = (await session.scalars(select(WorkflowRun))).all()
+    assert run.status.value == "failed"

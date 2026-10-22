@@ -70,9 +70,11 @@ class IssueCode(StrEnum):
     EVIDENCE_CROSS_COURSE = "evidence_cross_course"  # the span is in another course
     QUOTE_OUT_OF_BOUNDS = "quote_out_of_bounds"  # offsets beyond the span's excerpt
     QUOTE_BLANK = "quote_blank"  # the quoted text is only whitespace
-    EVIDENCE_ON_INJECTION = "evidence_on_injection"  # verified evidence on injected text
+    EVIDENCE_ON_INJECTION = "evidence_on_injection"  # any evidence on injected text
     CLAIM_WITHOUT_EVIDENCE = "claim_without_evidence"
     VERIFIED_WITHOUT_VERIFIED_EVIDENCE = "verified_without_verified_evidence"
+    # A stored value (a weighting, an obligation's due date) no verified link supports.
+    VALUE_WITHOUT_EVIDENCE = "value_without_evidence"
     LINEAGE_MISSING = "lineage_missing"  # no ModelCall or WorkflowRun recorded
     # The call, the run, the claim's course and the run's input versions disagree.
     LINEAGE_INCONSISTENT = "lineage_inconsistent"
@@ -118,12 +120,22 @@ class ValidationReport:
     def counts(self) -> dict[str, int]:
         return dict(sorted(Counter(i.code.value for i in self.issues).items()))
 
+    def metrics(self) -> dict[str, dict[str, int]]:
+        """Issue counts by severity, then code: every code present, zero when
+        clean, in a fixed order, so runs compare key by key."""
+        found = Counter(i.code for i in self.issues)
+        out: dict[str, dict[str, int]] = {s.value: {} for s in Severity}
+        for code in sorted(IssueCode, key=lambda c: c.value):
+            out[SEVERITY.get(code, Severity.ERROR).value][code.value] = found[code]
+        return out
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "course_id": str(self.course_id),
             "clean": self.clean,
             "claims": self.claims,
             "counts": self.counts(),
+            "metrics": self.metrics(),
             "errors": [_issue(i) for i in self.errors],
             "warnings": [_issue(i) for i in self.warnings],
         }
@@ -184,10 +196,8 @@ def _evidence_issues(link: _Link, course_id: uuid.UUID) -> list[Issue]:
         add(IssueCode.QUOTE_OUT_OF_BOUNDS)
     elif not link.excerpt[start:end].strip():
         add(IssueCode.QUOTE_BLANK)
-    elif link.link.verification_status is V.VERIFIED and any(
-        a < end and start < b for a, b in injection_fragments(link.excerpt)
-    ):
-        add(IssueCode.EVIDENCE_ON_INJECTION)
+    elif any(a < end and start < b for a, b in injection_fragments(link.excerpt)):
+        add(IssueCode.EVIDENCE_ON_INJECTION)  # the gates never store such a link
     if link.link.model_call_id is None or link.link.workflow_run_id is None:
         add(IssueCode.LINEAGE_MISSING)
     return issues
@@ -230,6 +240,25 @@ async def _lineage_issues(
                 Issue(IssueCode.LINEAGE_INCONSISTENT, lk.subject_type, lk.subject_id, lk.link.id)
             )
     return issues
+
+
+async def _proposing_call_issues(
+    session: AsyncSession, obligations: Sequence[Obligation], course_id: uuid.UUID
+) -> list[Issue]:
+    """An obligation's proposing ModelCall must be a call of a run of its course."""
+    call_ids = {o.model_call_id for o in obligations if o.model_call_id}
+    courses = dict(
+        (await session.execute(
+            select(ModelCall.id, WorkflowRun.course_id)
+            .join(WorkflowRun, WorkflowRun.id == ModelCall.workflow_run_id)
+            .where(ModelCall.id.in_(call_ids))
+        )).all()
+    )  # fmt: skip
+    return [
+        Issue(IssueCode.LINEAGE_INCONSISTENT, "obligation", o.id)
+        for o in obligations
+        if o.model_call_id is not None and courses.get(o.model_call_id) != course_id
+    ]
 
 
 def _expected_instant(row: Any, date_field: str, time_field: str, zone_field: str) -> Any:
@@ -321,6 +350,20 @@ async def validate_course_intelligence(
                     add(IssueCode.VERIFIED_WITHOUT_VERIFIED_EVIDENCE, kind, row.id)
                 if own and not any(lk.current for lk in own):
                     add(IssueCode.STALE_SOURCE_VERSION, kind, row.id)
+
+    def verified_link(row_id: uuid.UUID, fact: EvidenceField) -> bool:
+        return any(
+            lk.link.field is fact and lk.link.verification_status is V.VERIFIED
+            for lk in by_subject.get(row_id, [])
+        )
+
+    for a in assessments:
+        if a.weighting_percent is not None and not verified_link(a.id, EvidenceField.WEIGHTING):
+            add(IssueCode.VALUE_WITHOUT_EVIDENCE, "assessment", a.id)
+    for o in obligations:
+        if o.due_date is not None and not verified_link(o.id, EvidenceField.DUE_DATE):
+            add(IssueCode.VALUE_WITHOUT_EVIDENCE, "obligation", o.id)
+    report.issues += await _proposing_call_issues(session, obligations, course_id)
     for a in assessments:
         if canonical_key(a.title) != a.canonical_key:
             add(IssueCode.CANONICAL_KEY_MISMATCH, "assessment", a.id)
@@ -358,7 +401,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             await engine.dispose()
 
     report = asyncio.run(run())
-    print(json.dumps(report.as_dict(), indent=2))
+    print(json.dumps(report.as_dict(), indent=2, sort_keys=True))
     return 0 if report.clean else 1
 
 
