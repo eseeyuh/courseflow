@@ -414,3 +414,15 @@ def test_the_few_shot_examples_are_what_the_gate_decides() -> None:
     essay = "Your essay must include a reference list in Harvard style."
     rejected = gate_obligations(_claims(essay), _obligation(_ref("S1", essay)), LONDON)
     assert rejected.rejected == {"obligation:wrong_claim_type": 1}
+
+
+def test_modal_wording_is_never_assembled_across_two_quotes() -> None:
+    unit = _claims("Applicants will need", "to register early.")
+    result = gate_obligations(
+        unit,
+        _obligation(_ref("S1", "Applicants will need"), _ref("S2", "to register early.")),
+        LONDON,
+    )
+    # Neither quote alone has obligation wording: rejected, not a crash.
+    assert result.obligations == []
+    assert result.rejected == {"obligation:no_obligation_wording": 1}

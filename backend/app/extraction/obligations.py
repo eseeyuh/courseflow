@@ -76,6 +76,7 @@ from app.extraction.requirements import LocalAssessmentId, heading_span
 from app.extraction.schema import DeadlineOut, EvidenceRef, StrictModel
 from app.extraction.statements import (
     ARTEFACT_CONTENT,
+    Modal,
     anchor_text,
     describes_artefact_content,
     first_modal_offset,
@@ -203,7 +204,14 @@ class ObligationGateResult:
 
 
 def _modality(quotes: list[str]) -> tuple[ObligationModality | None, ReviewReason | None]:
-    modal = modal_wording("\n".join(quotes))
+    # Each quote on its own: wording is never assembled across two quotes
+    # ("... need" + "to ..."), so the anchor always has a quote that carries it.
+    found = [modal_wording(quote) for quote in quotes]
+    modal = Modal(
+        mandatory=any(m.mandatory for m in found),
+        recommended=any(m.recommended for m in found),
+        permissive=any(m.permissive for m in found),
+    )
     if modal.kinds == 0:
         raise Rejected(RejectionReason.NO_OBLIGATION_WORDING)
     if modal.kinds > 1:

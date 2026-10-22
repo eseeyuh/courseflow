@@ -271,7 +271,11 @@ def check_deadline(
         value = normalise(parsed, institution_timezone)
     except DeadlineRejected as rejected:
         raise Rejected(rejected.reason) from None
-    if date.fromisoformat(proposed.due_date) != value.due_date:
+    try:
+        claimed_date = date.fromisoformat(proposed.due_date)
+    except ValueError:  # the schema checks the shape only: "2026-13-01" passes it
+        raise Rejected(RejectionReason.MODEL_DATE_INVALID) from None
+    if claimed_date != value.due_date:
         raise Rejected(RejectionReason.MODEL_DATE_MISMATCH)
     if proposed.due_time is not None:
         try:
