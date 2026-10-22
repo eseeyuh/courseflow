@@ -15,6 +15,8 @@ Academic and trust layers:
     Course -> Obligation (-> Assessment, optional)
     EvidenceLink -> SourceSpan, for one fact of any of these claims
     AssessmentRequirement -> MaterialMapping -> SourceSpan (teaching material)
+    Course -> DependencyEdge (obligation / assessment / milestone ends) -> EvidenceLink
+    Assessment -> Conflict -> AssessmentDeadline (every disagreeing side)
 An Assessment is canonical per course; every source that states it, its
 weighting or a deadline adds an EvidenceLink instead of a duplicate row.
 Sources that disagree on a deadline give one AssessmentDeadline each: the
@@ -60,13 +62,18 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, CreatedAt, Timestamps, UUIDPrimaryKey, str_enum
 from app.domain.enums import (
     BlockKind,
+    ConflictField,
+    ConflictStatus,
     CourseStatus,
     DeadlinePrecision,
+    DependencyNodeKind,
+    DependencyRelation,
     EvidenceField,
     EvidenceSubject,
     LmsType,
     MappingRelation,
     MediaType,
+    Milestone,
     ModelCallErrorCategory,
     ModelCallKind,
     ModelCallStatus,
@@ -865,12 +872,14 @@ EVIDENCE_SUBJECT_SQL = (
     " AND (subject_type = 'assessment_deadline') = (assessment_deadline_id IS NOT NULL)"
     " AND (subject_type = 'assessment_requirement') = (assessment_requirement_id IS NOT NULL)"
     " AND (subject_type = 'obligation') = (obligation_id IS NOT NULL)"
+    " AND (subject_type = 'dependency_edge') = (dependency_edge_id IS NOT NULL)"
 )
 EVIDENCE_FIELD_SQL = (
     "(subject_type = 'assessment' AND field IN ('title', 'weighting'))"
     " OR (subject_type = 'assessment_deadline' AND field = 'deadline')"
     " OR (subject_type = 'assessment_requirement' AND field = 'requirement')"
     " OR (subject_type = 'obligation' AND field IN ('obligation', 'due_date'))"
+    " OR (subject_type = 'dependency_edge' AND field = 'dependency')"
 )
 
 
@@ -898,6 +907,7 @@ class EvidenceLink(UUIDPrimaryKey, CreatedAt, Base):
             "assessment_deadline_id",
             "assessment_requirement_id",
             "obligation_id",
+            "dependency_edge_id",
             "field",
             "source_span_id",
             "quote_start",
@@ -908,6 +918,7 @@ class EvidenceLink(UUIDPrimaryKey, CreatedAt, Base):
         Index("ix_evidence_links_assessment_deadline_id", "assessment_deadline_id"),
         Index("ix_evidence_links_assessment_requirement_id", "assessment_requirement_id"),
         Index("ix_evidence_links_obligation_id", "obligation_id"),
+        Index("ix_evidence_links_dependency_edge_id", "dependency_edge_id"),
     )
 
     subject_type: Mapped[EvidenceSubject] = mapped_column(
@@ -925,6 +936,9 @@ class EvidenceLink(UUIDPrimaryKey, CreatedAt, Base):
     )
     obligation_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("obligations.id", ondelete="CASCADE")
+    )
+    dependency_edge_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("dependency_edges.id", ondelete="CASCADE")
     )
     field: Mapped[EvidenceField] = mapped_column(str_enum(EvidenceField, "evidence_field"))
     source_span_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source_spans.id"), index=True)
@@ -1016,3 +1030,137 @@ class MaterialMapping(UUIDPrimaryKey, Timestamps, Base):
     workflow_run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workflow_runs.id"), index=True)
 
     source_span: Mapped[SourceSpan] = relationship(lazy="raise")
+
+
+# --- reasoning layer ------------------------------------------------------------------
+
+
+def _endpoint_sql(end: str) -> str:
+    """Exactly the column ``<end>_kind`` names is set."""
+    return (
+        f"({end}_kind = 'assessment') = ({end}_assessment_id IS NOT NULL)"
+        f" AND ({end}_kind = 'obligation') = ({end}_obligation_id IS NOT NULL)"
+        f" AND ({end}_kind = 'milestone') = ({end}_milestone IS NOT NULL)"
+    )
+
+
+class DependencyEdge(UUIDPrimaryKey, Timestamps, Base):
+    """A directed ordering a source states: ``prerequisite`` comes before
+    ``dependent``. Each end is a stored Assessment or Obligation of the same
+    course, or a closed ``Milestone``.
+
+    Derived by deterministic rules (``rule``, e.g.
+    ``dependency-rules/v1:before-submitting``) from the verified evidence of
+    ``derived_from_obligation_id``; the evidence of the ordering itself is
+    its EvidenceLinks (field ``dependency``). No model chooses an end, so no
+    end can be invented, and the writer checks that every end is of the
+    course (an assessment end also by foreign key).
+    """
+
+    __tablename__ = "dependency_edges"
+    __table_args__ = (
+        UniqueConstraint(
+            "course_id",
+            "relation",
+            "prerequisite_kind",
+            "prerequisite_assessment_id",
+            "prerequisite_obligation_id",
+            "prerequisite_milestone",
+            "dependent_kind",
+            "dependent_assessment_id",
+            "dependent_obligation_id",
+            "dependent_milestone",
+            name="uq_dependency_edges_ends",
+            postgresql_nulls_not_distinct=True,
+        ),
+        ForeignKeyConstraint(
+            ["prerequisite_assessment_id", "course_id"],
+            ["assessments.id", "assessments.course_id"],
+            name="fk_dependency_edges_prerequisite_same_course",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["dependent_assessment_id", "course_id"],
+            ["assessments.id", "assessments.course_id"],
+            name="fk_dependency_edges_dependent_same_course",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(_endpoint_sql("prerequisite"), name="prerequisite_one_end"),
+        CheckConstraint(_endpoint_sql("dependent"), name="dependent_one_end"),
+        CheckConstraint("length(btrim(rule)) > 0", name="rule_nonblank"),
+    )
+
+    # Lookups by course use the unique constraint (leading column).
+    course_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("courses.id"))
+    relation: Mapped[DependencyRelation] = mapped_column(
+        str_enum(DependencyRelation, "dependency_relation")
+    )
+    prerequisite_kind: Mapped[DependencyNodeKind] = mapped_column(
+        str_enum(DependencyNodeKind, "prerequisite_kind")
+    )
+    prerequisite_assessment_id: Mapped[uuid.UUID | None]
+    prerequisite_obligation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("obligations.id", ondelete="CASCADE"), index=True
+    )
+    prerequisite_milestone: Mapped[Milestone | None] = mapped_column(
+        str_enum(Milestone, "prerequisite_milestone")
+    )
+    dependent_kind: Mapped[DependencyNodeKind] = mapped_column(
+        str_enum(DependencyNodeKind, "dependent_kind")
+    )
+    dependent_assessment_id: Mapped[uuid.UUID | None]
+    dependent_obligation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("obligations.id", ondelete="CASCADE"), index=True
+    )
+    dependent_milestone: Mapped[Milestone | None] = mapped_column(
+        str_enum(Milestone, "dependent_milestone")
+    )
+    rule: Mapped[str] = mapped_column(Text)
+    # The claim whose evidence states the ordering: the edge goes with it.
+    derived_from_obligation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("obligations.id", ondelete="CASCADE"), index=True
+    )
+    workflow_run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workflow_runs.id"), index=True)
+
+
+# Every deadline a Conflict holds. A side goes with its deadline.
+conflict_sides = Table(
+    "conflict_sides",
+    Base.metadata,
+    Column("conflict_id", ForeignKey("conflicts.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "assessment_deadline_id",
+        ForeignKey("assessment_deadlines.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    ),
+)
+
+
+class Conflict(UUIDPrimaryKey, Timestamps, Base):
+    """Verified sources that disagree on one fact of one assessment.
+
+    Detected deterministically (``conflict-rules/v1``): an assessment with
+    two or more active verified deadlines (verified evidence in a current
+    version) whose local date or time differ. Every side is kept, each with
+    its own evidence; no column holds a chosen value, because none is
+    chosen. ``resolved_by_source`` only when the sources stop disagreeing.
+    """
+
+    __tablename__ = "conflicts"
+    __table_args__ = (
+        UniqueConstraint("assessment_id", "field", name="uq_conflicts_assessment_field"),
+        ForeignKeyConstraint(
+            ["assessment_id", "course_id"],
+            ["assessments.id", "assessments.course_id"],
+            name="fk_conflicts_assessment_same_course",
+            ondelete="CASCADE",
+        ),
+    )
+
+    course_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("courses.id"), index=True)
+    assessment_id: Mapped[uuid.UUID]
+    field: Mapped[ConflictField] = mapped_column(str_enum(ConflictField, "conflict_field"))
+    status: Mapped[ConflictStatus] = mapped_column(str_enum(ConflictStatus, "conflict_status"))
+    # The detection run that last changed it.
+    workflow_run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workflow_runs.id"), index=True)

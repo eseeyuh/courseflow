@@ -50,8 +50,11 @@ EXPECTED_TABLES = {
     "assessment_requirements",
     "obligations",
     "material_mappings",
+    "dependency_edges",
+    "conflicts",
+    "conflict_sides",
 }
-HEAD = "0009"
+HEAD = "0010"
 
 EXPECTED_SOURCE_SPAN_CHECKS = {
     "ck_source_spans_locator_present",
@@ -971,3 +974,50 @@ def test_0009_upgrade_downgrade_upgrade_keeps_existing_claims(db_at_0007: URL) -
 
     migrate(db_at_0007, "0009")
     assert _scalar(db_at_0007, "SELECT count(*) FROM material_mappings") == 0
+
+
+# --- 0010: dependency edges and conflicts ---------------------------------------------
+
+EDGE = "00000000-0000-0000-0000-0000000000f2"
+REASONING_ROWS = [
+    *MAPPING_ROWS[:1],
+    (
+        "INSERT INTO dependency_edges (id, course_id, relation, prerequisite_kind, "
+        "prerequisite_obligation_id, dependent_kind, dependent_assessment_id, rule, "
+        "derived_from_obligation_id, workflow_run_id) VALUES "
+        f"('{EDGE}', (SELECT course_id FROM resources), 'required_for', 'obligation', "
+        f"'{OBLIGATION}', 'assessment', '{ASSESSMENT}', 'dependency-rules/v1:before-submitting', "
+        f"'{OBLIGATION}', '{MAPPING_RUN}')"
+    ),
+    (
+        "INSERT INTO evidence_links (subject_type, dependency_edge_id, field, source_span_id, "
+        "quote_start, quote_end, verification_status) VALUES "
+        f"('dependency_edge', '{EDGE}', 'dependency', {FIRST_SPAN}, 0, 17, 'verified')"
+    ),
+    (
+        "INSERT INTO conflicts (course_id, assessment_id, field, status, workflow_run_id) VALUES "
+        f"((SELECT course_id FROM resources), '{ASSESSMENT}', 'deadline', 'open', '{MAPPING_RUN}')"
+    ),
+]
+
+
+def test_0010_upgrade_downgrade_upgrade_keeps_existing_claims(db_at_0007: URL) -> None:
+    migrate(db_at_0007, "0008")
+    _execute(db_at_0007, REQUIREMENT_OBLIGATION_ROWS)
+    migrate(db_at_0007, "0010")
+    state = _state(db_at_0007)
+    assert {"dependency_edges", "conflicts", "conflict_sides"} <= state.tables
+    assert {"uq_dependency_edges_ends", "uq_conflicts_assessment_field"} <= state.uniques
+    assert "fk_dependency_edges_dependent_same_course" in state.foreign_keys
+    _execute(db_at_0007, REASONING_ROWS)
+    assert _scalar(db_at_0007, "SELECT count(*) FROM evidence_links") == 4
+
+    # Edges, their evidence and conflicts go; the claims and their evidence stay.
+    downgrade(db_at_0007, "0009")
+    state = _state(db_at_0007)
+    assert not {"dependency_edges", "conflicts", "conflict_sides"} & state.tables
+    assert _scalar(db_at_0007, "SELECT count(*) FROM evidence_links") == 3
+    assert _scalar(db_at_0007, "SELECT count(*) FROM obligations") == 1
+
+    migrate(db_at_0007, "0010")
+    assert _scalar(db_at_0007, "SELECT count(*) FROM dependency_edges") == 0

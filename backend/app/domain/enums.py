@@ -144,6 +144,7 @@ class EvidenceSubject(StrEnum):
     ASSESSMENT_DEADLINE = "assessment_deadline"
     ASSESSMENT_REQUIREMENT = "assessment_requirement"
     OBLIGATION = "obligation"
+    DEPENDENCY_EDGE = "dependency_edge"
 
 
 class EvidenceField(StrEnum):
@@ -155,6 +156,45 @@ class EvidenceField(StrEnum):
     REQUIREMENT = "requirement"  # that the requirement is stated, for its assessment
     OBLIGATION = "obligation"  # that the action is stated, with its modality
     DUE_DATE = "due_date"  # an obligation's explicit calendar due date
+    DEPENDENCY = "dependency"  # that the source states the ordering
+
+
+class DependencyRelation(StrEnum):
+    """How a prerequisite constrains its dependent."""
+
+    BEFORE = "before"  # should come first
+    REQUIRED_FOR = "required_for"  # must be done first: the dependent is blocked without it
+
+
+class DependencyNodeKind(StrEnum):
+    """What one end of a DependencyEdge is."""
+
+    ASSESSMENT = "assessment"
+    OBLIGATION = "obligation"
+    MILESTONE = "milestone"
+
+
+class Milestone(StrEnum):
+    """Named academic steps a dependency can point at that are not stored
+    claims. Deliberately closed: a new milestone is a contract change."""
+
+    ETHICS_APPROVAL = "ethics_approval"
+    DATA_COLLECTION = "data_collection"
+
+
+class ConflictField(StrEnum):
+    """Which fact the sources of a Conflict disagree on."""
+
+    DEADLINE = "deadline"
+
+
+class ConflictStatus(StrEnum):
+    """``resolved_by_source`` only when the sources no longer disagree, never
+    by choosing a value."""
+
+    OPEN = "open"
+    ACKNOWLEDGED = "acknowledged"
+    RESOLVED_BY_SOURCE = "resolved_by_source"
 
 
 class MappingRelation(StrEnum):
