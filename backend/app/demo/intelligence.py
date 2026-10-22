@@ -9,7 +9,8 @@ every time.
 Seed and index (document embedding snapshot), then per course, through the
 production services: assessments, requirements and obligations (recorded
 FAST outputs replayed through the current gates), then material mapping
-(recorded query vectors and verifier outputs).
+(recorded query vectors and verifier outputs), then dependencies and
+conflicts (deterministic rules, no model).
 """
 
 from __future__ import annotations
@@ -136,6 +137,8 @@ async def build_demo_intelligence(
     """The initial Northbridge state with every demo claim, by replay."""
     from app.mapping.replay import MappingReplayProvider
     from app.mapping.service import MaterialMappingService
+    from app.reasoning.conflicts import detect_course_conflicts
+    from app.reasoning.dependencies import derive_course_dependencies
 
     build = await build_extractions(sessions, store, space)
     search = mapping_search(sessions, space, await query_inputs(sessions, build.courses))
@@ -145,4 +148,11 @@ async def build_demo_intelligence(
         result = await mapping.map_course(build.courses[ref])
         build.mapping.append(result)
         build.runs[ref].append({"workflow": "material-mapping", "status": result.status.value})
+    for ref in sorted(build.courses):
+        for workflow, derive in (
+            ("dependencies", derive_course_dependencies),
+            ("conflicts", detect_course_conflicts),
+        ):
+            outcome = await derive(sessions, build.courses[ref])
+            build.runs[ref].append({"workflow": workflow, "status": outcome.status.value})
     return build
