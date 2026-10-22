@@ -53,8 +53,11 @@ EXPECTED_TABLES = {
     "dependency_edges",
     "conflicts",
     "conflict_sides",
+    "study_states",
+    "study_plans",
+    "study_tasks",
 }
-HEAD = "0010"
+HEAD = "0011"
 
 EXPECTED_SOURCE_SPAN_CHECKS = {
     "ck_source_spans_locator_present",
@@ -1021,3 +1024,21 @@ def test_0010_upgrade_downgrade_upgrade_keeps_existing_claims(db_at_0007: URL) -
 
     migrate(db_at_0007, "0010")
     assert _scalar(db_at_0007, "SELECT count(*) FROM dependency_edges") == 0
+
+
+def test_0011_upgrade_downgrade_upgrade(db_at_0007: URL) -> None:
+    migrate(db_at_0007, "0011")
+    assert {"study_states", "study_plans", "study_tasks"} <= _state(db_at_0007).tables
+    _execute(
+        db_at_0007,
+        [
+            (
+                "INSERT INTO study_states (learner, source_span_id, state) VALUES "
+                f"('demo-student', {FIRST_SPAN}, 'studying')"
+            )
+        ],
+    )
+    downgrade(db_at_0007, "0010")
+    assert not {"study_states", "study_plans", "study_tasks"} & _state(db_at_0007).tables
+    _assert_existing_data_intact(db_at_0007)
+    migrate(db_at_0007, "0011")

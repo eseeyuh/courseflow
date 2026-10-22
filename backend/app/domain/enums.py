@@ -197,6 +197,30 @@ class ConflictStatus(StrEnum):
     RESOLVED_BY_SOURCE = "resolved_by_source"
 
 
+class StudyStateValue(StrEnum):
+    """A learner's own state for one piece of teaching material. Opening a
+    document never changes it: only the learner does."""
+
+    NOT_STARTED = "not_started"
+    STUDYING = "studying"
+    STUDIED = "studied"
+
+
+class StudyTaskType(StrEnum):
+    STUDY_MATERIAL = "study_material"
+    OBLIGATION = "obligation"
+    SUBMIT_ASSESSMENT = "submit_assessment"
+    CHECK_CONFLICT = "check_conflict"
+    ETHICS_APPROVAL = "ethics_approval"
+    DATA_COLLECTION = "data_collection"
+
+
+class StudyTaskStatus(StrEnum):
+    READY = "ready"
+    BLOCKED = "blocked"  # a required prerequisite is not done
+    COMPLETED = "completed"
+
+
 class MappingRelation(StrEnum):
     """How a requirement relates to the teaching material it is mapped to."""
 

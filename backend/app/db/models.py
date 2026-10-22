@@ -17,6 +17,7 @@ Academic and trust layers:
     AssessmentRequirement -> MaterialMapping -> SourceSpan (teaching material)
     Course -> DependencyEdge (obligation / assessment / milestone ends) -> EvidenceLink
     Assessment -> Conflict -> AssessmentDeadline (every disagreeing side)
+    StudyState -> SourceSpan (a mapped teaching target); StudyPlan -> StudyTask
 An Assessment is canonical per course; every source that states it, its
 weighting or a deadline adds an EvidenceLink instead of a duplicate row.
 Sources that disagree on a deadline give one AssessmentDeadline each: the
@@ -82,6 +83,9 @@ from app.domain.enums import (
     ObligationModality,
     ResourceType,
     ReviewReason,
+    StudyStateValue,
+    StudyTaskStatus,
+    StudyTaskType,
     TimezoneSource,
     VerificationStatus,
     WorkflowRunStatus,
@@ -1164,3 +1168,88 @@ class Conflict(UUIDPrimaryKey, Timestamps, Base):
     status: Mapped[ConflictStatus] = mapped_column(str_enum(ConflictStatus, "conflict_status"))
     # The detection run that last changed it.
     workflow_run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workflow_runs.id"), index=True)
+
+
+# --- planning layer -------------------------------------------------------------------
+
+
+class StudyState(UUIDPrimaryKey, Timestamps, Base):
+    """A learner's state for one mapped teaching target (a SourceSpan some
+    MaterialMapping points at). Set only by the learner; setting the same
+    state again changes nothing."""
+
+    __tablename__ = "study_states"
+    __table_args__ = (
+        UniqueConstraint("learner", "source_span_id", name="uq_study_states_learner_span"),
+        CheckConstraint("length(btrim(learner)) > 0", name="learner_nonblank"),
+    )
+
+    learner: Mapped[str] = mapped_column(Text)
+    source_span_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("source_spans.id", ondelete="CASCADE"), index=True
+    )
+    state: Mapped[StudyStateValue] = mapped_column(str_enum(StudyStateValue, "study_state"))
+
+
+class StudyPlan(UUIDPrimaryKey, CreatedAt, Base):
+    """A saved snapshot of the deterministic cross-course plan
+    (``plan_version``) as of ``as_of``, so two plans can be compared."""
+
+    __tablename__ = "study_plans"
+    __table_args__ = (CheckConstraint("task_count >= 0", name="task_count_nonnegative"),)
+
+    learner: Mapped[str] = mapped_column(Text)
+    plan_version: Mapped[str] = mapped_column(Text)
+    as_of: Mapped[datetime]
+    task_count: Mapped[int]
+    workflow_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workflow_runs.id", ondelete="SET NULL"), index=True
+    )
+
+    tasks: Mapped[list[StudyTask]] = relationship(
+        back_populates="plan", lazy="raise", order_by="StudyTask.position"
+    )
+
+
+class StudyTask(UUIDPrimaryKey, CreatedAt, Base):
+    """One task of a saved plan, as it was planned: the stored facts it comes
+    from (course, assessment, obligation, conflict, target spans), its
+    position, the structured reasons and the sentence rendered from them.
+    ``task_key`` is stable across plans (same facts, same key)."""
+
+    __tablename__ = "study_tasks"
+    __table_args__ = (
+        UniqueConstraint("plan_id", "task_key", name="uq_study_tasks_plan_key"),
+        UniqueConstraint("plan_id", "position", name="uq_study_tasks_plan_position"),
+        CheckConstraint("position >= 1", name="position_positive"),
+        CheckConstraint("estimated_minutes >= 0", name="estimated_minutes_nonnegative"),
+        CheckConstraint("jsonb_typeof(reasons) = 'array'", name="reasons_is_array"),
+    )
+
+    plan_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("study_plans.id", ondelete="CASCADE"))
+    position: Mapped[int]
+    task_key: Mapped[str] = mapped_column(Text)
+    task_type: Mapped[StudyTaskType] = mapped_column(str_enum(StudyTaskType, "study_task_type"))
+    status: Mapped[StudyTaskStatus] = mapped_column(str_enum(StudyTaskStatus, "study_task_status"))
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("courses.id", ondelete="CASCADE"), index=True
+    )
+    # Snapshot references: the plan outlives a claim that is later removed.
+    assessment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("assessments.id", ondelete="SET NULL")
+    )
+    obligation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("obligations.id", ondelete="SET NULL")
+    )
+    conflict_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conflicts.id", ondelete="SET NULL")
+    )
+    title: Mapped[str] = mapped_column(Text)
+    anchor_at: Mapped[datetime | None]
+    estimated_minutes: Mapped[int]
+    reasons: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    why_now: Mapped[str] = mapped_column(Text)
+    prerequisite_keys: Mapped[list[str]] = mapped_column(JSONB)
+    target_span_ids: Mapped[list[str]] = mapped_column(JSONB)
+
+    plan: Mapped[StudyPlan] = relationship(back_populates="tasks", lazy="raise")
