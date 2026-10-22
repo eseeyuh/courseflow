@@ -205,7 +205,7 @@ async def test_the_assessment_api_exposes_mappings_with_exact_evidence(
 
 def test_replay_keys_ignore_the_nonce_and_the_query_has_a_fixed_format() -> None:
     from app.ai.prompts import load_prompt
-    from app.evaluation.mapping.run import mapping_material
+    from app.mapping.replay import mapping_material
     from app.mapping.service import MappingTarget, build_mapping_messages, mapping_query
 
     target = MappingTarget(uuid.uuid4(), "Discuss imbalance.", "Coursework 1", "AML")

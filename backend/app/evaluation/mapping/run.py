@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import hashlib
 import json
 import os
 import sys
@@ -37,181 +36,33 @@ import tempfile
 import uuid
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.ai.embeddings import EmbeddingInput, query_input
-from app.ai.provider import ChatMessage, ModelInfo, StructuredResult, TokenUsage
-from app.db.models import Course, MaterialMapping, Resource, ResourceVersion, SourceSpan
+from app.db.models import MaterialMapping, Resource, ResourceVersion, SourceSpan
+from app.demo import recordings
+from app.demo.intelligence import build_extractions, mapping_search, query_inputs
 from app.domain.enums import ModelRole
 from app.evaluation.mapping.split import Expect, MappingCase, Split, load_split
 from app.evaluation.northbridge.labels import REPO_ROOT, GoldenDataset, load_golden
 from app.evaluation.retrieval.snapshot import ExpectedInputs
-from app.mapping.service import (
-    MappingRunResult,
-    MaterialMappingService,
-    mapping_query,
-    mapping_targets,
-)
-from app.retrieval.search import SearchRequest
+from app.ingestion.storage import LocalRawObjectStore
+from app.mapping.replay import MappingReplayProvider, recorded_outputs
+from app.mapping.service import MappingRunResult, MaterialMappingService
 
-# Committed: the demo and the default run replay them.
-RECORDINGS = REPO_ROOT / "evals" / "recordings" / "material-mapping"
 REPORTS = REPO_ROOT / "evals" / "reports"
-RECORDED = RECORDINGS / "material-mapping-v1-fast-thinking-off-outputs.json"
-QUERY_SNAPSHOT = (
-    REPO_ROOT
-    / "evals"
-    / "snapshots"
-    / "northbridge"
-    / "v1"
-    / "mapping-queries-nebius-qwen3-embedding-8b-d4096-sv1.jsonl"
-)
-CLAIM_OUTPUTS = (
-    REPO_ROOT
-    / "evals"
-    / "runs"
-    / "claim-extraction"
-    / "claim-extraction-v1-fast-thinking-off-gate-v3-outputs.json"
-)
+# Committed: the demo and the default run replay them.
+RECORDED = recordings.MAPPING_OUTPUTS
+QUERY_SNAPSHOT = recordings.MAPPING_QUERY_EMBEDDINGS
 REPORT_NAME = "material-mapping-v1-fast-thinking-off"
 MAX_SPEND_USD = Decimal("0.01")
 IRRELEVANT_KIND = "irrelevant_resource"
-
-
-def _sha(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def mapping_material(user: str) -> str:
-    """The material of a verifier message, without the per-call nonce."""
-    begin = user.index(">>>\n", user.index("<<<MAPPING_MATERIAL ")) + 4
-    return user[begin : user.index("\n<<<END_MAPPING_MATERIAL ")]
-
-
-class ReplayMissing(RuntimeError):
-    pass
-
-
-@dataclass(slots=True)
-class MappingReplayProvider:
-    """Answers each verifier call with the output recorded for exactly that
-    material. No network, no tokens."""
-
-    by_material: dict[str, dict[str, Any]]
-    name: str = "replay"
-    outputs: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
-
-    def model_for(self, role: ModelRole) -> str:
-        return "replay:recorded-mapping-outputs"
-
-    async def list_models(self) -> list[ModelInfo]:
-        return []
-
-    async def chat_structured[T: BaseModel](
-        self,
-        messages: Sequence[ChatMessage],
-        schema: type[T],
-        *,
-        role: ModelRole,
-        temperature: float | None = None,
-        thinking: bool | None = None,
-    ) -> StructuredResult[T]:
-        key = _sha(mapping_material(messages[-1].content))
-        if key not in self.by_material:
-            raise ReplayMissing(f"no recorded mapping output for material {key[:12]}")
-        self.outputs.append((messages[-1].content, self.by_material[key]))
-        return StructuredResult(
-            output=schema.model_validate(self.by_material[key]),
-            model=self.model_for(role),
-            usage=TokenUsage(prompt_tokens=0, completion_tokens=0, reasoning_tokens=0),
-            attempts=1,
-        )
-
-
-def recorded_outputs(outputs: Sequence[tuple[str, dict[str, Any]]]) -> list[dict[str, Any]]:
-    return [
-        {"material_sha256": _sha(mapping_material(user)), "output": output}
-        for user, output in outputs
-    ]
-
-
-# --- the Northbridge initial state, with no model call ------------------------------------
-
-
-async def build_initial_state(
-    sessions: async_sessionmaker[AsyncSession], settings: Any, raw: Path
-) -> dict[str, uuid.UUID]:
-    """Seed, index and extract assessments and requirements by replay."""
-    from app.ai.nebius_embeddings import embedding_space_from_settings
-    from app.demo.seed import seed
-    from app.demo.snapshot import load_demo_replay
-    from app.evaluation.assessments import run as assessments_run
-    from app.evaluation.assessments.run import EvalConfig, ReplayProvider, assign_outputs
-    from app.evaluation.claims.run import (
-        ASSESSMENT_PROMPT,
-        RECORDED_ASSESSMENTS,
-        ClaimReplayProvider,
-        recorded_by_material,
-    )
-    from app.evaluation.retrieval.resolve import production_limits
-    from app.extraction.claims_service import ClaimExtractionService
-    from app.extraction.service import AssessmentExtractionService
-    from app.ingestion.storage import LocalRawObjectStore
-    from app.retrieval.indexing import IndexingService
-
-    golden = load_golden()
-    indexer = IndexingService(
-        sessions,
-        load_demo_replay(embedding_space_from_settings(settings), max_batch_items=64),
-        batch_max_items=64,
-        batch_max_estimated_tokens=32_000,
-    )
-    await seed(sessions, LocalRawObjectStore(raw), limits=production_limits(), indexer=indexer)
-    plan = assessments_run.plan_units(golden, EvalConfig(ASSESSMENT_PROMPT))
-    recorded = json.loads(RECORDED_ASSESSMENTS.read_text(encoding="utf-8"))
-    assess = AssessmentExtractionService(
-        sessions,
-        ReplayProvider(assign_outputs(recorded, plan), "replay:recorded-fast"),
-        thinking=False,
-        prompt_version=ASSESSMENT_PROMPT,
-    )
-    claims = json.loads(CLAIM_OUTPUTS.read_text(encoding="utf-8"))
-    requirements = ClaimExtractionService(
-        sessions, ClaimReplayProvider(recorded_by_material(claims)), "requirements", thinking=False
-    )
-    async with sessions() as session:
-        courses = dict((await session.execute(select(Course.external_id, Course.id))).all())
-    for ref in sorted(courses):
-        await assess.extract_course(courses[ref])
-        await requirements.extract_course(courses[ref])
-    return courses
-
-
-async def query_inputs(
-    sessions: async_sessionmaker[AsyncSession], courses: dict[str, uuid.UUID]
-) -> tuple[EmbeddingInput, ...]:
-    """Exactly the query/v1 inputs the mapping run will embed."""
-    found: dict[str, EmbeddingInput] = {}
-    async with sessions() as session:
-        for ref in sorted(courses):
-            course = await session.get(Course, courses[ref])
-            assert course is not None
-            for target in await mapping_targets(session, course):
-                query = SearchRequest.build(
-                    course_id=course.id,
-                    query=mapping_query(target.requirement, target.assessment, target.course),
-                ).query
-                item = query_input(query)
-                found.setdefault(item.text, item)
-    return tuple(found.values())
 
 
 # --- scoring ------------------------------------------------------------------------------
@@ -377,7 +228,6 @@ async def score(
 async def run(settings: Any, *, live: bool, embedding_price: Decimal | None,
               spend_cap: Decimal) -> dict[str, Any]:  # fmt: skip
     from app.ai.nebius_embeddings import embedding_space_from_settings
-    from app.demo.snapshot import snapshot_subject
     from app.evaluation.assessments.run import BudgetedProvider
     from app.evaluation.claims.run import LimitedProvider
     from app.evaluation.retrieval.eval_db import (
@@ -385,8 +235,6 @@ async def run(settings: Any, *, live: bool, embedding_price: Decimal | None,
         recreate_eval_database,
         require_eval_database,
     )
-    from app.evaluation.retrieval.replay import load_replay_provider
-    from app.retrieval.search import SearchService
 
     golden = load_golden()
     space = embedding_space_from_settings(settings)
@@ -401,20 +249,14 @@ async def run(settings: Any, *, live: bool, embedding_price: Decimal | None,
     try:
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         with tempfile.TemporaryDirectory() as raw:
-            courses = await build_initial_state(sessions, settings, Path(raw))
+            build = await build_extractions(sessions, LocalRawObjectStore(Path(raw)), space)
+            courses = build.courses
             queries = await query_inputs(sessions, courses)
-            inputs = ExpectedInputs((), queries)
             embed_spend = Decimal(0)
             if live:
+                inputs = ExpectedInputs((), queries)
                 embed_spend = await _record_queries(settings, golden, inputs, embedding_price)
-            query_replay = load_replay_provider(
-                QUERY_SNAPSHOT,
-                dataset=snapshot_subject(golden),
-                active_space=space,
-                max_batch_items=64,
-                inputs=inputs,
-            )
-            search = SearchService(sessions, space, query_replay)
+            search = mapping_search(sessions, space, queries)
             if live:
                 from app.ai.nebius import NebiusTokenFactoryProvider
 
@@ -430,9 +272,7 @@ async def run(settings: Any, *, live: bool, embedding_price: Decimal | None,
                 provider: Any = LimitedProvider(budgeted, len(queries))
             else:
                 recorded = json.loads(RECORDED.read_text(encoding="utf-8"))
-                provider = MappingReplayProvider(
-                    {item["material_sha256"]: item["output"] for item in recorded}
-                )
+                provider = MappingReplayProvider.from_recorded(recorded)
             service = MaterialMappingService(sessions, search, provider, thinking=False)
             results = [await service.map_course(courses[ref]) for ref in sorted(courses)]
             scored = await score(sessions, golden, results)
@@ -533,7 +373,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         run(get_settings(), live=args.live, embedding_price=args.embedding_price_usd_per_million,
             spend_cap=args.spend_cap)
     )  # fmt: skip
-    RECORDINGS.mkdir(parents=True, exist_ok=True)
+    RECORDED.parent.mkdir(parents=True, exist_ok=True)
     outputs = result.pop("outputs")
     if args.live:
         RECORDED.write_text(json.dumps(outputs, indent=2, sort_keys=True) + "\n",

@@ -1,0 +1,567 @@
+[
+  {
+    "nonce_free_material_sha256": "cebc10f23793e3257e0457ed9749d8b2651940d64c32a5c4bb86de6f017220b0",
+    "output": {
+      "requirements": [
+        {
+          "assessment": "A1",
+          "lead_in": null,
+          "statement": {
+            "quote": "1. Describe the dataset and frame the prediction task in your own words.",
+            "span": "S2"
+          }
+        },
+        {
+          "assessment": "A1",
+          "lead_in": null,
+          "statement": {
+            "quote": "2. Discuss the class imbalance in the data and explain how it affects both model training and the way the models should be evaluated.",
+            "span": "S2"
+          }
+        },
+        {
+          "assessment": "A1",
+          "lead_in": null,
+          "statement": {
+            "quote": "3. Justify the evaluation metrics you report. Accuracy on its own is not an acceptable justification for a model on this dataset.",
+            "span": "S2"
+          }
+        },
+        {
+          "assessment": "A1",
+          "lead_in": null,
+          "statement": {
+            "quote": "4. Compare at least two different models on a held-out test set that you do not use for model selection.",
+            "span": "S2"
+          }
+        },
+        {
+          "assessment": "A1",
+          "lead_in": null,
+          "statement": {
+            "quote": "5. Reflect on the limitations of your evaluation and what you would do next. Any resampling or class weighting must be applied to the training data only. Include your code as an appendix or as a link to a private repository.",
+            "span": "S2"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "a68c5ab0f3f00218ff4621da6d596e33268a997132d3edd963b302ffeb6cbc38",
+    "output": {
+      "requirements": [
+        {
+          "assessment": "A3",
+          "lead_in": null,
+          "statement": {
+            "quote": "Your specification must include 1. A focused research question. 2. The aims and objectives of the project. 3. A short review of related work, citing at least eight sources. 4. The proposed methodology, including how you will obtain your data. 5. Ethical considerations and the ethics review route you will follow. 6. A timeline to the final submission, for example as a Gantt chart.",
+            "span": "S2"
+          }
+        },
+        {
+          "assessment": "A3",
+          "lead_in": null,
+          "statement": {
+            "quote": "Marking: Specifications are marked pass or fail with written feedback; a failed specification must be revised and resubmitted within 10 working days.",
+            "span": "S2"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "f7bd778c18d8e67bf881b36be624508e3bc4be4117ef332965817fc939841787",
+    "output": {
+      "obligations": []
+    }
+  },
+  {
+    "nonce_free_material_sha256": "fc8a1f71239a05a7f443fb903dd479cefc8606d3e0e7d8b1d88284f06246411a",
+    "output": {
+      "obligations": []
+    }
+  },
+  {
+    "nonce_free_material_sha256": "cebc10f23793e3257e0457ed9749d8b2651940d64c32a5c4bb86de6f017220b0",
+    "output": {
+      "obligations": []
+    }
+  },
+  {
+    "nonce_free_material_sha256": "7209011e7fbe4064b404822e89c0b8e81270bd3664b0164ae924376de77c96e6",
+    "output": {
+      "obligations": []
+    }
+  },
+  {
+    "nonce_free_material_sha256": "495fdebfdbfdd31fed1a8b58a07bb23e4f8fd8d653a30aa8349bbcf82ebf6299",
+    "output": {
+      "obligations": []
+    }
+  },
+  {
+    "nonce_free_material_sha256": "3fbcd7fd40493f6aa3ebad32b541f233226bf69b285bf6bc9028fc4b1ea3533b",
+    "output": {
+      "obligations": []
+    }
+  },
+  {
+    "nonce_free_material_sha256": "d2deb7a36c0e6f074c73ae551c1fc2588aa3c121d6d89178271a55f5eba7a5c9",
+    "output": {
+      "obligations": [
+        {
+          "action": "Submit the application form, participant information sheet and consent form through the ethics portal.",
+          "assessment": "A1",
+          "category": "ethics_admin_form",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Submit the application form, participant information sheet and consent form through the ethics portal. Your supervisor must approve the application first.",
+              "span": "S12"
+            }
+          ]
+        },
+        {
+          "action": "Your supervisor must approve the application first.",
+          "assessment": "A1",
+          "category": "supervisor_review",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Your supervisor must approve the application first.",
+              "span": "S12"
+            }
+          ]
+        },
+        {
+          "action": "You must not recruit participants or collect any data until your ethics application has been approved.",
+          "assessment": "A1",
+          "category": "submission_prerequisite",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "You must not recruit participants or collect any data until your ethics application has been approved.",
+              "span": "S7"
+            }
+          ]
+        },
+        {
+          "action": "Data collected before approval cannot be used in your dissertation, even if approval is granted later.",
+          "assessment": "A1",
+          "category": "submission_prerequisite",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Data collected before approval cannot be used in your dissertation, even if approval is granted later.",
+              "span": "S8"
+            }
+          ]
+        },
+        {
+          "action": "Projects that use only publicly available, fully anonymised datasets may qualify for the low-risk route; check with your supervisor.",
+          "assessment": null,
+          "category": "other",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Projects that use only publicly available, fully anonymised datasets may qualify for the low-risk route; check with your supervisor.",
+              "span": "S5"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "67b018fceaaf8a087ea31aa31388b5af2689887adba9dd8c14be4fa957aec853",
+    "output": {
+      "obligations": [
+        {
+          "action": "Submit a complete draft of the Project Specification to your supervisor for review before the specification deadline",
+          "assessment": "A3",
+          "category": "supervisor_review",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "relative"
+          },
+          "evidence": [
+            {
+              "quote": "Before you submit your Project Specification, your supervisor must have reviewed a complete draft of it. Send the draft to your supervisor at least 5 working days before the specification deadline.",
+              "span": "S2"
+            }
+          ]
+        },
+        {
+          "action": "Meet your supervisor at least once every two weeks during term",
+          "assessment": null,
+          "category": "supervisor_review",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "relative"
+          },
+          "evidence": [
+            {
+              "quote": "Meet your supervisor at least once every two weeks during term.",
+              "span": "S2"
+            }
+          ]
+        },
+        {
+          "action": "Keep brief notes of each meeting and share them with your supervisor",
+          "assessment": null,
+          "category": "supervisor_review",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "relative"
+          },
+          "evidence": [
+            {
+              "quote": "Keep brief notes of each meeting and share them with your supervisor.",
+              "span": "S2"
+            }
+          ]
+        },
+        {
+          "action": "No data may be collected for your project before ethics approval has been granted",
+          "assessment": null,
+          "category": "ethics_admin_form",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "No data may be collected for your project before ethics approval has been granted.",
+              "span": "S3"
+            }
+          ]
+        },
+        {
+          "action": "Agree the format and timing with your supervisor for a short progress note before the interim review",
+          "assessment": null,
+          "category": "formative_prerequisite",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "relative"
+          },
+          "evidence": [
+            {
+              "quote": "Your supervisor may also ask for a short progress note before the interim review; agree the format and timing with them.",
+              "span": "S3"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "a499e597257b66647475df62915113cd7c97188d428afac6d664a47032f91d29",
+    "output": {
+      "obligations": [
+        {
+          "action": "Plan the ethics application early",
+          "assessment": "A1",
+          "category": "ethics_admin_form",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "ambiguous"
+          },
+          "evidence": [
+            {
+              "quote": "Plan the ethics application early: approval takes weeks",
+              "span": "S15"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "a68c5ab0f3f00218ff4621da6d596e33268a997132d3edd963b302ffeb6cbc38",
+    "output": {
+      "obligations": [
+        {
+          "action": "Submit the Project Specification by the deadline",
+          "assessment": "A3",
+          "category": "submission_prerequisite",
+          "due": {
+            "due_date": "2026-11-30",
+            "due_time": "12:00",
+            "evidence": {
+              "quote": "Deadline: Monday 30 November 2026, 12:00 (UK time).",
+              "span": "S1"
+            },
+            "status": "stated"
+          },
+          "evidence": [
+            {
+              "quote": "Deadline: Monday 30 November 2026, 12:00 (UK time).",
+              "span": "S1"
+            }
+          ]
+        },
+        {
+          "action": "Include a focused research question in the Project Specification",
+          "assessment": "A3",
+          "category": "other",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Your specification must include 1. A focused research question.",
+              "span": "S2"
+            }
+          ]
+        },
+        {
+          "action": "Include the aims and objectives of the project in the Project Specification",
+          "assessment": "A3",
+          "category": "other",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Your specification must include 2. The aims and objectives of the project.",
+              "span": "S2"
+            }
+          ]
+        },
+        {
+          "action": "Include a short review of related work, citing at least eight sources, in the Project Specification",
+          "assessment": "A3",
+          "category": "other",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Your specification must include 3. A short review of related work, citing at least eight sources.",
+              "span": "S2"
+            }
+          ]
+        },
+        {
+          "action": "Include the proposed methodology, including how you will obtain your data, in the Project Specification",
+          "assessment": "A3",
+          "category": "other",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Your specification must include 4. The proposed methodology, including how you will obtain your data.",
+              "span": "S2"
+            }
+          ]
+        },
+        {
+          "action": "Include ethical considerations and the ethics review route you will follow in the Project Specification",
+          "assessment": "A3",
+          "category": "other",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Your specification must include 5. Ethical considerations and the ethics review route you will follow.",
+              "span": "S2"
+            }
+          ]
+        },
+        {
+          "action": "Include a timeline to the final submission, for example as a Gantt chart, in the Project Specification",
+          "assessment": "A3",
+          "category": "other",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Your specification must include 6. A timeline to the final submission, for example as a Gantt chart.",
+              "span": "S2"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "5e05721409e86be1f607c894e68c25a2558d558ee8b6da4321dd07148a23cb09",
+    "output": {
+      "obligations": []
+    }
+  },
+  {
+    "nonce_free_material_sha256": "89d175814d6e5147b46387a583aa05a1179308975e3623d418962123a8460610",
+    "output": {
+      "obligations": [
+        {
+          "action": "Submit a complete draft of the Project Specification to your supervisor for review",
+          "assessment": "A3",
+          "category": "supervisor_review",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "relative"
+          },
+          "evidence": [
+            {
+              "quote": "Before you submit your Project Specification, your supervisor must have reviewed a complete draft of it. Send the draft to your supervisor at least 10 working days before the specification deadline.",
+              "span": "S2"
+            }
+          ]
+        },
+        {
+          "action": "Meet your supervisor at least once every two weeks during term",
+          "assessment": null,
+          "category": "supervisor_review",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "relative"
+          },
+          "evidence": [
+            {
+              "quote": "Meet your supervisor at least once every two weeks during term.",
+              "span": "S2"
+            }
+          ]
+        },
+        {
+          "action": "Keep brief notes of each meeting and share them with your supervisor",
+          "assessment": null,
+          "category": "supervisor_review",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "relative"
+          },
+          "evidence": [
+            {
+              "quote": "Keep brief notes of each meeting and share them with your supervisor.",
+              "span": "S2"
+            }
+          ]
+        },
+        {
+          "action": "Agree the format and timing with your supervisor for a short progress note before the interim review",
+          "assessment": null,
+          "category": "formative_prerequisite",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "relative"
+          },
+          "evidence": [
+            {
+              "quote": "Your supervisor may also ask for a short progress note before the interim review; agree the format and timing with them.",
+              "span": "S3"
+            }
+          ]
+        },
+        {
+          "action": "No data may be collected for your project before ethics approval has been granted",
+          "assessment": null,
+          "category": "ethics_admin_form",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "ambiguous"
+          },
+          "evidence": [
+            {
+              "quote": "No data may be collected for your project before ethics approval has been granted. The Ethics Guidance explains the process and timescales.",
+              "span": "S3"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "09c310cbca495220570428e87250ff40cdb061ca6b6b7955b94bb0d579091d97",
+    "output": {
+      "obligations": [
+        {
+          "action": "Plan the ethics application early",
+          "assessment": "A1",
+          "category": "ethics_admin_form",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "ambiguous"
+          },
+          "evidence": [
+            {
+              "quote": "Plan the ethics application early: approval takes weeks",
+              "span": "S15"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

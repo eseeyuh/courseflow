@@ -101,6 +101,10 @@ cd backend
 uv run python -m app.evaluation.mapping.run          # replay: no network, no spend
 ```
 
-It builds the initial Northbridge state in the evaluation database from recorded outputs (no extraction call), then maps every requirement. The default run replays the recorded query embeddings (`snapshots/northbridge/v1/mapping-queries-*.jsonl`) and verifier outputs (`recordings/material-mapping/`, committed so a fresh clone can replay). `--live --embedding-price-usd-per-million <price>` records both again under a spend cap of at most $0.01.
+It builds the initial Northbridge state in the evaluation database from recorded outputs (no extraction call), then maps every requirement. The default run replays the recorded query embeddings (`snapshots/northbridge/v1/mapping-queries-*.jsonl`) and verifier outputs (`recordings/material-mapping/`). `--live --embedding-price-usd-per-million <price>` records both again under a spend cap of at most $0.01.
 
 The dev / held-out split (`datasets/northbridge/splits/material-mapping-v1.json`) was declared before any result; only dev may guide changes. Report: `reports/material-mapping-v1-fast-thinking-off.md`.
+
+## Demo recordings
+
+`recordings/` holds the frozen, validated model outputs the Northbridge demo is rebuilt from: assessment extraction, requirement and obligation extraction, and material mapping. Each is keyed by a nonce-free material hash, with no prompts, headers or credentials. Together with the embedding snapshots in `snapshots/northbridge/v1/`, they let a fresh clone rebuild the demo intelligence with no network and no spend (`app.demo.intelligence`). `runs/` stays local and gitignored: nothing the demo needs may live there.
