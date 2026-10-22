@@ -14,6 +14,7 @@ Academic and trust layers:
     Course -> Assessment -> AssessmentRequirement
     Course -> Obligation (-> Assessment, optional)
     EvidenceLink -> SourceSpan, for one fact of any of these claims
+    AssessmentRequirement -> MaterialMapping -> SourceSpan (teaching material)
 An Assessment is canonical per course; every source that states it, its
 weighting or a deadline adds an EvidenceLink instead of a duplicate row.
 Sources that disagree on a deadline give one AssessmentDeadline each: the
@@ -43,6 +44,7 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     Computed,
+    Double,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -63,6 +65,7 @@ from app.domain.enums import (
     EvidenceField,
     EvidenceSubject,
     LmsType,
+    MappingRelation,
     MediaType,
     ModelCallErrorCategory,
     ModelCallKind,
@@ -941,5 +944,75 @@ class EvidenceLink(UUIDPrimaryKey, CreatedAt, Base):
     workflow_run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("workflow_runs.id"), index=True
     )
+
+    source_span: Mapped[SourceSpan] = relationship(lazy="raise")
+
+
+# --- navigation layer -----------------------------------------------------------------
+
+
+class MaterialMapping(UUIDPrimaryKey, Timestamps, Base):
+    """Where a student studies for a requirement: one retrieved teaching
+    SourceSpan that a verifier selected for it.
+
+    The target is the evidence: ``source_span.excerpt[quote_start:quote_end]``
+    (code points) is the part of the span inside the retrieved chunk, taken
+    from retrieval, never from the model. The verifier only picks candidate
+    IDs issued for its call, so a mapping always points at material that was
+    retrieved for this requirement; whether the material really teaches it is
+    the verifier's judgement, not a deterministic proof, so a mapping is a
+    navigation suggestion, never a verified fact. ``rationale`` is built by
+    code from the target's locator and title: navigation only, no model text.
+
+    Lineage: the retrieval (``retrieval_mode``, ``retrieval_rank``,
+    ``retrieval_score``, the query embedding ``query_model_call_id``), the
+    selecting ``verifier_model_call_id`` and the ``workflow_run_id``. The
+    score is retriever-specific, never a confidence. That the span is current
+    teaching material of the requirement's course is checked when writing;
+    it spans several tables, so the schema does not enforce it.
+    """
+
+    __tablename__ = "material_mappings"
+    __table_args__ = (
+        UniqueConstraint(
+            "requirement_id", "relation", "source_span_id", name="uq_material_mappings_target"
+        ),
+        CheckConstraint("quote_start >= 0 AND quote_start < quote_end", name="quote_ordered"),
+        CheckConstraint(
+            "length(btrim(rationale)) > 0 AND length(rationale) <= 300",
+            name="rationale_nonblank_bounded",
+        ),
+        CheckConstraint("retrieval_rank >= 1", name="retrieval_rank_positive"),
+        CheckConstraint(
+            "retrieval_mode IN ('vector', 'lexical', 'hybrid')", name="retrieval_mode_known"
+        ),
+        # Only lexical retrieval runs without embedding the query.
+        CheckConstraint(
+            "(retrieval_mode = 'lexical') = (query_model_call_id IS NULL)",
+            name="query_call_iff_embedded",
+        ),
+    )
+
+    # Lookups by requirement use the unique constraint (leading column).
+    requirement_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("assessment_requirements.id", ondelete="CASCADE")
+    )
+    relation: Mapped[MappingRelation] = mapped_column(str_enum(MappingRelation, "mapping_relation"))
+    # No cascade, like evidence: a span cannot be deleted while a mapping uses it.
+    source_span_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("source_spans.id"), index=True)
+    quote_start: Mapped[int]
+    quote_end: Mapped[int]
+    rationale: Mapped[str] = mapped_column(Text)
+    retrieval_mode: Mapped[str] = mapped_column(Text)
+    # The retrieved chunk's 1-based rank and its retriever-specific score.
+    retrieval_rank: Mapped[int]
+    retrieval_score: Mapped[float] = mapped_column(Double)
+    query_model_call_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_calls.id"), index=True
+    )
+    verifier_model_call_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_calls.id"), index=True
+    )
+    workflow_run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workflow_runs.id"), index=True)
 
     source_span: Mapped[SourceSpan] = relationship(lazy="raise")

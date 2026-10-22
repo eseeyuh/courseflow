@@ -157,6 +157,13 @@ class EvidenceField(StrEnum):
     DUE_DATE = "due_date"  # an obligation's explicit calendar due date
 
 
+class MappingRelation(StrEnum):
+    """How a requirement relates to the teaching material it is mapped to."""
+
+    # The material teaches what the requirement asks for: where to study it.
+    SUPPORTED_BY = "supported_by"
+
+
 class ReviewReason(StrEnum):
     """Why a stored claim or piece of evidence needs review. Derived by the
     evidence gate from the evidence itself, never supplied by a model."""

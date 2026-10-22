@@ -67,8 +67,9 @@ async def reset_demo_institution(
                 select(ResourceVersion.id).where(ResourceVersion.resource_id.in_(resources))
             )
         ).all()
-        # Claims first: their deadlines, requirements and evidence links cascade,
-        # and evidence links must go before the spans and runs they reference.
+        # Claims first: their deadlines, requirements, material mappings and
+        # evidence links cascade, and links and mappings must go before the
+        # spans, model calls and runs they reference.
         # Obligations go before the assessments and model calls they reference.
         await session.execute(delete(Obligation).where(Obligation.course_id.in_(courses)))
         await session.execute(delete(Assessment).where(Assessment.course_id.in_(courses)))
