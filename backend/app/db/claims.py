@@ -27,6 +27,7 @@ from app.db.models import (
     ResourceVersion,
     SourceSpan,
 )
+from app.domain.enums import ResourceType, VerificationStatus
 
 Position = tuple[str, int, int, int]  # source URI, version, span ordinal, offset
 
@@ -170,6 +171,10 @@ async def course_obligations(session: AsyncSession, course_id: uuid.UUID) -> lis
             review_reason=o.review_reason,
             supported_by_current_version=any(e.current_version for e in evidence[o.id]),
             evidence=evidence[o.id],
+            hidden=o.status is VerificationStatus.VERIFIED
+            and o.assessment_id is not None
+            and bool(evidence[o.id])
+            and all(e.resource_type is not ResourceType.BRIEF for e in evidence[o.id]),
         )
         for o in obligations
     ]

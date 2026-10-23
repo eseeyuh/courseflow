@@ -98,3 +98,7 @@ class ObligationRead(BaseModel):
     review_reason: ReviewReason | None
     supported_by_current_version: bool
     evidence: list[EvidenceRead]
+    # Hidden: a verified obligation of an assessment that no brief states (it
+    # is found only in other sources, e.g. a handbook). Derived from the
+    # evidence's resource types, never from the model.
+    hidden: bool = False

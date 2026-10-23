@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from app.domain.enums import (
     DeadlinePrecision,
     EvidenceField,
+    ResourceType,
     ReviewReason,
     TimezoneSource,
     VerificationStatus,
@@ -34,6 +35,7 @@ class EvidenceRead(BaseModel):
     section_path: str | None
     resource_id: uuid.UUID
     resource_title: str
+    resource_type: ResourceType
     resource_version_id: uuid.UUID
     version_number: int
     current_version: bool

@@ -183,6 +183,15 @@ async def test_demo_dependencies_and_conflict_through_the_api(
     assert "before ethics approval" in " ".join(ethics["evidence"][0]["quote"].split())
     assert all(link["verification_status"] == "verified" for e in edges for link in e["evidence"])
 
+    # The supervisor review is hidden: verified, of an assessment, stated in no brief.
+    obligations = (await client.get(f"/api/v1/courses/{msd}/obligations")).json()
+    hidden = [o for o in obligations if o["hidden"]]
+    assert [o["category"] for o in hidden] == ["supervisor_review"]
+    assert {e["resource_type"] for e in hidden[0]["evidence"]} == {"handbook"}
+    assert all(
+        not o["hidden"] for o in obligations if o["status"] != "verified" or not o["assessment_id"]
+    )
+
     # 3-5: one Coursework 1 conflict, both values with their own evidence, no winner.
     (conflict,) = (await client.get(f"/api/v1/courses/{aml}/conflicts")).json()
     assert conflict["status"] == "open" and conflict["field"] == "deadline"

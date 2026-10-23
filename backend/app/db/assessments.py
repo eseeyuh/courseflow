@@ -65,6 +65,7 @@ async def evidence_reads(
                 section_path=span.section_path,
                 resource_id=resource.id,
                 resource_title=resource.title,
+                resource_type=resource.type,
                 resource_version_id=version.id,
                 version_number=version.version_number,
                 current_version=resource.current_version_id == version.id,
