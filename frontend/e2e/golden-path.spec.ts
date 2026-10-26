@@ -11,6 +11,8 @@ async function demoAction(page: Page, testId: "reset-demo" | "simulate-sync", do
   const header = page.getByRole("banner");
   await header.getByTestId(testId).click();
   await expect(header.getByTestId(testId)).toBeDisabled(); // no duplicate click while running
+  await expect(page.getByTestId("demo-progress")).toBeVisible(); // the page says CourseFlow is working
+  for (const button of await page.getByTestId(testId).all()) await expect(button).toBeDisabled(); // every copy
   await expect(header.getByTestId("demo-status")).toHaveText(done, { timeout: 180_000 });
   await expect(header.getByTestId(testId)).toBeEnabled();
 }
@@ -59,12 +61,19 @@ test("the CourseFlow golden path, from reset to a propagated LMS change", async 
   let drawer = await openEvidence(page, imbalance.getByTestId("material-location").filter({ hasText: "Slide 2" }));
   await expect(drawer.getByTestId("evidence-locator").first()).toHaveText("Slide 2");
   await expect(drawer.getByTestId("evidence-quote").first()).toContainText("With 7% positives");
+  await expect(drawer.getByTestId("evidence-claim")).toContainText("class imbalance");
   await closeEvidence(page);
 
-  // The conflict: both values, no choice
+  // The conflict: both values, no choice, each side with its own source
   const card = page.getByTestId("conflict-card");
   await expect(card.getByTestId("conflict-value")).toHaveText(["Thu, 12 Nov 2026, 14:00", "Fri, 13 Nov 2026, 23:59"]);
-  await expect(card).toContainText("CourseFlow will not silently choose between conflicting university sources.");
+  await expect(card.getByTestId("conflict-trust")).toHaveText("CourseFlow will not silently choose between conflicting university sources.");
+  drawer = await openEvidence(page, card.getByRole("button", { name: "Show what Source A says" }));
+  await expect(drawer.getByTestId("evidence-quote")).toContainText("Thursday 12 November 2026, 14:00");
+  await closeEvidence(page);
+  drawer = await openEvidence(page, card.getByRole("button", { name: "Show what Source B says" }));
+  await expect(drawer.getByTestId("evidence-quote").first()).toContainText("13 November");
+  await closeEvidence(page);
 
   // Hidden supervisor-review obligation: Home -> attention item -> evidence (3 clicks)
   await page.getByRole("link", { name: "Home", exact: true }).click();
@@ -72,6 +81,8 @@ test("the CourseFlow golden path, from reset to a propagated LMS change", async 
   const hidden = page.getByTestId("hidden-obligation");
   await expect(hidden).toContainText("Found by CourseFlow");
   await expect(hidden).toContainText("supervisor");
+  await expect(hidden).toContainText("Mandatory");
+  await expect(hidden).toContainText("Handbook");
   await expect(hidden.getByTestId("obligation-relationship")).toContainText("Project Specification");
   drawer = await openEvidence(page, hidden.getByRole("button", { name: /says this/ }));
   await expect(drawer.getByTestId("evidence-quote").first()).toContainText("Before you submit your Project Specification");
@@ -89,6 +100,8 @@ test("the CourseFlow golden path, from reset to a propagated LMS change", async 
   await lecture.getByTestId("state-studied").click();
   await expect(lecture).toHaveAttribute("data-status", "completed");
   await expect(lecture.getByTestId("why-now")).toHaveText("Done: you have studied this material.");
+  await expect(page.getByTestId("plan-saved")).toContainText("Saved as Studied");
+  await expect(page.getByTestId("plan-saved")).toContainText("now step 10 of 10, marked done");
   await expect(page.getByTestId("plan-task").last().getByTestId("task-title")).toContainText("Learning from Imbalanced Data");
   const submit = planTask(page, "Submit Coursework 1");
   await expect(submit.getByTestId("task-prerequisite").filter({ hasText: "Learning from Imbalanced Data" }))
@@ -107,9 +120,9 @@ test("the CourseFlow golden path, from reset to a propagated LMS change", async 
   await expect(page.getByTestId("change")).toHaveCount(2);
   await expect(page.getByTestId("affected-deadline_added")).toContainText("Thu, 19 Nov 2026, 14:00");
   await expect(page.getByTestId("affected-deadline_superseded")).toContainText("Thu, 12 Nov 2026, 14:00 replaced by Thu, 19 Nov 2026, 14:00");
-  await expect(page.getByTestId("affected-conflict_changed")).toContainText(
-    "Thu, 12 Nov 2026, 14:00 vs Fri, 13 Nov 2026, 23:59 is now Fri, 13 Nov 2026, 23:59 vs Thu, 19 Nov 2026, 14:00",
-  );
+  const changed = page.getByTestId("affected-conflict_changed");
+  await expect(changed).toContainText("Before" + "Thu, 12 Nov 2026, 14:00 vs Fri, 13 Nov 2026, 23:59");
+  await expect(changed).toContainText("Now" + "Fri, 13 Nov 2026, 23:59 vs Thu, 19 Nov 2026, 14:00");
   await expect(page.getByTestId("affected-obligation_wording_changed").first()).toBeVisible();
   await expect(page.getByTestId("plan-diff")).toContainText("Check the Coursework 1");
 
