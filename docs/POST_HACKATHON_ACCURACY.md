@@ -27,3 +27,6 @@ Quality work deliberately deferred while the end-to-end prototype is built. Noth
 - **Client-side fetching.** Pages load from the API in the browser and refetch whole views after a demo action; fine for two courses, not for many.
 - **Desktop-first layout.** Usable on a laptop; small screens are not tuned.
 - **Studied state is per span.** Marking a study task studied sets every span it targets; partial progress inside a task is not shown.
+- **Retrieval rank is uninformative.** Every mapping of Coursework 1 is stored with rank 1 and the same score, so the UI cannot (and does not) single out a best slide; it lists each slide with the first line of its own text. Store a per-requirement rank that orders the candidates.
+- **Evidence drawer focus.** Focus moves into the drawer and back to its opener, but is not trapped inside it.
+- **Demo script wording.** The draft script refers to the class imbalance requirement as "requirement 2"; the UI lists it in the brief's stored order, as the fifth.
