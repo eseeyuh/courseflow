@@ -6,80 +6,119 @@
 
 // The two demo controls. Both call the real offline backend paths: reset
 // rebuilds the initial Northbridge state, sync applies the demo LMS's later
-// changes. Neither talks to a live university system.
+// changes. Neither talks to a live university system. Every copy of the
+// controls shares one running action (DemoState), so nothing runs twice.
 
-import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { useDemoState } from "@/components/DemoState";
-import { api, ApiError } from "@/lib/api";
-import type { WorkflowRun } from "@/lib/types";
 
-type Busy = null | "reset" | "sync";
+export const EXPLANATION = "This simulates the provided demo LMS changing; it is not a live university Moodle connection.";
 
-const EXPLANATION = "This simulates the provided demo LMS changing; it is not a live university Moodle connection.";
+const WORKING = {
+  sync: {
+    title: "CourseFlow is processing the changed LMS sources",
+    body: "Bringing in the new versions, rechecking the claims they affect, then refreshing conflicts and the study plan. This takes about 10 seconds.",
+  },
+  reset: {
+    title: "Rebuilding the initial demo state",
+    body: "Replaying the recorded course processing offline. This takes about 10 seconds.",
+  },
+};
 
-/** Short run IDs: a debugging reference for the run traces, nothing more. */
-function runRefs(runs: WorkflowRun[]): string {
-  return runs.length ? ` (${runs.length === 1 ? "run" : "runs"} ${runs.map((r) => r.id.slice(0, 8)).join(", ")})` : "";
+function Buttons({ small = false }: { small?: boolean }) {
+  const { busy, run } = useDemoState();
+  const size = small ? "px-2.5 py-1 text-xs" : "";
+  return (
+    <>
+      <button type="button" className={`btn btn-quiet ${size}`} disabled={busy !== null} onClick={() => run("reset")}
+        data-testid="reset-demo">
+        {busy === "reset" ? "Resetting…" : "Reset demo"}
+      </button>
+      <button type="button" className={`btn btn-primary ${size}`} disabled={busy !== null} onClick={() => run("sync")}
+        data-testid="simulate-sync">
+        {busy === "sync" ? "Syncing…" : "Simulate LMS sync"}
+      </button>
+    </>
+  );
 }
 
-export function DemoControls({ compact = false }: { compact?: boolean }) {
-  const { refresh } = useDemoState();
-  const [busy, setBusy] = useState<Busy>(null);
-  const [message, setMessage] = useState<{ tone: "ok" | "error"; text: string; ref: string } | null>(null);
-
-  async function run(kind: Exclude<Busy, null>) {
-    setBusy(kind);
-    setMessage(null);
-    try {
-      if (kind === "reset") {
-        const result = await api.resetDemo();
-        setMessage(result.succeeded
-          ? { tone: "ok", text: "Demo reset to the initial course state.", ref: runRefs(result.runs) }
-          : { tone: "error", text: "The reset workflow failed; see its run trace.",
-              ref: runRefs(result.runs.filter((r) => r.status === "failed")) });
-      } else {
-        const result = await api.syncDemo();
-        setMessage(!result.succeeded
-          ? { tone: "error", text: "The sync workflow failed; see its run trace.",
-              ref: runRefs(result.runs.filter((r) => r.status === "failed")) }
-          : result.changes.length === 0
-            ? { tone: "ok", text: "LMS sync found no new changes.", ref: "" }
-            : { tone: "ok", text: `LMS sync brought in ${result.changes.length} changed resources.`, ref: runRefs(result.runs) });
-      }
-      refresh();
-    } catch (error) {
-      setMessage({ tone: "error", ref: "",
-        text: error instanceof ApiError ? error.message : "The request failed. Try again, or reset the demo." });
-    } finally {
-      setBusy(null);
-    }
-  }
-
+/** The status of the last demo action, kept short. */
+function Status() {
+  const { busy, message } = useDemoState();
   return (
-    <div className="space-y-1.5">
-      <div role="group" aria-label="Demo controls" className="flex flex-wrap items-center gap-2">
-        {compact && <span className="text-xs text-muted">Demo controls</span>}
-        <button type="button" className="btn btn-quiet" disabled={busy !== null} onClick={() => run("reset")}
-          data-testid="reset-demo">
-          {busy === "reset" ? "Resetting…" : "Reset demo"}
-        </button>
-        <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => run("sync")}
-          data-testid="simulate-sync">
-          {busy === "sync" ? "Syncing…" : "Simulate LMS sync"}
-        </button>
+    <span role="status" aria-live="polite" data-testid="demo-status">
+      {busy === "sync" && "Syncing the demo LMS…"}
+      {busy === "reset" && "Resetting the demo…"}
+      {!busy && message && (
+        <>
+          <span className={message.tone === "error" ? "text-conflict" : "text-verified"}>{message.text}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+/** The slim demo strip under the header: clearly a demo control, not the product. */
+export function DemoBar() {
+  return (
+    <div className="border-t border-line bg-paper/70">
+      <div role="group" aria-label="Demo controls"
+        className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-5 py-2 text-xs">
+        <span className="badge border border-line bg-white text-muted">Demo</span>
+        <span className="text-muted" data-testid="demo-explanation">{EXPLANATION}</span>
+        <span className="ml-auto flex flex-wrap items-center gap-3">
+          <Status />
+          <span className="flex gap-2"><Buttons small /></span>
+        </span>
       </div>
-      <p className={`text-xs text-muted ${compact ? "max-w-80" : ""}`} data-testid="demo-explanation">{EXPLANATION}</p>
-      <p role="status" aria-live="polite" className={`text-xs text-muted ${compact ? "max-w-80" : ""}`} data-testid="demo-status">
-        {busy === "sync" && "Applying the demo LMS's later changes and reprocessing (about 10 seconds)…"}
-        {busy === "reset" && "Rebuilding the initial demo state offline (about 10 seconds)…"}
-        {!busy && message && (
-          <>
-            <span className={message.tone === "error" ? "text-conflict" : "text-verified"}>{message.text}</span>
-            {message.ref}
-          </>
-        )}
+    </div>
+  );
+}
+
+/** The controls in a page body (the Changes page). */
+export function DemoControls() {
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2"><Buttons /></div>
+      <p className="text-xs text-muted">{EXPLANATION}</p>
+    </div>
+  );
+}
+
+/** In the page while a demo action runs, then its outcome. The page under
+ * it stays as it was until the fresh data arrives. */
+export function DemoProgress() {
+  const { busy, message, dismiss } = useDemoState();
+  const path = usePathname();
+  if (busy) {
+    const { title, body } = WORKING[busy];
+    return (
+      <div className="panel mb-8 flex items-start gap-4 border-accent/40 bg-accent-soft/50 px-5 py-4" data-testid="demo-progress">
+        <span aria-hidden className="mt-1 h-4 w-4 shrink-0 rounded-full border-2 border-accent/30 border-t-accent motion-safe:animate-spin" />
+        <div>
+          <p className="font-medium">{title}</p>
+          <p className="mt-0.5 text-sm text-muted">{body}</p>
+        </div>
+      </div>
+    );
+  }
+  if (!message) return null;
+  const error = message.tone === "error";
+  return (
+    <div className={`panel mb-8 flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 text-sm ${error ? "border-conflict/40 bg-conflict-soft" : "border-verified/30 bg-verified-soft/60"}`}
+      data-testid="demo-outcome">
+      <p className={error ? "text-conflict" : "text-verified"}>
+        <span className="font-medium">{message.text}</span>
+        {!error && message.action === "sync" && " Conflicts, deadlines and the study plan now reflect the new sources."}
+        {!error && message.action === "reset" && " Every course is back at its first version, with no changes yet."}
+        {message.ref && <span className="text-xs text-muted">{message.ref}</span>}
       </p>
+      <span className="ml-auto flex items-center gap-4">
+        {!error && message.action === "sync" && path !== "/changes" && <Link href="/changes" className="text-accent hover:underline">See what changed</Link>}
+        <button type="button" onClick={dismiss} className="text-muted hover:text-ink">Dismiss</button>
+      </span>
     </div>
   );
 }

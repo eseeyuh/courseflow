@@ -12,7 +12,7 @@ import { useApi } from "@/components/DemoState";
 import { EvidenceButton, fromEvidence, StatusBadge } from "@/components/Evidence";
 import { ConflictCard, DeadlineEvidence, DependencyChain, LoadState, RunStatus, deadlineText } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
-import { courseCode, courseName, RESOURCE_LABELS, TASK_LABELS } from "@/lib/format";
+import { courseCode, courseName, locator, RESOURCE_LABELS, TASK_LABELS } from "@/lib/format";
 import { activeDeadlines, loadCourseById, openConflicts, type CourseBundle } from "@/lib/load";
 import type { Obligation, StudyTask } from "@/lib/types";
 
@@ -120,9 +120,21 @@ function Course({ bundle, next }: { bundle: CourseBundle; next: StudyTask | null
         )}
         {stated.map((o) => <ObligationRow key={o.id} o={o} bundle={bundle} />)}
         {toReview.length > 0 && (
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium text-review">Not verified: check these yourself</h3>
-            {toReview.map((o) => <ObligationRow key={o.id} o={o} bundle={bundle} />)}
+          <div className="panel border-dashed border-review/40 bg-review-soft/30">
+            <h3 className="border-b border-review/20 px-5 py-3 text-sm font-medium text-review">
+              Not verified: check these yourself ({toReview.length})
+            </h3>
+            <ul className="divide-y divide-review/15">
+              {toReview.map((o) => (
+                <li key={o.id} id={`obligation-${o.id}`} data-testid="obligation"
+                  className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 text-sm">
+                  <span className="badge badge-review">Needs review</span>
+                  <span className="min-w-0 flex-1 text-ink/80">{o.canonical_action}</span>
+                  <EvidenceButton request={{ kind: "Obligation evidence (needs review)", claim: o.canonical_action,
+                    items: o.evidence.filter((e) => e.current_version).map(fromEvidence) }} />
+                </li>
+              ))}
+            </ul>
           </div>
         )}
         {obligations.length === 0 && <p className="text-sm text-muted">No obligations found in the sources.</p>}
@@ -139,42 +151,50 @@ function Course({ bundle, next }: { bundle: CourseBundle; next: StudyTask | null
 function ObligationRow({ o, bundle }: { o: Obligation; bundle: CourseBundle }) {
   const assessment = bundle.assessments.find((a) => a.id === o.assessment_id);
   const requiredFor = bundle.dependencies.filter((e) => e.prerequisite.id === o.id);
-  const verified = o.status === "verified";
+  const source = o.evidence.find((e) => e.current_version) ?? o.evidence[0];
+  const sourceKind = (RESOURCE_LABELS[source?.resource_type] ?? "source").toLowerCase();
   return (
     <article id={`obligation-${o.id}`} data-testid={o.hidden ? "hidden-obligation" : "obligation"}
-      className={`panel px-5 py-4 ${verified ? "" : "border-dashed bg-review-soft/40"} ${o.hidden ? "border-accent" : ""}`}>
+      className={`panel px-5 py-4 ${o.hidden ? "border-2 border-accent/70" : ""}`}>
       <div className="flex flex-wrap items-center gap-2">
         {o.hidden && <span className="badge badge-found">Found by CourseFlow</span>}
-        <StatusBadge status={o.status} />
         {o.modality && <span className="badge badge-neutral">{o.modality === "mandatory" ? "Mandatory" : "Recommended"}</span>}
+        <StatusBadge status={o.status} />
       </div>
-      <p className={`mt-2 ${verified ? "font-medium" : "text-muted"}`}>{o.canonical_action}</p>
-      {o.hidden && assessment && (
-        <p className="mt-1 text-sm text-muted">
-          Stated in the {o.evidence[0]?.resource_title}, not in the {assessment.title} brief.
-        </p>
-      )}
-      {requiredFor.map((e) => (
-        <p key={e.id} className="mt-2 text-sm" data-testid="obligation-relationship">
-          <span className="badge badge-neutral mr-2">{e.relation === "required_for" ? "Required for" : "Before"}</span>
-          {e.dependent.kind === "assessment" && e.dependent.id ? (
-            <Link href={`/assessments/${e.dependent.id}`} className="font-medium text-accent hover:underline">{e.dependent.label}</Link>
-          ) : (
-            <span className="font-medium">{e.dependent.label}</span>
-          )}
-          {assessment && e.dependent.id === assessment.id && activeDeadlines(assessment)[0] && (
-            <span className="text-muted">
-              {" "}(due {deadlineText(activeDeadlines(assessment)[0])})
-              <span className="ml-2 inline-block align-middle">
-                <DeadlineEvidence deadline={activeDeadlines(assessment)[0]} claim={assessment.title} />
-              </span>
-            </span>
-          )}
-        </p>
-      ))}
-      <div className="mt-3">
+      <p className={`mt-2 font-semibold ${o.hidden ? "text-lg leading-snug" : ""}`}>{o.canonical_action}</p>
+      <dl className="mt-3 grid grid-cols-[6.5rem_1fr] gap-x-4 gap-y-1.5 text-sm">
+        {source && (
+          <>
+            <dt className="text-muted">Source</dt>
+            <dd>
+              {source.resource_title}, {locator(source).toLowerCase()}
+              {o.hidden && assessment && <span className="text-muted"> (not mentioned in the {assessment.title} brief)</span>}
+            </dd>
+          </>
+        )}
+        {requiredFor.map((e) => (
+          <div key={e.id} className="contents" data-testid="obligation-relationship">
+            <dt className="text-muted">{e.relation === "required_for" ? "Required for" : "Before"}</dt>
+            <dd className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              {e.dependent.kind === "assessment" && e.dependent.id ? (
+                <Link href={`/assessments/${e.dependent.id}`} className="font-medium text-accent hover:underline">{e.dependent.label}</Link>
+              ) : (
+                <span className="font-medium">{e.dependent.label}</span>
+              )}
+              {assessment && e.dependent.id === assessment.id && activeDeadlines(assessment).length > 0 && (
+                <>
+                  <span className="text-muted">due {activeDeadlines(assessment).map(deadlineText).join(" or ")}</span>
+                  <DeadlineEvidence deadline={activeDeadlines(assessment)[0]} claim={`${assessment.title} deadline`} />
+                </>
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <div className="mt-4">
         <EvidenceButton
-          label={o.hidden ? `Show where the ${(RESOURCE_LABELS[o.evidence[0]?.resource_type] ?? "source").toLowerCase()} says this` : "View evidence"}
+          primary={o.hidden}
+          label={o.hidden ? `Show where the ${sourceKind} says this` : "View evidence"}
           request={{
             kind: o.hidden ? "Found by CourseFlow" : "Obligation evidence",
             claim: o.canonical_action,

@@ -5,7 +5,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { DemoControls } from "@/components/DemoControls";
+import { DemoBar, DemoProgress } from "@/components/DemoControls";
 import { DemoStateProvider } from "@/components/DemoState";
 import { EvidenceProvider } from "@/components/Evidence";
 import { Nav } from "@/components/Nav";
@@ -29,12 +29,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                   CourseFlow
                 </Link>
                 <Nav />
-                <div className="ml-auto">
-                  <DemoControls compact />
-                </div>
               </div>
+              <DemoBar />
             </header>
-            <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8">{children}</main>
+            <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8">
+              <DemoProgress />
+              {children}
+            </main>
             <footer className="border-t border-line py-4 text-center text-xs text-muted">
               Demo data: Northbridge University (fictional). Every value shown comes from the CourseFlow API.
             </footer>

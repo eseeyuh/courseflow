@@ -5,6 +5,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
 import { useApi } from "@/components/DemoState";
 import { EvidenceButton, fromEvidence, fromTarget } from "@/components/Evidence";
@@ -12,10 +13,15 @@ import { LoadState, StudyStateControl, deadlineText } from "@/components/ui";
 import { api } from "@/lib/api";
 import { courseName, formatInstant, TASK_LABELS } from "@/lib/format";
 import { prerequisitesOf } from "@/lib/load";
-import type { StudyPlan, StudyTask } from "@/lib/types";
+import type { StudyPlan, StudyState, StudyTask } from "@/lib/types";
+
+type Saved = { taskKey: string; state: StudyState };
+
+const STATE_LABELS: Record<StudyState, string> = { not_started: "Not started", studying: "Studying", studied: "Studied" };
 
 export default function StudyPlanPage() {
   const result = useApi(api.studyPlan, "study-plan");
+  const [saved, setSaved] = useState<Saved | null>(null);
   return (
     <div className="space-y-6">
       <header>
@@ -35,8 +41,12 @@ export default function StudyPlanPage() {
                 return `${name}: ${open} open`;
               }).join(", ")}.
             </p>
+            {saved && <SavedNotice saved={saved} plan={plan} onDismiss={() => setSaved(null)} />}
             <ol className="space-y-3">
-              {plan.tasks.map((task) => <TaskRow key={task.task_key} task={task} plan={plan} />)}
+              {plan.tasks.map((task) => (
+                <TaskRow key={task.task_key} task={task} plan={plan} highlight={saved?.taskKey === task.task_key}
+                  onSaved={(state) => setSaved({ taskKey: task.task_key, state })} />
+              ))}
             </ol>
           </>
         )}
@@ -51,14 +61,36 @@ function anchorText(task: StudyTask): string | null {
   return null;
 }
 
-function TaskRow({ task, plan }: { task: StudyTask; plan: StudyPlan }) {
+/** What the recomputed plan (from the API) did with the task just changed. */
+function SavedNotice({ saved, plan, onDismiss }: { saved: Saved; plan: StudyPlan; onDismiss: () => void }) {
+  const task = plan.tasks.find((t) => t.task_key === saved.taskKey);
+  // Only once the plan on screen is the recomputed one.
+  if (!task || task.study_state !== saved.state) return null;
+  return (
+    <div role="status" className="panel flex flex-wrap items-center gap-x-4 gap-y-1 border-verified/30 bg-verified-soft/60 px-5 py-3 text-sm" data-testid="plan-saved">
+      <p>
+        <span className="font-medium text-verified">Saved as {STATE_LABELS[saved.state]}.</span>{" "}
+        The plan was recomputed: this task is now step {task.position} of {plan.tasks.length}
+        {task.status === "completed" ? ", marked done." : "."}
+      </p>
+      <button type="button" onClick={onDismiss} className="ml-auto text-muted hover:text-ink">Dismiss</button>
+    </div>
+  );
+}
+
+function TaskRow({ task, plan, highlight, onSaved }: {
+  task: StudyTask;
+  plan: StudyPlan;
+  highlight: boolean;
+  onSaved: (state: StudyState) => void;
+}) {
   const done = task.status === "completed";
   const prerequisites = prerequisitesOf(task, plan);
   const blocked = task.status === "blocked";
   const anchor = anchorText(task);
   return (
     <li data-testid="plan-task" data-task-type={task.task_type} data-status={task.status}
-      className={`panel px-5 py-4 ${done ? "opacity-70" : ""} ${task.task_type === "check_conflict" ? "border-conflict/50" : ""}`}>
+      className={`panel px-5 py-4 ${done ? "bg-paper/60" : ""} ${task.task_type === "check_conflict" ? "border-conflict/50" : ""} ${highlight ? "ring-2 ring-verified/50" : ""}`}>
       <div className="flex gap-4">
         <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${done ? "bg-verified-soft text-verified" : "bg-accent-soft text-accent"}`}>
           {task.position}
@@ -104,7 +136,8 @@ function TaskRow({ task, plan }: { task: StudyTask; plan: StudyPlan }) {
           )}
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {task.task_type === "study_material" && task.study_state && (
-              <StudyStateControl spanIds={task.targets.map((t) => t.source_span_id)} state={task.study_state} label={task.title} />
+              <StudyStateControl spanIds={task.targets.map((t) => t.source_span_id)} state={task.study_state} label={task.title}
+                onSaved={onSaved} />
             )}
             <EvidenceButton
               label={task.targets.length ? "Open the material" : "View evidence"}

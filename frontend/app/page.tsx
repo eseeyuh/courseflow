@@ -78,7 +78,7 @@ export default function HomePage() {
                           {TASK_LABELS[task.task_type]} in {courseName(task.course.title)}
                         </p>
                         <p className="font-medium">{task.title}</p>
-                        <p className="mt-1 text-sm text-muted">{task.why_now}</p>
+                        <p className="mt-1 line-clamp-2 text-sm text-muted">{task.why_now}</p>
                       </div>
                     </li>
                   ))}

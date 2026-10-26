@@ -72,17 +72,21 @@ export default function AssessmentPage() {
               </div>
             )}
             {history.map((d) => (
-              <p key={d.id} className="text-sm text-muted" data-testid="superseded-deadline">
-                <span className="line-through">{deadlineText(d)}</span> ({sourcesOf(d)}) no longer counts: a newer
-                source says <span className="source-quote mark">{d.superseded_by_quote}</span>.
-              </p>
+              <div key={d.id} className="panel flex flex-wrap items-baseline gap-x-4 gap-y-1 px-5 py-3 text-sm" data-testid="superseded-deadline">
+                <span className="badge badge-neutral">Replaced deadline</span>
+                <span><span className="line-through">{deadlineText(d)}</span> <span className="text-muted">({sourcesOf(d)})</span></span>
+                <span className="text-muted">
+                  no longer counts: a newer source says <span className="source-quote mark text-ink">{d.superseded_by_quote}</span>
+                </span>
+                <span className="ml-auto"><DeadlineEvidence deadline={d} claim={`Replaced ${assessment.title} deadline`} label="Original source" /></span>
+              </div>
             ))}
 
             <section aria-labelledby="requirements-heading" className="space-y-3">
               <h2 id="requirements-heading" className="section-title">Requirements and where to study for them</h2>
-              <p className="text-sm text-muted">
-                Each requirement is quoted from the brief. The teaching material under it was retrieved
-                from this course and selected by the verifier; every slide, page or section opens its exact text.
+              <p className="max-w-3xl text-sm text-muted">
+                Each requirement is quoted from the brief. Under it: where the course&apos;s own teaching material
+                covers it. Open any slide, page or section to see its exact text.
               </p>
               <ol className="space-y-3">
                 {briefOrder(requirements).map(([n, r]) => <RequirementRow key={r.id} r={r} n={n} />)}
@@ -149,38 +153,47 @@ function RequirementRow({ r, n }: { r: Requirement; n: number }) {
   );
 }
 
-/** One teaching resource mapped to a requirement: each slide/page/section opens its exact text. */
+/** One teaching resource mapped to a requirement. Each slide, page or
+ * section is listed with the start of its own stored text and opens the
+ * exact excerpt; the list keeps the source's order and hides nothing. */
 function MaterialGroup({ group, requirement }: { group: MaterialMapping[]; requirement: Requirement }) {
   const open = useEvidence();
   const places = new Map<string, MaterialMapping[]>();
   for (const m of group) places.set(locator(m), [...(places.get(locator(m)) ?? []), m]);
   const first = group[0];
-  const best = Math.min(...group.map((m) => m.retrieval_rank));
+  const requirementText = requirement.text.replace(/^\d+\.\s*/, "");
   return (
-    <div className="rounded-lg bg-accent-soft/60 px-4 py-3" data-testid="material-group">
+    <div className="rounded-lg border border-accent/15 bg-accent-soft/40 px-4 py-3" data-testid="material-group">
       <p className="text-sm">
-        <span className="text-muted">Study: </span>
-        <span className="font-medium" data-testid="material-title">{first.resource_title}</span>
+        <span className="text-muted">Study </span>
+        <span className="font-semibold" data-testid="material-title">{first.resource_title}</span>
         <span className="text-muted"> ({RESOURCE_LABELS[first.resource_type] ?? first.resource_type}, version {first.version_number})</span>
       </p>
-      <p className="mt-1 text-xs text-muted" data-testid="material-rationale">
-        Why here: {places.size === 1 ? "this place" : `these ${places.size} places`} in the course&apos;s own
-        teaching material came back from {first.retrieval_mode} retrieval (best rank {best}), and the
-        verifier ({first.verifier_prompt_version}) confirmed {places.size === 1 ? "it covers" : "they cover"} this requirement.
+      <ul className="mt-2 space-y-1">
+        {[...places.entries()].map(([where, mappings]) => {
+          // A slide's title and body are separate spans: preview the first line
+          // of the longer one, as stored.
+          const preview = mappings.map((m) => m.quote).sort((a, b) => b.length - a.length)[0].trim().split("\n")[0];
+          return (
+            <li key={where}>
+              <button type="button" data-testid="material-location"
+                onClick={() => open({
+                  kind: "Mapped teaching material",
+                  claim: `${where} of “${first.resource_title}” covers: ${requirementText}`,
+                  items: mappings.map(fromMapping),
+                })}
+                className="group flex w-full items-baseline gap-3 rounded-md px-2 py-1 text-left text-sm hover:bg-white">
+                <span className="w-16 shrink-0 font-medium text-accent group-hover:underline">{where}</span>
+                <span className="truncate font-serif text-ink/80" data-testid="material-preview">{preview}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-2 text-xs text-muted" data-testid="material-rationale">
+        Why here: the verifier ({first.verifier_prompt_version}) confirmed {places.size === 1 ? "this place" : `these ${places.size} places`} in
+        the course&apos;s own teaching material cover this requirement, choosing only from what {first.retrieval_mode} retrieval found.
       </p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {[...places.entries()].map(([where, mappings]) => (
-          <button key={where} type="button" data-testid="material-location"
-            onClick={() => open({
-              kind: "Mapped teaching material",
-              claim: `${where} of ${first.resource_title}, for: ${requirement.text}`,
-              items: mappings.map(fromMapping),
-            })}
-            className="rounded-md border border-accent/30 bg-white px-2 py-0.5 text-sm text-accent hover:border-accent">
-            {where}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

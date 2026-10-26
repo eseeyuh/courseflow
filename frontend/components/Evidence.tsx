@@ -24,6 +24,8 @@ export type EvidenceView = {
   section_path: string | null;
   quote: string;
   status?: Verification | null;
+  /** Shown instead of a verification status (e.g. a verifier-selected mapping). */
+  origin?: string;
   note?: string;
 };
 
@@ -57,7 +59,8 @@ export function fromMapping(m: MaterialMapping): EvidenceView {
     section_path: m.section_path,
     quote: m.quote,
     status: null,
-    note: `Retrieved (${m.retrieval_mode}, rank ${m.retrieval_rank}) and selected by the verifier (${m.verifier_prompt_version}). ${m.rationale}.`,
+    origin: "Selected by the verifier",
+    note: `Found by ${m.retrieval_mode} retrieval; the verifier (${m.verifier_prompt_version}) chose it from the retrieved candidates only.`,
   };
 }
 
@@ -72,6 +75,7 @@ export function fromTarget(t: StudyTarget): EvidenceView {
     section_path: t.section_path,
     quote: t.quote,
     status: null,
+    origin: "Mapped teaching material",
   };
 }
 
@@ -85,6 +89,7 @@ export function fromSource(s: SourceQuote): EvidenceView {
     section_path: s.section_path,
     quote: s.quote,
     status: null,
+    origin: "Source text",
   };
 }
 
@@ -100,10 +105,15 @@ export function EvidenceProvider({ children }: { children: ReactNode }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!request) return;
+    // Focus the drawer, and give focus back to what opened it on close.
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeButton.current?.focus();
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      opener?.focus();
+    };
   }, [request, close]);
   return (
     <Context.Provider value={setRequest}>
@@ -117,41 +127,51 @@ export function EvidenceProvider({ children }: { children: ReactNode }) {
             onClick={(event) => event.stopPropagation()}
             className="flex h-full w-full max-w-xl flex-col overflow-y-auto bg-white shadow-2xl"
           >
-            <header className="sticky top-0 border-b border-line bg-white px-6 py-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm text-muted">{request.kind}</p>
-                  <h2 className="mt-1 text-lg font-semibold leading-snug">{request.claim}</h2>
-                </div>
-                <button ref={closeButton} type="button" onClick={close}
-                  className="rounded-md border border-line px-3 py-1 text-sm hover:bg-paper">
-                  Close
-                </button>
-              </div>
+            <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-line bg-white px-6 py-3">
+              <p className="text-sm font-medium text-muted">{request.kind}</p>
+              <button ref={closeButton} type="button" onClick={close}
+                className="rounded-md border border-line px-3 py-1 text-sm hover:bg-paper">
+                Close
+              </button>
             </header>
-            <ol className="space-y-5 px-6 py-5">
-              {request.items.map((item) => (
-                <li key={item.key} data-testid="evidence-item" className="space-y-2">
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span className="font-medium">{item.resourceTitle}</span>
-                    {item.status && <StatusBadge status={item.status} />}
-                  </div>
-                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-sm text-muted">
-                    {item.resourceType && (<><dt>Source type</dt><dd>{RESOURCE_LABELS[item.resourceType] ?? item.resourceType}</dd></>)}
-                    <dt>Version</dt>
-                    <dd>
-                      {item.versionNumber}
-                      {item.currentVersion === false && " (superseded by a newer version)"}
-                    </dd>
-                    <dt>Location</dt>
-                    <dd data-testid="evidence-locator">{locator(item)}</dd>
-                    {item.section_path && (<><dt>Section</dt><dd>{item.section_path}</dd></>)}
-                  </dl>
-                  <blockquote className="source-quote" data-testid="evidence-quote">{item.quote}</blockquote>
-                  {item.note && <p className="text-xs text-muted">{item.note}</p>}
-                </li>
-              ))}
-            </ol>
+            <section className="border-b border-line px-6 py-4" aria-label="Derived claim">
+              <p className="text-xs font-medium text-muted">What CourseFlow states</p>
+              <p className="mt-1 text-lg font-semibold leading-snug" data-testid="evidence-claim">{request.claim}</p>
+            </section>
+            <section className="px-6 py-5" aria-label="Source evidence">
+              <p className="text-xs font-medium text-muted">
+                {request.items.length === 1 ? "Where it comes from" : `Where it comes from (${request.items.length} excerpts)`}
+              </p>
+              <ol className="mt-3 space-y-5">
+                {request.items.map((item) => (
+                  <li key={item.key} data-testid="evidence-item" className="rounded-lg border border-line">
+                    <blockquote className="source-quote border-l-4 border-mark-strong bg-mark/30 px-4 py-3" data-testid="evidence-quote">
+                      {item.quote}
+                    </blockquote>
+                    <dl className="grid grid-cols-[7rem_1fr] gap-x-4 gap-y-1 px-4 py-3 text-sm">
+                      <dt className="text-muted">Source</dt>
+                      <dd className="font-medium">{item.resourceTitle}</dd>
+                      {item.resourceType && (<><dt className="text-muted">Type</dt><dd>{RESOURCE_LABELS[item.resourceType] ?? item.resourceType}</dd></>)}
+                      <dt className="text-muted">Version</dt>
+                      <dd>
+                        {item.versionNumber}
+                        {item.currentVersion === false && <span className="text-muted"> (a newer version exists)</span>}
+                      </dd>
+                      <dt className="text-muted">Location</dt>
+                      <dd data-testid="evidence-locator">{locator(item)}</dd>
+                      {item.section_path && item.slide_number === null && item.page_number !== null && (
+                        <><dt className="text-muted">Section</dt><dd>{item.section_path}</dd></>
+                      )}
+                      <dt className="text-muted">Status</dt>
+                      <dd>
+                        {item.status ? <StatusBadge status={item.status} /> : <span className="badge badge-neutral">{item.origin ?? "Source text"}</span>}
+                      </dd>
+                    </dl>
+                    {item.note && <p className="border-t border-line px-4 py-2 text-xs text-muted">{item.note}</p>}
+                  </li>
+                ))}
+              </ol>
+            </section>
           </aside>
         </div>
       )}
@@ -168,11 +188,15 @@ export function StatusBadge({ status }: { status: Verification }) {
 }
 
 /** A button that opens the evidence viewer. */
-export function EvidenceButton({ request, label = "View evidence" }: { request: EvidenceRequest; label?: string }) {
+export function EvidenceButton({ request, label = "View evidence", primary = false }: {
+  request: EvidenceRequest;
+  label?: string;
+  primary?: boolean;
+}) {
   const open = useEvidence();
   if (request.items.length === 0) return null;
   return (
-    <button type="button" onClick={() => open(request)} className="evidence-button">
+    <button type="button" onClick={() => open(request)} className={primary ? "btn btn-primary" : "evidence-button"}>
       {label}
     </button>
   );

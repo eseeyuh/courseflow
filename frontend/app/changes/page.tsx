@@ -32,14 +32,15 @@ export default function ChangesPage() {
       <LoadState result={result}>
         {(syncs) =>
           syncs.length === 0 ? (
-            <p className="text-muted" data-testid="no-changes">
-              No changes yet. Simulate LMS sync to bring in the demo LMS&apos;s later updates.
+            <p className="panel max-w-2xl border-dashed px-5 py-4 text-muted" data-testid="no-changes">
+              No changes yet: every source is at the version CourseFlow first processed. Simulate LMS sync to
+              bring in the demo LMS&apos;s later updates.
             </p>
           ) : (
-            <div className="space-y-10">
+            <div className="space-y-12">
               {syncs.map((sync) => (
-                <section key={sync.observed_at} className="space-y-4" data-testid="sync">
-                  <h2 className="section-title">Sync of {formatInstant(sync.observed_at)}</h2>
+                <section key={sync.observed_at} className="space-y-5" data-testid="sync">
+                  <h2 className="section-title">LMS sync of {formatInstant(sync.observed_at)} (demo clock)</h2>
                   {sync.changes.map((change) => <ChangeCard key={change.id} change={change} />)}
                   {sync.plan_diff && <PlanDiffCard diff={sync.plan_diff} />}
                 </section>
@@ -63,48 +64,120 @@ function sides(v: Record<string, unknown> | null): string {
   return ((v?.sides as Side[] | undefined) ?? []).map(([d, t]) => formatLocalDate(d, t)).join(" vs ");
 }
 
-function describeAffected(item: Affected): { label: string; body: string } {
+function quotes(v: Record<string, unknown> | null): string {
+  return ((v?.quotes as string[] | undefined) ?? []).join(" ").replace(/\s+/g, " ").trim();
+}
+
+/** Word-level difference of two stored texts (longest common subsequence):
+ * marks the words that differ. Display only; both texts are the sources'. */
+function wordDiff(before: string, after: string): { before: [string, boolean][]; after: [string, boolean][] } {
+  const a = before.split(" ");
+  const b = after.split(" ");
+  const lcs = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+  const outA: [string, boolean][] = [];
+  const outB: [string, boolean][] = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      outA.push([a[i++], false]);
+      outB.push([b[j++], false]);
+    } else if (j < b.length && (i === a.length || lcs[i][j + 1] >= lcs[i + 1][j])) {
+      outB.push([b[j++], true]);
+    } else {
+      outA.push([a[i++], true]);
+    }
+  }
+  return { before: outA, after: outB };
+}
+
+function Words({ words, mark }: { words: [string, boolean][]; mark: string }) {
+  return (
+    <>
+      {words.map(([w, changed], k) => (
+        <span key={k}>{k > 0 && " "}{changed ? <span className={mark}>{w}</span> : w}</span>
+      ))}
+    </>
+  );
+}
+
+const LABELS: Record<Affected["kind"], string> = {
+  deadline_added: "New deadline",
+  deadline_superseded: "Deadline replaced",
+  conflict_changed: "Conflict changed",
+  obligation_wording_changed: "Obligation reworded",
+};
+
+function AffectedBody({ item }: { item: Affected }) {
   switch (item.kind) {
     case "deadline_added":
-      return { label: "Deadline added", body: `${item.assessment_title}: ${value(item.new_value)}` };
+      return (
+        <p>
+          {item.assessment_title}: <span className="font-semibold">{value(item.new_value)}</span>
+        </p>
+      );
     case "deadline_superseded":
-      return {
-        label: "Deadline superseded",
-        body: `${item.assessment_title}: ${value(item.old_value)} replaced by ${value(item.new_value)}, because the source says so`,
-      };
+      return (
+        <p>
+          {item.assessment_title}: <span className="line-through decoration-conflict/70">{value(item.old_value)}</span>
+          {" replaced by "}<span className="font-semibold">{value(item.new_value)}</span>, because the source says so
+        </p>
+      );
     case "conflict_changed":
-      return {
-        label: "Conflict changed",
-        body: `${item.assessment_title}: ${sides(item.old_value)} is now ${sides(item.new_value)}`,
-      };
-    case "obligation_wording_changed":
-      return { label: "Obligation wording changed", body: "The source rewords an obligation it states" };
+      return (
+        <div className="space-y-1">
+          <p>{item.assessment_title}: the sources still disagree, on different dates.</p>
+          <dl className="grid grid-cols-[3.5rem_1fr] gap-x-3 gap-y-0.5">
+            <dt className="text-muted">Before</dt><dd className="text-muted">{sides(item.old_value)}</dd>
+            <dt className="text-muted">Now</dt><dd className="font-semibold">{sides(item.new_value)}</dd>
+          </dl>
+        </div>
+      );
+    case "obligation_wording_changed": {
+      const diff = wordDiff(quotes(item.old_value), quotes(item.new_value));
+      return (
+        <div className="space-y-2">
+          <p>The source rewords an obligation it states. Changed words are marked.</p>
+          <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+            <div>
+              <dt className="text-xs text-muted">Before</dt>
+              <dd className="source-quote text-muted"><Words words={diff.before} mark="rounded-sm bg-conflict-soft px-0.5 text-conflict line-through" /></dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Now</dt>
+              <dd className="source-quote"><Words words={diff.after} mark="mark font-semibold" /></dd>
+            </div>
+          </dl>
+        </div>
+      );
+    }
   }
 }
 
 function AffectedRow({ item }: { item: Affected }) {
-  const { label, body } = describeAffected(item);
+  const label = LABELS[item.kind];
   return (
-    <li className="flex flex-wrap items-start gap-3 py-3" data-testid={`affected-${item.kind}`}>
-      <span className={`badge ${item.kind === "conflict_changed" ? "badge-conflict" : "badge-neutral"}`}>{label}</span>
-      <div className="min-w-0 flex-1 space-y-1">
-        <p className="text-sm">{body}</p>
-        {item.kind === "obligation_wording_changed" && (
-          <div className="grid gap-2 text-sm sm:grid-cols-2">
-            <p><span className="text-muted">Before: </span><span className="source-quote">{(item.old_value?.quotes as string[] | undefined)?.join(" ")}</span></p>
-            <p><span className="text-muted">Now: </span><span className="source-quote mark">{(item.new_value?.quotes as string[] | undefined)?.join(" ")}</span></p>
-          </div>
-        )}
-      </div>
-      <EvidenceButton label="Source" request={{ kind: label, claim: body, items: item.sources.map(fromSource) }} />
+    <li className="grid gap-x-4 gap-y-2 py-4 text-sm sm:grid-cols-[10rem_1fr_auto]" data-testid={`affected-${item.kind}`}>
+      <span><span className={`badge ${item.kind === "conflict_changed" ? "badge-conflict" : "badge-neutral"}`}>{label}</span></span>
+      <div className="min-w-0"><AffectedBody item={item} /></div>
+      <span>
+        <EvidenceButton label="Source text"
+          request={{ kind: label, claim: `${label}: ${item.assessment_title ?? "an obligation"}`, items: item.sources.map(fromSource) }} />
+      </span>
     </li>
   );
 }
 
 function ChangeCard({ change }: { change: Change }) {
   return (
-    <article className="panel" data-testid="change">
-      <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-line px-5 py-3">
+    <article className="panel overflow-hidden" data-testid="change">
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-1 bg-paper/60 px-5 py-3">
+        <span className="badge border border-line bg-white text-ink">Source changed</span>
         <h3 className="font-semibold">{change.resource_title}</h3>
         <span className="text-sm text-muted">
           {RESOURCE_LABELS[change.resource_type] ?? change.resource_type} in {courseName(change.course_title)}
@@ -113,10 +186,13 @@ function ChangeCard({ change }: { change: Change }) {
           {change.old_version ? `version ${change.old_version.version_number} to ${change.new_version.version_number}` : `new, version ${change.new_version.version_number}`}
         </span>
       </header>
-      <ul className="divide-y divide-line px-5">
-        {change.affected.map((item, i) => <AffectedRow key={`${item.kind}-${i}`} item={item} />)}
-        {change.affected.length === 0 && <li className="py-3 text-sm text-muted">No stored claim was affected.</li>}
-      </ul>
+      <div className="border-t border-line px-5 pt-3">
+        <p className="text-xs font-medium text-muted">What CourseFlow updated as a result</p>
+        <ul className="divide-y divide-line">
+          {change.affected.map((item, i) => <AffectedRow key={`${item.kind}-${i}`} item={item} />)}
+          {change.affected.length === 0 && <li className="py-3 text-sm text-muted">No stored claim was affected.</li>}
+        </ul>
+      </div>
     </article>
   );
 }
@@ -125,21 +201,20 @@ function PlanDiffCard({ diff }: { diff: PlanDiff }) {
   return (
     <article className="panel px-5 py-4" data-testid="plan-diff">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-semibold">Study plan before and after</h3>
+        <h3 className="font-semibold">Your study plan, recomputed</h3>
         <Link href="/study-plan" className="text-sm text-accent hover:underline">Open study plan</Link>
       </div>
       <p className="mt-1 text-sm text-muted">
-        {diff.changed.length} changed, {diff.added.length} added, {diff.removed.length} removed,{" "}
-        {diff.unchanged_count} unchanged (plan of {formatInstant(diff.before_as_of)} compared with {formatInstant(diff.after_as_of)})
+        {diff.changed.length} {diff.changed.length === 1 ? "task" : "tasks"} changed, {diff.added.length} added,{" "}
+        {diff.removed.length} removed, {diff.unchanged_count} unchanged.
       </p>
-      <ul className="mt-3 space-y-2 text-sm">
+      <ul className="mt-3 space-y-3 text-sm">
         {diff.changed.map((c) => (
           <li key={c.task_key} data-testid="plan-diff-change">
-            <span className="font-medium">{c.title}</span>
-            <span className="text-muted">
-              {": "}
-              {Object.entries(c.fields).map(([field, [before, after]]) => describe(field, before, after)).join("; ")}
-            </span>
+            <p className="font-medium">{c.title}</p>
+            <ul className="mt-0.5 text-muted">
+              {Object.entries(c.fields).map(([field, [before, after]]) => <li key={field}>{describe(field, before, after)}</li>)}
+            </ul>
           </li>
         ))}
       </ul>
@@ -149,12 +224,12 @@ function PlanDiffCard({ diff }: { diff: PlanDiff }) {
 
 function describe(field: string, before: unknown, after: unknown): string {
   if (field === "anchor_at") {
-    return `planned against ${shortDate(String(before).slice(0, 10))}, now ${shortDate(String(after).slice(0, 10))}`;
+    return `Now planned against ${shortDate(String(after).slice(0, 10))} (was ${shortDate(String(before).slice(0, 10))})`;
   }
   if (field === "conflict_values") {
-    const fmt = (v: unknown) => (v as Side[]).map(([d, t]) => formatLocalDate(d, t)).join(" vs ");
-    return `sides ${fmt(before)}, now ${fmt(after)}`;
+    const fmt = (v: unknown) => (v as Side[]).map(([d, t]) => formatLocalDate(d, t)).join(" or ");
+    return `Stated deadlines now ${fmt(after)} (were ${fmt(before)})`;
   }
-  if (field === "position") return `position ${before} to ${after}`;
-  return `${field} ${String(before)} to ${String(after)}`;
+  if (field === "position") return `Now step ${String(after)} (was ${String(before)})`;
+  return `${field}: ${String(before)} to ${String(after)}`;
 }
