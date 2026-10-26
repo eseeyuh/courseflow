@@ -18,3 +18,12 @@ Quality work deliberately deferred while the end-to-end prototype is built. Noth
 - Upload courses (no external ID) fingerprint by row ID.
 - Requirement and obligation labels are incomplete: report numeric precision and F1 only once the labels are complete.
 - The resample-training-only obligation was not proposed by the FAST model; the few-shot variant did not fix it.
+
+## Demo UI
+
+- **Mapping rationale is provenance, not prose.** The stored `rationale` is only a locator ("Slide 2 of …"), so the UI explains a mapping from its stored retrieval mode, rank and verifier prompt version. A per-mapping reason from the verifier would need a schema and prompt change, and an evaluation.
+- **Broad mapping is visible.** Coursework 1's requirements each list four or five Week 7 slides (see Material mapping above); the class-imbalance requirement shows the intended slide among them, not alone.
+- **No live source links.** The evidence viewer shows the stored title, version, slide, page or section and exact excerpt; the demo LMS has no URLs to open the original.
+- **Client-side fetching.** Pages load from the API in the browser and refetch whole views after a demo action; fine for two courses, not for many.
+- **Desktop-first layout.** Usable on a laptop; small screens are not tuned.
+- **Studied state is per span.** Marking a study task studied sets every span it targets; partial progress inside a task is not shown.
