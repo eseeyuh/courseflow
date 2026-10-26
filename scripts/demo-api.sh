@@ -7,11 +7,16 @@
 #     sh scripts/demo-api.sh            # http://127.0.0.1:8000 (RELOAD=1 to reload on edits)
 #
 # Database credentials come from the repository-root .env (DATABASE_URL);
-# only the database name is replaced.
+# only the database name is replaced. The database is created on first use.
 set -eu
 root="$(cd "$(dirname "$0")/.." && pwd)"
 url="$(grep '^DATABASE_URL=' "$root/.env" | cut -d= -f2- | sed -E 's#/[^/]+$#/courseflow_demo#; s#@db:#@127.0.0.1:#')"
 mkdir -p "$root/storage/demo-raw"
+# Create the demo database on first use (the Compose `db` service must be up).
+user="$(grep '^POSTGRES_USER=' "$root/.env" | cut -d= -f2-)"
+if ! (cd "$root" && docker compose exec -T db psql -U "${user:-courseflow}" -d postgres -tAc     "SELECT 1 FROM pg_database WHERE datname = 'courseflow_demo'") | grep -q 1; then
+  (cd "$root" && docker compose exec -T db createdb -U "${user:-courseflow}" courseflow_demo)
+fi
 cd "$root/backend"
 export DATABASE_URL="$url"
 export RAW_STORAGE_DIR="$root/storage/demo-raw"

@@ -1,0 +1,19 @@
+# Allowlist for infra/demo/api.Dockerfile (build context: repository root).
+*
+!backend/
+!demo_data/
+!evals/recordings/
+!evals/snapshots/
+!evals/datasets/
+
+# Never in the image: local environments, caches, tests, secrets.
+backend/.venv/
+backend/tests/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.env
+**/.env.*
+**/*.pem
+**/*.key

@@ -191,3 +191,16 @@ async def test_the_demo_workflow_endpoint_is_refused_in_production(settings: Any
     async with _serve(create_app(production)) as client:
         response = await client.post("/api/v1/demo/workflow-runs", json={})
     assert response.status_code == 404
+
+
+async def test_a_demo_environment_passes_the_production_guard(settings: Any) -> None:
+    """A hosted demo (APP_ENV=demo) is not production: the guard lets the
+    request through to the next check (here: no raw store configured)."""
+    from app.main import create_app
+    from tests.conftest import _serve
+
+    demo = settings.model_copy(update={"app_env": "demo", "raw_storage_dir": None})
+    async with _serve(create_app(demo)) as client:
+        response = await client.post("/api/v1/demo/workflow-runs", json={})
+    assert response.status_code == 503
+    assert response.json()["detail"] == "raw storage is not configured"
