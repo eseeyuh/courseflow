@@ -57,6 +57,8 @@ Every claim on screen opens the exact sentence it came from.
 
 More screens: [Coursework 1 requirements](docs/assets/screenshots/02-assessment-requirements.png), [study plan](docs/assets/screenshots/06-study-plan.png).
 
+For reviewers: the [judge summary](docs/demo/judge-summary.md), the [technical facts](docs/demo/technical-facts.md) and the [three-minute demo script](docs/demo/demo-script.md).
+
 ## Why it is different
 
 - **Not Moodle plus a chatbot.** There is no chat box. CourseFlow builds structured state (assessments, obligations, dependencies, conflicts, a plan) and shows it.
@@ -112,6 +114,8 @@ Deeper reading: [system context](docs/architecture/system-context.md), [data con
 
 The demo uses the synthetic **Northbridge University**: two courses, *Applied Machine Learning* and *MSc Dissertation*. It is all invented, with no real course material or student data. It runs offline from committed recordings.
 
+**Deployment status:** the repository contains a one-command Docker demo stack, verified end to end with the golden-path test. A public hosted URL is not currently included; the same command runs it on any Docker host (see *Hosting it* below).
+
 **With Docker only** (one command; the first build takes a few minutes):
 
 ```bash
@@ -129,7 +133,7 @@ sh scripts/demo-api.sh                        # API on :8000: creates and migrat
 cd frontend && npm ci && npm run dev          # UI on :3000 (second terminal)
 ```
 
-Then click **Reset demo** in the Demo strip, and follow the [three-minute demo script](docs/demo/demo-script-v0.md) or the [manual checklist](docs/demo/manual-checklist.md).
+Then click **Reset demo** in the Demo strip, and follow the [three-minute demo script](docs/demo/demo-script.md) or the [manual checklist](docs/demo/manual-checklist.md).
 
 **Golden-path test** (with the development setup running; uses your installed Chrome):
 

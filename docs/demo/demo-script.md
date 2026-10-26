@@ -2,7 +2,7 @@
 
 Everything on screen comes from the CourseFlow API, rebuilt offline from committed recordings of real Nemotron runs over the synthetic Northbridge University courses. No network, no spend, the same every time.
 
-**Before recording:** start the demo ([README: Run the demo](../../README.md#run-the-demo)), open http://localhost:3000, click **Reset demo** in the Demo strip and wait for "Demo reset to the initial course state." Dismiss the green banner. Browser at about 1440 × 900, zoom 100%.
+**Before recording:** follow the [recording checklist](recording-checklist.md): demo running and reset, initial conflict 12 Nov vs 13 Nov, browser at about 1440 × 900, zoom 100%.
 
 ---
 
@@ -70,7 +70,9 @@ When the banner turns green:
 
 On the *Week 7* study task, click **Studied**.
 
-> "Mark the lecture as studied, and the plan is recomputed. Moodle stores the information. CourseFlow reconstructs the path through it, and shows you the source for every step."
+> "Mark the lecture as studied, and the plan is recomputed.
+>
+> Course information is fragmented, and it keeps changing. CourseFlow turns it into a plan you can act on, and shows you exactly where every important claim came from."
 
 ---
 

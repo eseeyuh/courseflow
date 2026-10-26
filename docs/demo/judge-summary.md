@@ -45,7 +45,7 @@ Embeddings are `Qwen/Qwen3-Embedding-8B` on Token Factory. `nvidia/nemotron-3-su
 4. The deadline conflict (12 Nov vs 13 Nov), with both sources and "CourseFlow will not silently choose between conflicting university sources."
 5. Simulate LMS sync: the conflict becomes 13 Nov vs 19 Nov, 12 Nov is replaced, a reworded obligation is marked, and the study plan updates.
 
-The demo runs offline from recordings of the real runs: identical every time, no key needed. Script: [demo-script-v0.md](demo-script-v0.md).
+The demo runs offline from recordings of the real runs: identical every time, no key needed. Script: [demo-script.md](demo-script.md).
 
 ## Limitations
 
