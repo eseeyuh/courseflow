@@ -179,6 +179,7 @@ def _imports(path: Path) -> list[str]:
     return names
 
 
+DEMO_SURFACE = {("api", "v1", "workflows.py")}
 RUNTIME = (
     "api",
     "core",
@@ -204,7 +205,10 @@ def test_the_destructive_helpers_stay_in_evaluation_tooling() -> None:
         if parts[0] != "evaluation" and any(n.endswith("eval_db") for n in names):
             offenders.append(f"{path.name} imports eval_db")
         runtime = parts[0] in RUNTIME or parts == ("main.py",)
-        if runtime and any(n.startswith(("app.evaluation", "app.demo")) for n in names):
+        # The one demo surface: it may start the offline demo workflow
+        # (app.demo), is refused in production, and imports no evaluation code.
+        tooling = ("app.evaluation",) if parts in DEMO_SURFACE else ("app.evaluation", "app.demo")
+        if runtime and any(n.startswith(tooling) for n in names):
             offenders.append(f"{'/'.join(parts)} imports tooling")
     assert offenders == []
 

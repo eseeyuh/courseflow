@@ -1,0 +1,491 @@
+[
+  {
+    "nonce_free_material_sha256": "7592468a30c5c02e644dd47ab6875e0158af1f8b0941357b89e071efc106d9d8",
+    "output": {
+      "assessments": [
+        {
+          "deadline": {
+            "due_date": "2026-11-13",
+            "due_time": "23:59",
+            "evidence": {
+              "quote": "due Friday 13 November 2026 at 23:59.",
+              "span": "S2"
+            },
+            "status": "stated"
+          },
+          "title": "Coursework 1 (Model Evaluation Report)",
+          "title_evidence": {
+            "quote": "Coursework 1 (Model Evaluation Report), 40%:",
+            "span": "S2"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "January 2027 examination period.",
+              "span": "S2"
+            },
+            "status": "ambiguous"
+          },
+          "title": "Written examination",
+          "title_evidence": {
+            "quote": "Written examination, 60%:",
+            "span": "S2"
+          },
+          "weighting": null
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "862db56f4a45b4e91566a4f63011c1279a6e837840fffd2c20f8088da8e00ad8",
+    "output": {
+      "assessments": [
+        {
+          "deadline": {
+            "due_date": "2026-11-12",
+            "due_time": "14:00",
+            "evidence": {
+              "quote": "Submission deadline: Thursday 12 November 2026, 14:00 (UK time).",
+              "span": "S1"
+            },
+            "status": "stated"
+          },
+          "title": "Coursework 1: Model Evaluation Report",
+          "title_evidence": {
+            "quote": "Coursework 1: Model Evaluation Report",
+            "span": "S1"
+          },
+          "weighting": {
+            "evidence": {
+              "quote": "Weighting: 40% of the module mark.",
+              "span": "S1"
+            },
+            "percent": 40
+          }
+        },
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "title": "Coursework 1: Model Evaluation Report",
+          "title_evidence": {
+            "quote": "Coursework 1: Model Evaluation Report",
+            "span": "S2"
+          },
+          "weighting": null
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "edc7b1dd3d26a2353a367a6d86a4be3828df6fcd48d875e7a6ce05ddb8bb9d51",
+    "output": {
+      "assessments": [
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "Workshop 7: Evaluation Metrics in Practice",
+              "span": "S2"
+            },
+            "status": "not_stated"
+          },
+          "title": "Coursework 1",
+          "title_evidence": {
+            "quote": "Workshop 7: Evaluation Metrics in Practice",
+            "span": "S2"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "Exercise 1: Metrics from a confusion matrix",
+              "span": "S3"
+            },
+            "status": "not_stated"
+          },
+          "title": "Exercise 1: Metrics from a confusion matrix",
+          "title_evidence": {
+            "quote": "Exercise 1: Metrics from a confusion matrix",
+            "span": "S3"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "Exercise 2: Precision-recall curve and threshold",
+              "span": "S7"
+            },
+            "status": "not_stated"
+          },
+          "title": "Exercise 2: Precision-recall curve and threshold",
+          "title_evidence": {
+            "quote": "Exercise 2: Precision-recall curve and threshold",
+            "span": "S7"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "Exercise 3 (optional): Stratified cross-validation",
+              "span": "S10"
+            },
+            "status": "not_stated"
+          },
+          "title": "Exercise 3 (optional): Stratified cross-validation",
+          "title_evidence": {
+            "quote": "Exercise 3 (optional): Stratified cross-validation",
+            "span": "S10"
+          },
+          "weighting": null
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "1400d3168017c51f6d53fc7239bcefd5859948b65fd71bb041998fa4fee5759c",
+    "output": {
+      "assessments": []
+    }
+  },
+  {
+    "nonce_free_material_sha256": "28fbd4270390a3818c671c071bc65129779219da82f69077e3623491baa9de1d",
+    "output": {
+      "assessments": [
+        {
+          "deadline": {
+            "due_date": "2026-09-28",
+            "due_time": null,
+            "evidence": {
+              "quote": "The submission deadline is the one given in the brief.",
+              "span": "S4"
+            },
+            "status": "stated"
+          },
+          "title": "Coursework 1: Model Evaluation Report",
+          "title_evidence": {
+            "quote": "Coursework 1, the model evaluation report",
+            "span": "S3"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": "2026-09-28",
+            "due_time": null,
+            "evidence": {
+              "quote": "Coursework 1 brief released (28 September 2026)",
+              "span": "S2"
+            },
+            "status": "stated"
+          },
+          "title": "Coursework 1: Model Evaluation Report",
+          "title_evidence": {
+            "quote": "Coursework 1 brief released (28 September 2026)",
+            "span": "S2"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "AML7001 Applied Machine Learning: announcements",
+              "span": "S1"
+            },
+            "status": "not_stated"
+          },
+          "title": "Coursework 1: Model Evaluation Report",
+          "title_evidence": {
+            "quote": "AML7001 Applied Machine Learning: announcements",
+            "span": "S1"
+          },
+          "weighting": null
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "6b033b1c3132c244e21d7d0ec5bc32856c3e93a0c5f85f150dbffccd520199f0",
+    "output": {
+      "assessments": []
+    }
+  },
+  {
+    "nonce_free_material_sha256": "32e8f483e383380999b585985dc0940a630f8cce5fd3beb87fdbe24f7862ce45",
+    "output": {
+      "assessments": []
+    }
+  },
+  {
+    "nonce_free_material_sha256": "1e41e863dc763f1e90ff3977d42648fa2d177b951b6bece6d32082f95c72095b",
+    "output": {
+      "assessments": []
+    }
+  },
+  {
+    "nonce_free_material_sha256": "2150a2d8376ef810576a3949b6fc30f265b93d86490bfa8de1ea1d1538457d49",
+    "output": {
+      "assessments": [
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "Project Specification: see the Project Specification brief for the deadline.",
+              "span": "S1"
+            },
+            "status": "not_stated"
+          },
+          "title": "Project Specification",
+          "title_evidence": {
+            "quote": "Project Specification: see the Project Specification brief for the deadline.",
+            "span": "S1"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "Interim review meeting: weeks 6 to 8 of Teaching Block 2.",
+              "span": "S1"
+            },
+            "status": "ambiguous"
+          },
+          "title": "Interim review meeting",
+          "title_evidence": {
+            "quote": "Interim review meeting: weeks 6 to 8 of Teaching Block 2.",
+            "span": "S1"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": "2027-09-03",
+            "due_time": "16:00",
+            "evidence": {
+              "quote": "Final dissertation: Friday 3 September 2027, 16:00 (UK time).",
+              "span": "S1"
+            },
+            "status": "stated"
+          },
+          "title": "Final dissertation",
+          "title_evidence": {
+            "quote": "Final dissertation: Friday 3 September 2027, 16:00 (UK time).",
+            "span": "S1"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "Before you submit your Project Specification, your supervisor must have reviewed a complete draft of it.",
+              "span": "S2"
+            },
+            "status": "not_stated"
+          },
+          "title": "Project Specification draft review",
+          "title_evidence": {
+            "quote": "Before you submit your Project Specification, your supervisor must have reviewed a complete draft of it.",
+            "span": "S2"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "No data may be collected for your project before ethics approval has been granted.",
+              "span": "S3"
+            },
+            "status": "not_stated"
+          },
+          "title": "Ethics approval",
+          "title_evidence": {
+            "quote": "No data may be collected for your project before ethics approval has been granted.",
+            "span": "S3"
+          },
+          "weighting": null
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "6aa42e388d45db267e88d7ee3dafc3ba61564cbde8aa0004716ec35b7e396595",
+    "output": {
+      "assessments": [
+        {
+          "deadline": {
+            "due_date": "2026-11-30",
+            "due_time": "12:00",
+            "evidence": {
+              "quote": "Deadline: Monday 30 November 2026, 12:00 (UK time).",
+              "span": "S1"
+            },
+            "status": "stated"
+          },
+          "title": "Project Specification",
+          "title_evidence": {
+            "quote": "Project Specification",
+            "span": "S1"
+          },
+          "weighting": {
+            "evidence": {
+              "quote": "Weighting: 10% of the dissertation module mark.",
+              "span": "S1"
+            },
+            "percent": 10
+          }
+        },
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "title": "Specification",
+          "title_evidence": {
+            "quote": "Your specification must include",
+            "span": "S2"
+          },
+          "weighting": null
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "7c2941dcc3738f5215767df3095a37b7b98676c70f57addc08ce3478446e62db",
+    "output": {
+      "assessments": [
+        {
+          "deadline": {
+            "due_date": "2026-11-19",
+            "due_time": "14:00",
+            "evidence": {
+              "quote": "The new deadline is Thursday 19 November 2026, 14:00 (UK time). This replaces the date in the brief.",
+              "span": "S4"
+            },
+            "status": "stated"
+          },
+          "title": "Coursework 1",
+          "title_evidence": {
+            "quote": "Coursework 1 deadline moved (19 October 2026)",
+            "span": "S2"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "The submission deadline is the one given in the brief.",
+              "span": "S7"
+            },
+            "status": "not_stated"
+          },
+          "title": "Coursework 1 brief",
+          "title_evidence": {
+            "quote": "Coursework 1 brief released (28 September 2026)",
+            "span": "S5"
+          },
+          "weighting": null
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "7a837fa72432ae4be334bc8cf218e159170ec4cbc6f88166dadf13e36b42c905",
+    "output": {
+      "assessments": [
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "Project Specification: see the Project Specification brief for the deadline.",
+              "span": "S1"
+            },
+            "status": "not_stated"
+          },
+          "title": "Project Specification",
+          "title_evidence": {
+            "quote": "Project Specification: see the Project Specification brief for the deadline.",
+            "span": "S1"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "Interim review meeting: weeks 6 to 8 of Teaching Block 2.",
+              "span": "S2"
+            },
+            "status": "ambiguous"
+          },
+          "title": "Interim review meeting",
+          "title_evidence": {
+            "quote": "Interim review meeting: weeks 6 to 8 of Teaching Block 2.",
+            "span": "S2"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": "2027-09-03",
+            "due_time": "16:00",
+            "evidence": {
+              "quote": "Final dissertation: Friday 3 September 2027, 16:00 (UK time).",
+              "span": "S1"
+            },
+            "status": "stated"
+          },
+          "title": "Final dissertation",
+          "title_evidence": {
+            "quote": "Final dissertation: Friday 3 September 2027, 16:00 (UK time).",
+            "span": "S1"
+          },
+          "weighting": {
+            "evidence": {
+              "quote": "The dissertation is an independent research project carried out under the guidance of a supervisor. It is worth 60 credits.",
+              "span": "S1"
+            },
+            "percent": 60
+          }
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "5700c015574f09c2422774ccb0f3963a85e38384092b8d159f1b914e2297b2c2",
+    "output": {
+      "assessments": []
+    }
+  }
+]

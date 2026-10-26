@@ -3,116 +3,88 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { apiBaseUrl } from "@/lib/config";
+import type {
+  Assessment,
+  Conflict,
+  Course,
+  DemoSyncResult,
+  DemoWorkflowStarted,
+  DependencyEdge,
+  Obligation,
+  Requirement,
+  StudyPlan,
+  StudyState,
+  Sync,
+  WorkflowRun,
+} from "@/lib/types";
 
-/** Mirrors the backend HealthResponse schema (GET /api/v1/health). */
-export type HealthResponse = {
-  status: "ok" | "unavailable";
-  version: string;
-  environment: string;
-  checks: Record<string, "ok" | "unavailable">;
-};
+// --- the CourseFlow API -------------------------------------------------------------------
 
-/** Every outcome of a health check is a value; this never throws. */
-export type HealthCheck =
-  | { state: "healthy"; health: HealthResponse }
-  // The CourseFlow API answered, but reports a dependency as unavailable.
-  | { state: "degraded"; httpStatus: number; health: HealthResponse }
-  // Something answered, but not with a CourseFlow health payload (wrong URL,
-  // wrong server, proxy error page).
-  | { state: "unexpected"; httpStatus: number; reason: string }
-  | { state: "unreachable"; reason: string }
-  | { state: "misconfigured"; reason: string };
-
-const HEALTH_TIMEOUT_MS = 5000;
-
-function isHealthResponse(value: unknown): value is HealthResponse {
-  if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    (candidate.status === "ok" || candidate.status === "unavailable") &&
-    typeof candidate.version === "string" &&
-    typeof candidate.environment === "string" &&
-    typeof candidate.checks === "object" &&
-    candidate.checks !== null
-  );
+/** A failed API request: an HTTP status (0 when nothing answered) and the
+ * server's detail when it sent one. */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 
-/** Caller cancellation OR timeout, without relying on AbortSignal.any
- * (missing in some older browsers). */
-function withTimeout(signal: AbortSignal, ms: number): { signal: AbortSignal; cancel: () => void } {
-  const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(new DOMException("Health check timed out", "TimeoutError")),
-    ms,
-  );
-  const onAbort = () => controller.abort(signal.reason);
-  if (signal.aborted) onAbort();
-  else signal.addEventListener("abort", onAbort, { once: true });
-  return {
-    signal: controller.signal,
-    cancel: () => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", onAbort);
-    },
-  };
-}
+const READ_TIMEOUT_MS = 20_000;
+// The demo workflow and sync run the offline pipeline: about ten seconds.
+const DEMO_TIMEOUT_MS = 180_000;
 
-/**
- * Calls the API health endpoint from the browser.
- *
- * Bounded by a timeout so the UI can never stay in a loading state. Network
- * errors and CORS rejections both surface as "unreachable": the browser
- * deliberately does not tell scripts which of the two happened.
- */
-export async function checkHealth(signal: AbortSignal): Promise<HealthCheck> {
+async function request<T>(path: string, init: RequestInit = {}, timeoutMs = READ_TIMEOUT_MS): Promise<T> {
   if (apiBaseUrl === null) {
-    return {
-      state: "misconfigured",
-      reason: "NEXT_PUBLIC_API_BASE_URL is missing or invalid (see frontend/.env.example).",
-    };
+    throw new ApiError(0, "NEXT_PUBLIC_API_BASE_URL is missing or invalid (see frontend/.env.example).");
   }
-
-  const url = `${apiBaseUrl}/api/v1/health`;
-  const bounded = withTimeout(signal, HEALTH_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
   try {
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        signal: bounded.signal,
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-      });
-    } catch (error) {
-      if (!signal.aborted) console.warn("[health] request failed", error);
-      const timedOut = bounded.signal.reason instanceof DOMException &&
-        bounded.signal.reason.name === "TimeoutError";
-      return {
-        state: "unreachable",
-        reason: timedOut
-          ? `No response within ${HEALTH_TIMEOUT_MS / 1000} s.`
-          : "Network error or request blocked (API down, wrong URL, or CORS).",
-      };
-    }
-
-    let body: unknown = null;
-    try {
-      body = await response.json();
-    } catch {
-      body = null; // not JSON: handled as "unexpected" below
-    }
-
-    if (!isHealthResponse(body)) {
-      return {
-        state: "unexpected",
-        httpStatus: response.status,
-        reason: `${url} did not return a CourseFlow health response. Check NEXT_PUBLIC_API_BASE_URL.`,
-      };
-    }
-    if (response.ok && body.status === "ok") {
-      return { state: "healthy", health: body };
-    }
-    return { state: "degraded", httpStatus: response.status, health: body };
+    response = await fetch(`${apiBaseUrl}/api/v1${path}`, {
+      ...init,
+      signal: controller.signal,
+      cache: "no-store",
+      headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}) },
+    });
+  } catch {
+    throw new ApiError(0, controller.signal.aborted
+      ? `The API did not answer within ${timeoutMs / 1000} s.`
+      : "The API is unreachable. Is it running?");
   } finally {
-    bounded.cancel();
+    clearTimeout(timer);
   }
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = typeof body === "object" && body !== null && "detail" in body ? (body as { detail: unknown }).detail : null;
+    throw new ApiError(response.status, typeof detail === "string" ? detail : `HTTP ${response.status}`);
+  }
+  return body as T;
 }
+
+export const api = {
+  courses: () => request<Course[]>("/courses"),
+  assessments: (courseId: string) => request<Assessment[]>(`/courses/${courseId}/assessments`),
+  assessment: (id: string) => request<Assessment>(`/assessments/${id}`),
+  assessmentRequirements: (id: string) => request<Requirement[]>(`/assessments/${id}/requirements`),
+  assessmentConflicts: (id: string) => request<Conflict[]>(`/assessments/${id}/conflicts`),
+  obligations: (courseId: string) => request<Obligation[]>(`/courses/${courseId}/obligations`),
+  dependencies: (courseId: string) => request<DependencyEdge[]>(`/courses/${courseId}/dependencies`),
+  conflicts: (courseId: string) => request<Conflict[]>(`/courses/${courseId}/conflicts`),
+  workflowRuns: (courseId: string, limit = 1) =>
+    request<WorkflowRun[]>(`/courses/${courseId}/workflow-runs?limit=${limit}`),
+  studyPlan: () => request<StudyPlan>("/study-plan"),
+  changes: () => request<Sync[]>("/changes"),
+  setStudyState: (spanIds: string[], state: StudyState) =>
+    request<{ changed: number }>("/study-states", {
+      method: "PUT",
+      body: JSON.stringify({ source_span_ids: spanIds, state }),
+    }),
+  resetDemo: () =>
+    request<DemoWorkflowStarted>("/demo/workflow-runs", { method: "POST", body: JSON.stringify({ reset: true }) },
+      DEMO_TIMEOUT_MS),
+  syncDemo: () => request<DemoSyncResult>("/demo/sync", { method: "POST" }, DEMO_TIMEOUT_MS),
+};

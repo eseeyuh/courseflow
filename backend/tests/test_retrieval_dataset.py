@@ -168,13 +168,15 @@ def test_loading_makes_no_network_call(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_only_the_evaluation_runner_searches() -> None:
-    """Scoring happens only in the evaluation runner and the chunk-variant
-    experiment, through the production SearchService. No other evaluation
-    module ranks, searches or fuses."""
+    """Scoring happens only in the evaluation runner, the chunk-variant
+    experiment and the material-mapping smoke run (which builds the
+    production SearchService for the production mapping service). No other
+    evaluation module ranks, searches or fuses."""
     names = ("rank_vector", "rank_lexical", "SearchService", "fuse_rrf", "app.retrieval.search",
              "app.retrieval.fusion")  # fmt: skip
+    entry_points = {"retrieval/runner.py", "retrieval/chunk_variant.py", "mapping/run.py"}
     for source in EVALUATION_SOURCES.rglob("*.py"):
-        if source.name in {"runner.py", "chunk_variant.py"}:  # the two scoring entry points
+        if source.relative_to(EVALUATION_SOURCES).as_posix() in entry_points:
             continue
         content = source.read_text("utf-8")
         assert not [name for name in names if name in content], source.name

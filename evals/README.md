@@ -91,3 +91,20 @@ uv run python -m app.evaluation.retrieval.record --dataset <dir> --snapshot <fil
 ```
 
 Without `--live` it prints the plan and makes no request. Before any live request it refuses a plan that needs more than 2 logical requests or 6 HTTP attempts, or whose planned maximum spend is $0.01 or more. It stops between batches if reported usage would breach that bound. It publishes the snapshot atomically and never overwrites an existing one.
+
+## Material mapping smoke run
+
+A demo smoke test, not a benchmark: does each Northbridge requirement map to the right teaching material, through the production path (hybrid retrieval, k=5 chunks of teaching resources, a FAST verifier that answers candidate IDs or `none`, the deterministic subset gate)?
+
+```bash
+cd backend
+uv run python -m app.evaluation.mapping.run          # replay: no network, no spend
+```
+
+It builds the initial Northbridge state in the evaluation database from recorded outputs (no extraction call), then maps every requirement. The default run replays the recorded query embeddings (`snapshots/northbridge/v1/mapping-queries-*.jsonl`) and verifier outputs (`recordings/material-mapping/`). `--live --embedding-price-usd-per-million <price>` records both again under a spend cap of at most $0.01.
+
+The dev / held-out split (`datasets/northbridge/splits/material-mapping-v1.json`) was declared before any result; only dev may guide changes. Report: `reports/material-mapping-v1-fast-thinking-off.md`.
+
+## Demo recordings
+
+`recordings/` holds the frozen, validated model outputs the Northbridge demo is rebuilt from: assessment extraction, requirement and obligation extraction, and material mapping. Each is keyed by a nonce-free material hash, with no prompts, headers or credentials. Together with the embedding snapshots in `snapshots/northbridge/v1/`, they let a fresh clone rebuild the demo intelligence with no network and no spend (`app.demo.intelligence`). `runs/` stays local and gitignored: nothing the demo needs may live there.

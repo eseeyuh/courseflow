@@ -14,17 +14,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas.assessment import EvidenceRead
-from app.api.schemas.claims import DueRead, ObligationRead, RequirementRead
+from app.api.schemas.claims import DueRead, MaterialMappingRead, ObligationRead, RequirementRead
 from app.db.assessments import evidence_reads
 from app.db.models import (
     Assessment,
     AssessmentRequirement,
     EvidenceLink,
+    MaterialMapping,
+    ModelCall,
     Obligation,
     Resource,
     ResourceVersion,
     SourceSpan,
 )
+from app.domain.enums import ResourceType, VerificationStatus
 
 Position = tuple[str, int, int, int]  # source URI, version, span ordinal, offset
 
@@ -48,20 +51,70 @@ def _order(positions: dict[uuid.UUID, Position], evidence: list[EvidenceRead]) -
     return sorted(positions[e.id] for e in evidence)
 
 
-async def course_requirements(session: AsyncSession, course_id: uuid.UUID) -> list[RequirementRead]:
-    rows = (
-        await session.execute(
-            select(AssessmentRequirement, Assessment)
-            .join(Assessment, Assessment.id == AssessmentRequirement.assessment_id)
-            .where(Assessment.course_id == course_id)
+async def material_reads(
+    session: AsyncSession, requirement_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[MaterialMappingRead]]:
+    """Each requirement's mappings, resolved to the exact span range, location,
+    source version and lineage, in source order."""
+    rows = await session.execute(
+        select(MaterialMapping, SourceSpan, ResourceVersion, Resource, ModelCall)
+        .join(SourceSpan, SourceSpan.id == MaterialMapping.source_span_id)
+        .join(ResourceVersion, ResourceVersion.id == SourceSpan.resource_version_id)
+        .join(Resource, Resource.id == ResourceVersion.resource_id)
+        .join(ModelCall, ModelCall.id == MaterialMapping.verifier_model_call_id)
+        .where(MaterialMapping.requirement_id.in_(requirement_ids))
+        .order_by(Resource.source_uri, ResourceVersion.version_number, SourceSpan.ordinal,
+                  MaterialMapping.quote_start)
+    )  # fmt: skip
+    out: dict[uuid.UUID, list[MaterialMappingRead]] = defaultdict(list)
+    for mapping, span, version, resource, call in rows:
+        out[mapping.requirement_id].append(
+            MaterialMappingRead(
+                id=mapping.id,
+                relation=mapping.relation,
+                rationale=mapping.rationale,
+                quote=span.excerpt[mapping.quote_start : mapping.quote_end],
+                source_span_id=span.id,
+                page_number=span.page_number,
+                slide_number=span.slide_number,
+                section_path=span.section_path,
+                resource_id=resource.id,
+                resource_title=resource.title,
+                resource_type=resource.type,
+                resource_version_id=version.id,
+                version_number=version.version_number,
+                current_version=resource.current_version_id == version.id,
+                retrieval_mode=mapping.retrieval_mode,
+                retrieval_rank=mapping.retrieval_rank,
+                retrieval_score=mapping.retrieval_score,
+                query_model_call_id=mapping.query_model_call_id,
+                verifier_model_call_id=mapping.verifier_model_call_id,
+                verifier_model=call.model,
+                verifier_prompt_version=call.prompt_version,
+                workflow_run_id=mapping.workflow_run_id,
+            )
         )
-    ).all()
+    return out
+
+
+async def course_requirements(
+    session: AsyncSession, course_id: uuid.UUID, *, assessment_id: uuid.UUID | None = None
+) -> list[RequirementRead]:
+    query = (
+        select(AssessmentRequirement, Assessment)
+        .join(Assessment, Assessment.id == AssessmentRequirement.assessment_id)
+        .where(Assessment.course_id == course_id)
+    )
+    if assessment_id is not None:
+        query = query.where(Assessment.id == assessment_id)
+    rows = (await session.execute(query)).all()
     ids = [requirement.id for requirement, _ in rows]
     evidence: dict[uuid.UUID, list[EvidenceRead]] = defaultdict(list)
     found = await evidence_reads(session, EvidenceLink.assessment_requirement_id.in_(ids))
     for link, read in found:
         evidence[link.assessment_requirement_id].append(read)  # type: ignore[index]
     positions = await _positions(session, [link for link, _ in found])
+    materials = await material_reads(session, ids)
     reads = [
         RequirementRead(
             id=requirement.id,
@@ -72,6 +125,7 @@ async def course_requirements(session: AsyncSession, course_id: uuid.UUID) -> li
             review_reason=requirement.review_reason,
             supported_by_current_version=any(e.current_version for e in evidence[requirement.id]),
             evidence=evidence[requirement.id],
+            materials=materials.get(requirement.id, []),
         )
         for requirement, assessment in rows
     ]
@@ -117,6 +171,10 @@ async def course_obligations(session: AsyncSession, course_id: uuid.UUID) -> lis
             review_reason=o.review_reason,
             supported_by_current_version=any(e.current_version for e in evidence[o.id]),
             evidence=evidence[o.id],
+            hidden=o.status is VerificationStatus.VERIFIED
+            and o.assessment_id is not None
+            and bool(evidence[o.id])
+            and all(e.resource_type is not ResourceType.BRIEF for e in evidence[o.id]),
         )
         for o in obligations
     ]

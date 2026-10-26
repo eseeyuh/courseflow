@@ -30,3 +30,8 @@ next-env.d.ts
 # (disabled via `agentRules: false` in next.config.ts; ignored as a backstop)
 /AGENTS.md
 /CLAUDE.md
+
+# Playwright output
+/test-results/
+/playwright-report/
+/blob-report/

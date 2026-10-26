@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from app.domain.enums import (
     DeadlinePrecision,
     EvidenceField,
+    ResourceType,
     ReviewReason,
     TimezoneSource,
     VerificationStatus,
@@ -34,6 +35,7 @@ class EvidenceRead(BaseModel):
     section_path: str | None
     resource_id: uuid.UUID
     resource_title: str
+    resource_type: ResourceType
     resource_version_id: uuid.UUID
     version_number: int
     current_version: bool
@@ -64,6 +66,12 @@ class DeadlineRead(BaseModel):
     review_reason: ReviewReason | None
     supported_by_current_version: bool
     evidence: list[EvidenceRead]
+    # Active: counts now (verified, current evidence, not superseded). A
+    # superseded deadline stays visible as history, with what replaced it.
+    active: bool = False
+    superseded_by_deadline_id: uuid.UUID | None = None
+    superseded_by_quote: str | None = None
+    superseded_by_source_span_id: uuid.UUID | None = None
 
 
 class AssessmentRead(BaseModel):

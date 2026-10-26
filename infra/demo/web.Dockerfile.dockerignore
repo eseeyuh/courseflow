@@ -1,0 +1,11 @@
+# Allowlist for infra/demo/web.Dockerfile (build context: repository root).
+*
+!frontend/
+
+frontend/node_modules/
+frontend/.next/
+frontend/test-results/
+frontend/playwright-report/
+frontend/tsconfig.tsbuildinfo
+**/.env
+**/.env.*

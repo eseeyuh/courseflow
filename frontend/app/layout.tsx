@@ -5,7 +5,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { NAV_ITEMS } from "@/lib/navigation";
+import { DemoBar, DemoProgress } from "@/components/DemoControls";
+import { DemoStateProvider } from "@/components/DemoState";
+import { EvidenceProvider } from "@/components/Evidence";
+import { Nav } from "@/components/Nav";
 
 import "./globals.css";
 
@@ -14,30 +17,30 @@ export const metadata: Metadata = {
   description: "Evidence-backed academic navigation.",
 };
 
-// Server Component: static shell, no browser state, no client JavaScript.
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className="h-full antialiased">
       <body className="flex min-h-full flex-col">
-        <header className="border-b border-neutral-200 dark:border-neutral-800">
-          <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-            <Link href="/" className="text-lg font-bold">
-              CourseFlow
-            </Link>
-            <nav aria-label="Main">
-              <ul className="flex flex-wrap gap-4 text-sm">
-                {NAV_ITEMS.map((item) => (
-                  <li key={item.href}>
-                    <Link href={item.href} className="hover:underline">
-                      {item.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          </div>
-        </header>
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>
+        <DemoStateProvider>
+          <EvidenceProvider>
+            <header className="border-b border-line bg-white">
+              <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-3 px-5 py-3">
+                <Link href="/" className="text-lg font-semibold tracking-tight">
+                  CourseFlow
+                </Link>
+                <Nav />
+              </div>
+              <DemoBar />
+            </header>
+            <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8">
+              <DemoProgress />
+              {children}
+            </main>
+            <footer className="border-t border-line py-4 text-center text-xs text-muted">
+              Demo data: Northbridge University (fictional). Every value shown comes from the CourseFlow API.
+            </footer>
+          </EvidenceProvider>
+        </DemoStateProvider>
       </body>
     </html>
   );

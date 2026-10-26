@@ -24,7 +24,9 @@ _REPO_ROOT_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 
 ASYNC_DATABASE_SCHEME = "postgresql+asyncpg"
 
-AppEnv = Literal["development", "test", "production"]
+# "demo": a hosted hackathon demo. Like development, it serves the offline
+# demo endpoints (reset, simulated LMS sync); only "production" refuses them.
+AppEnv = Literal["development", "test", "demo", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 # Values copied unchanged from .env.example are configuration mistakes.

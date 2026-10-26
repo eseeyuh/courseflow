@@ -29,6 +29,8 @@ from app.db.models import (
     Resource,
     ResourceVersion,
     SourceSpan,
+    StudyPlan,
+    StudyTask,
     WorkflowRun,
 )
 from app.domain.enums import LmsType
@@ -67,9 +69,16 @@ async def reset_demo_institution(
                 select(ResourceVersion.id).where(ResourceVersion.resource_id.in_(resources))
             )
         ).all()
-        # Claims first: their deadlines, requirements and evidence links cascade,
-        # and evidence links must go before the spans and runs they reference.
+        # Claims first: their deadlines, requirements, material mappings and
+        # evidence links cascade, and links and mappings must go before the
+        # spans, model calls and runs they reference.
         # Obligations go before the assessments and model calls they reference.
+        # Saved plans of these courses go first (their tasks cascade).
+        await session.execute(
+            delete(StudyPlan).where(
+                StudyPlan.id.in_(select(StudyTask.plan_id).where(StudyTask.course_id.in_(courses)))
+            )
+        )
         await session.execute(delete(Obligation).where(Obligation.course_id.in_(courses)))
         await session.execute(delete(Assessment).where(Assessment.course_id.in_(courses)))
         runs = await session.execute(delete(WorkflowRun).where(WorkflowRun.course_id.in_(courses)))

@@ -2,13 +2,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { PlaceholderPage } from "@/components/PlaceholderPage";
+"use client";
+
+import { CourseCard } from "@/components/CourseCard";
+import { useApi } from "@/components/DemoState";
+import { LoadState } from "@/components/ui";
+import { api } from "@/lib/api";
+import { loadCourse } from "@/lib/load";
+
+async function loadCourses() {
+  return Promise.all((await api.courses()).map(loadCourse));
+}
 
 export default function CoursesPage() {
+  const result = useApi(loadCourses, "courses");
   return (
-    <PlaceholderPage
-      title="Courses"
-      purpose="Imported courses and their course map, linked to the original teaching material."
-    />
+    <div className="space-y-6">
+      <h1 className="page-title">Courses</h1>
+      <LoadState result={result}>
+        {(bundles) =>
+          bundles.length === 0 ? (
+            <p className="text-muted">No courses yet. Use Reset demo to load the demo courses.</p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {bundles.map((b) => <CourseCard key={b.course.id} bundle={b} />)}
+            </div>
+          )
+        }
+      </LoadState>
+    </div>
   );
 }

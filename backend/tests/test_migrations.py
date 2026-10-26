@@ -49,8 +49,16 @@ EXPECTED_TABLES = {
     "evidence_links",
     "assessment_requirements",
     "obligations",
+    "material_mappings",
+    "dependency_edges",
+    "conflicts",
+    "conflict_sides",
+    "study_states",
+    "study_plans",
+    "study_tasks",
+    "change_events",
 }
-HEAD = "0008"
+HEAD = "0012"
 
 EXPECTED_SOURCE_SPAN_CHECKS = {
     "ck_source_spans_locator_present",
@@ -925,3 +933,123 @@ def test_0008_downgrade_refuses_offline_sql_mode(test_database_url: URL) -> None
     url = test_database_url.set(database=MIGRATIONS_DATABASE)
     with pytest.raises(RuntimeError, match="0008: downgrade preconditions need a live database"):
         command.downgrade(alembic_config(url), "0008:0007", sql=True)
+
+
+# --- 0009: material mappings ----------------------------------------------------------
+
+MAPPING_RUN = "00000000-0000-0000-0000-0000000000f1"
+MAPPING_ROWS = [
+    (
+        "INSERT INTO workflow_runs (id, workflow_version, course_id, status) VALUES "
+        f"('{MAPPING_RUN}', 'material-mapping/v1', (SELECT course_id FROM resources), "
+        "'succeeded')"
+    ),
+    (
+        "INSERT INTO material_mappings (requirement_id, relation, source_span_id, quote_start, "
+        "quote_end, rationale, retrieval_mode, retrieval_rank, retrieval_score, "
+        "query_model_call_id, verifier_model_call_id, workflow_run_id) VALUES "
+        f"('{REQUIREMENT}', 'supported_by', {FIRST_SPAN}, 0, 5, 'Page 1 of \"Brief\"', "
+        "'lexical', 1, 0.5, NULL, (SELECT id FROM model_calls LIMIT 1), "
+        f"'{MAPPING_RUN}')"
+    ),
+]
+
+
+def test_0009_upgrade_downgrade_upgrade_keeps_existing_claims(db_at_0007: URL) -> None:
+    migrate(db_at_0007, "0008")
+    _execute(db_at_0007, REQUIREMENT_OBLIGATION_ROWS)
+    migrate(db_at_0007, "0009")
+    state = _state(db_at_0007)
+    assert "material_mappings" in state.tables
+    assert "uq_material_mappings_target" in state.uniques
+    assert {
+        "ck_material_mappings_query_call_iff_embedded",
+        "ck_material_mappings_rationale_nonblank_bounded",
+    } <= state.checks
+    _execute(db_at_0007, MAPPING_ROWS)
+    assert _scalar(db_at_0007, "SELECT count(*) FROM material_mappings") == 1
+
+    # Mappings go; the requirement and its evidence stay.
+    downgrade(db_at_0007, "0008")
+    _assert_at_0008(db_at_0007)
+    assert "material_mappings" not in _state(db_at_0007).tables
+    assert _scalar(db_at_0007, "SELECT count(*) FROM assessment_requirements") == 1
+    assert _scalar(db_at_0007, "SELECT count(*) FROM evidence_links") == 3
+
+    migrate(db_at_0007, "0009")
+    assert _scalar(db_at_0007, "SELECT count(*) FROM material_mappings") == 0
+
+
+# --- 0010: dependency edges and conflicts ---------------------------------------------
+
+EDGE = "00000000-0000-0000-0000-0000000000f2"
+REASONING_ROWS = [
+    *MAPPING_ROWS[:1],
+    (
+        "INSERT INTO dependency_edges (id, course_id, relation, prerequisite_kind, "
+        "prerequisite_obligation_id, dependent_kind, dependent_assessment_id, rule, "
+        "derived_from_obligation_id, workflow_run_id) VALUES "
+        f"('{EDGE}', (SELECT course_id FROM resources), 'required_for', 'obligation', "
+        f"'{OBLIGATION}', 'assessment', '{ASSESSMENT}', 'dependency-rules/v1:before-submitting', "
+        f"'{OBLIGATION}', '{MAPPING_RUN}')"
+    ),
+    (
+        "INSERT INTO evidence_links (subject_type, dependency_edge_id, field, source_span_id, "
+        "quote_start, quote_end, verification_status) VALUES "
+        f"('dependency_edge', '{EDGE}', 'dependency', {FIRST_SPAN}, 0, 17, 'verified')"
+    ),
+    (
+        "INSERT INTO conflicts (course_id, assessment_id, field, status, workflow_run_id) VALUES "
+        f"((SELECT course_id FROM resources), '{ASSESSMENT}', 'deadline', 'open', '{MAPPING_RUN}')"
+    ),
+]
+
+
+def test_0010_upgrade_downgrade_upgrade_keeps_existing_claims(db_at_0007: URL) -> None:
+    migrate(db_at_0007, "0008")
+    _execute(db_at_0007, REQUIREMENT_OBLIGATION_ROWS)
+    migrate(db_at_0007, "0010")
+    state = _state(db_at_0007)
+    assert {"dependency_edges", "conflicts", "conflict_sides"} <= state.tables
+    assert {"uq_dependency_edges_ends", "uq_conflicts_assessment_field"} <= state.uniques
+    assert "fk_dependency_edges_dependent_same_course" in state.foreign_keys
+    _execute(db_at_0007, REASONING_ROWS)
+    assert _scalar(db_at_0007, "SELECT count(*) FROM evidence_links") == 4
+
+    # Edges, their evidence and conflicts go; the claims and their evidence stay.
+    downgrade(db_at_0007, "0009")
+    state = _state(db_at_0007)
+    assert not {"dependency_edges", "conflicts", "conflict_sides"} & state.tables
+    assert _scalar(db_at_0007, "SELECT count(*) FROM evidence_links") == 3
+    assert _scalar(db_at_0007, "SELECT count(*) FROM obligations") == 1
+
+    migrate(db_at_0007, "0010")
+    assert _scalar(db_at_0007, "SELECT count(*) FROM dependency_edges") == 0
+
+
+def test_0011_upgrade_downgrade_upgrade(db_at_0007: URL) -> None:
+    migrate(db_at_0007, "0011")
+    assert {"study_states", "study_plans", "study_tasks"} <= _state(db_at_0007).tables
+    _execute(
+        db_at_0007,
+        [
+            (
+                "INSERT INTO study_states (learner, source_span_id, state) VALUES "
+                f"('demo-student', {FIRST_SPAN}, 'studying')"
+            )
+        ],
+    )
+    downgrade(db_at_0007, "0010")
+    assert not {"study_states", "study_plans", "study_tasks"} & _state(db_at_0007).tables
+    _assert_existing_data_intact(db_at_0007)
+    migrate(db_at_0007, "0011")
+
+
+def test_0012_upgrade_downgrade_upgrade(db_at_0007: URL) -> None:
+    migrate(db_at_0007, "0012")
+    assert "change_events" in _state(db_at_0007).tables
+    assert "uq_change_events_new_version" in _state(db_at_0007).uniques
+    downgrade(db_at_0007, "0011")
+    assert "change_events" not in _state(db_at_0007).tables
+    _assert_existing_data_intact(db_at_0007)
+    migrate(db_at_0007, "0012")

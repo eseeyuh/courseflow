@@ -4,10 +4,23 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import assessments, claims, courses, health
+from app.api.v1 import (
+    assessments,
+    changes,
+    claims,
+    courses,
+    health,
+    planning,
+    reasoning,
+    workflows,
+)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health.router)
 api_router.include_router(courses.router)
 api_router.include_router(assessments.router)
 api_router.include_router(claims.router)
+api_router.include_router(reasoning.router)
+api_router.include_router(workflows.router)
+api_router.include_router(planning.router)
+api_router.include_router(changes.router)
