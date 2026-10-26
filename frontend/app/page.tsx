@@ -10,7 +10,7 @@ import { CourseCard } from "@/components/CourseCard";
 import { useApi } from "@/components/DemoState";
 import { LoadState, deadlineText } from "@/components/ui";
 import { courseName, formatInstant, TASK_LABELS } from "@/lib/format";
-import { loadOverview, openConflicts } from "@/lib/load";
+import { loadOverview, nextAssessment, openConflicts } from "@/lib/load";
 
 export default function HomePage() {
   const result = useApi(loadOverview, "overview");
@@ -33,6 +33,8 @@ export default function HomePage() {
           })),
         );
         const latest = changes.at(-1);
+        const upcoming = nextAssessment(courses);
+        const upcomingConflict = upcoming && openConflicts(upcoming.bundle).some((c) => c.assessment_id === upcoming.assessment.id);
         return (
           <div className="space-y-10">
             <section>
@@ -41,6 +43,23 @@ export default function HomePage() {
                 <p className="mt-1 text-sm text-muted">Plan as of {formatInstant(plan.as_of)} (demo clock)</p>
               )}
             </section>
+
+            {upcoming && (
+              <section aria-labelledby="upcoming-heading" className="panel border-accent/40 px-6 py-5" data-testid="upcoming-assessment">
+                <p className="text-sm text-muted">Upcoming assessment in {courseName(upcoming.bundle.course.title)}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-3">
+                  <h2 id="upcoming-heading" className="text-xl font-semibold">{upcoming.assessment.title}</h2>
+                  {upcomingConflict && <span className="badge badge-conflict">Deadline conflict</span>}
+                </div>
+                <p className="mt-1 text-sm">
+                  <span className="text-muted">{upcoming.deadlines.length > 1 ? "Stated deadlines: " : "Deadline: "}</span>
+                  {upcoming.deadlines.map(deadlineText).join(" or ")}
+                </p>
+                <Link href={`/assessments/${upcoming.assessment.id}`} className="btn btn-primary mt-4" data-testid="upcoming-cta">
+                  See what it requires and where it is taught
+                </Link>
+              </section>
+            )}
 
             <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
               <section aria-labelledby="next-heading" className="panel p-5">

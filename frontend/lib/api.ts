@@ -15,6 +15,7 @@ import type {
   StudyPlan,
   StudyState,
   Sync,
+  WorkflowRun,
 } from "@/lib/types";
 
 // --- the CourseFlow API -------------------------------------------------------------------
@@ -73,6 +74,8 @@ export const api = {
   obligations: (courseId: string) => request<Obligation[]>(`/courses/${courseId}/obligations`),
   dependencies: (courseId: string) => request<DependencyEdge[]>(`/courses/${courseId}/dependencies`),
   conflicts: (courseId: string) => request<Conflict[]>(`/courses/${courseId}/conflicts`),
+  workflowRuns: (courseId: string, limit = 1) =>
+    request<WorkflowRun[]>(`/courses/${courseId}/workflow-runs?limit=${limit}`),
   studyPlan: () => request<StudyPlan>("/study-plan"),
   changes: () => request<Sync[]>("/changes"),
   setStudyState: (spanIds: string[], state: StudyState) =>

@@ -155,12 +155,18 @@ function MaterialGroup({ group, requirement }: { group: MaterialMapping[]; requi
   const places = new Map<string, MaterialMapping[]>();
   for (const m of group) places.set(locator(m), [...(places.get(locator(m)) ?? []), m]);
   const first = group[0];
+  const best = Math.min(...group.map((m) => m.retrieval_rank));
   return (
     <div className="rounded-lg bg-accent-soft/60 px-4 py-3" data-testid="material-group">
       <p className="text-sm">
         <span className="text-muted">Study: </span>
         <span className="font-medium" data-testid="material-title">{first.resource_title}</span>
         <span className="text-muted"> ({RESOURCE_LABELS[first.resource_type] ?? first.resource_type}, version {first.version_number})</span>
+      </p>
+      <p className="mt-1 text-xs text-muted" data-testid="material-rationale">
+        Why here: {places.size === 1 ? "this place" : `these ${places.size} places`} in the course&apos;s own
+        teaching material came back from {first.retrieval_mode} retrieval (best rank {best}), and the
+        verifier ({first.verifier_prompt_version}) confirmed {places.size === 1 ? "it covers" : "they cover"} this requirement.
       </p>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {[...places.entries()].map(([where, mappings]) => (

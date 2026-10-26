@@ -10,8 +10,22 @@ import { useState, type ReactNode } from "react";
 import { useDemoState, type Loaded } from "@/components/DemoState";
 import { EvidenceButton, fromEvidence } from "@/components/Evidence";
 import { api } from "@/lib/api";
-import { formatLocalDate, RESOURCE_LABELS } from "@/lib/format";
-import type { Conflict, Deadline, DependencyEdge, StudyState } from "@/lib/types";
+import { formatInstant, formatLocalDate, RESOURCE_LABELS } from "@/lib/format";
+import type { Conflict, Deadline, DependencyEdge, StudyState, WorkflowRun } from "@/lib/types";
+
+/** The course's latest course-intelligence run, as its trace records it. The
+ * run ID is a small reference for debugging, not something to act on. */
+export function RunStatus({ run }: { run: WorkflowRun | null }) {
+  if (!run) return <span className="text-muted">Not processed yet</span>;
+  const when = run.finished_at ?? run.started_at;
+  const label = { succeeded: "Processed", failed: "Processing failed", running: "Processing", pending: "Queued" }[run.status];
+  return (
+    <span className={run.status === "failed" ? "text-conflict" : undefined} data-testid="run-status">
+      {label}{when ? ` ${formatInstant(when)}` : ""}
+      <span className="text-muted"> (run {run.id.slice(0, 8)})</span>
+    </span>
+  );
+}
 
 /** Renders loaded data, a loading line, or an error with what to do. */
 export function LoadState<T>({ result, children }: { result: Loaded<T>; children: (data: T) => ReactNode }) {

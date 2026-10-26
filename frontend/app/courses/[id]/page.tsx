@@ -10,10 +10,23 @@ import { useEffect } from "react";
 
 import { useApi } from "@/components/DemoState";
 import { EvidenceButton, fromEvidence, StatusBadge } from "@/components/Evidence";
-import { ConflictCard, DeadlineEvidence, DependencyChain, LoadState, deadlineText } from "@/components/ui";
-import { courseCode, courseName, RESOURCE_LABELS } from "@/lib/format";
+import { ConflictCard, DeadlineEvidence, DependencyChain, LoadState, RunStatus, deadlineText } from "@/components/ui";
+import { api, ApiError } from "@/lib/api";
+import { courseCode, courseName, RESOURCE_LABELS, TASK_LABELS } from "@/lib/format";
 import { activeDeadlines, loadCourseById, openConflicts, type CourseBundle } from "@/lib/load";
-import type { Obligation } from "@/lib/types";
+import type { Obligation, StudyTask } from "@/lib/types";
+
+async function loadCoursePage(id: string) {
+  const [bundle, plan] = await Promise.all([
+    loadCourseById(id),
+    api.studyPlan().catch((e: unknown) => {
+      if (e instanceof ApiError && e.status === 409) return null; // no plan yet
+      throw e;
+    }),
+  ]);
+  const next = plan?.tasks.find((t) => t.course.id === id && t.status === "ready") ?? null;
+  return { bundle, next };
+}
 
 /** Scrolls to the #fragment once the client-rendered content exists. */
 function useScrollToHash(ready: boolean) {
@@ -27,12 +40,12 @@ function useScrollToHash(ready: boolean) {
 
 export default function CoursePage() {
   const { id } = useParams<{ id: string }>();
-  const result = useApi(() => loadCourseById(id), `course:${id}`);
+  const result = useApi(() => loadCoursePage(id), `course:${id}`);
   useScrollToHash(result.state === "ready");
-  return <LoadState result={result}>{(bundle) => <Course bundle={bundle} />}</LoadState>;
+  return <LoadState result={result}>{({ bundle, next }) => <Course bundle={bundle} next={next} />}</LoadState>;
 }
 
-function Course({ bundle }: { bundle: CourseBundle }) {
+function Course({ bundle, next }: { bundle: CourseBundle; next: StudyTask | null }) {
   const { course, assessments, obligations, dependencies } = bundle;
   const conflicts = openConflicts(bundle);
   const verified = assessments.filter((a) => a.status === "verified");
@@ -45,7 +58,19 @@ function Course({ bundle }: { bundle: CourseBundle }) {
       <header>
         <p className="text-sm text-muted">{courseCode(course.title, course.external_id)}</p>
         <h1 className="page-title">{courseName(course.title)}</h1>
+        <p className="mt-1 text-sm text-muted">Course sources: <RunStatus run={bundle.latestRun} /></p>
       </header>
+
+      {next && (
+        <section className="panel flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4" data-testid="course-next">
+          <span className="badge badge-neutral">Next: {TASK_LABELS[next.task_type]}</span>
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">{next.title}</p>
+            <p className="text-sm text-muted">{next.why_now}</p>
+          </div>
+          <Link href="/study-plan" className="text-sm text-accent hover:underline">Open study plan</Link>
+        </section>
+      )}
 
       {conflicts.map((c) => <ConflictCard key={c.id} conflict={c} link />)}
 

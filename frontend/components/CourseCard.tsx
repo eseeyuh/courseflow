@@ -4,11 +4,12 @@
 
 import Link from "next/link";
 
-import { deadlineText } from "@/components/ui";
+import { deadlineText, RunStatus } from "@/components/ui";
 import { courseCode, courseName } from "@/lib/format";
 import { activeDeadlines, openConflicts, type CourseBundle } from "@/lib/load";
 
-/** A course: its next verified deadline, open conflicts, hidden obligations. */
+/** A course: its next verified deadline (every stated value when sources
+ * disagree), open conflicts, hidden obligations, its latest run. */
 export function CourseCard({ bundle }: { bundle: CourseBundle }) {
   const { course } = bundle;
   const upcoming = bundle.assessments
@@ -24,11 +25,15 @@ export function CourseCard({ bundle }: { bundle: CourseBundle }) {
       <dl className="mt-4 space-y-1.5 text-sm">
         <div className="flex gap-2">
           <dt className="w-24 shrink-0 text-muted">Next due</dt>
-          <dd>{upcoming ? `${upcoming.a.title}, ${deadlineText(upcoming.d)}` : "No verified deadline"}</dd>
+          <dd>{upcoming ? `${upcoming.a.title}, ${activeDeadlines(upcoming.a).map(deadlineText).join(" or ")}` : "No verified deadline"}</dd>
         </div>
         <div className="flex gap-2">
           <dt className="w-24 shrink-0 text-muted">Assessments</dt>
           <dd>{bundle.assessments.filter((a) => a.status === "verified").length} verified</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-24 shrink-0 text-muted">Sources</dt>
+          <dd><RunStatus run={bundle.latestRun} /></dd>
         </div>
       </dl>
       <div className="mt-4 flex flex-wrap gap-2">

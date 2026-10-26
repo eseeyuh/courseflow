@@ -11,7 +11,8 @@ import { EvidenceButton, fromEvidence, fromTarget } from "@/components/Evidence"
 import { LoadState, StudyStateControl, deadlineText } from "@/components/ui";
 import { api } from "@/lib/api";
 import { courseName, formatInstant, TASK_LABELS } from "@/lib/format";
-import type { StudyTask } from "@/lib/types";
+import { prerequisitesOf } from "@/lib/load";
+import type { StudyPlan, StudyTask } from "@/lib/types";
 
 export default function StudyPlanPage() {
   const result = useApi(api.studyPlan, "study-plan");
@@ -28,10 +29,14 @@ export default function StudyPlanPage() {
         {(plan) => (
           <>
             <p className="text-sm text-muted" data-testid="plan-as-of">
-              As of {formatInstant(plan.as_of)} (demo clock)
+              As of {formatInstant(plan.as_of)} (demo clock).{" "}
+              {[...new Set(plan.tasks.map((t) => courseName(t.course.title)))].map((name) => {
+                const open = plan.tasks.filter((t) => courseName(t.course.title) === name && t.status !== "completed").length;
+                return `${name}: ${open} open`;
+              }).join(", ")}.
             </p>
             <ol className="space-y-3">
-              {plan.tasks.map((task) => <TaskRow key={task.task_key} task={task} />)}
+              {plan.tasks.map((task) => <TaskRow key={task.task_key} task={task} plan={plan} />)}
             </ol>
           </>
         )}
@@ -46,8 +51,9 @@ function anchorText(task: StudyTask): string | null {
   return null;
 }
 
-function TaskRow({ task }: { task: StudyTask }) {
+function TaskRow({ task, plan }: { task: StudyTask; plan: StudyPlan }) {
   const done = task.status === "completed";
+  const prerequisites = prerequisitesOf(task, plan);
   const blocked = task.status === "blocked";
   const anchor = anchorText(task);
   return (
@@ -83,6 +89,19 @@ function TaskRow({ task }: { task: StudyTask }) {
             </p>
           )}
           <p className="text-sm text-muted" data-testid="why-now">{task.why_now}</p>
+          {prerequisites.length > 0 && (
+            <div className="text-sm" data-testid="task-prerequisites">
+              <p className="text-muted">Must happen first:</p>
+              <ul className="mt-0.5 list-disc space-y-0.5 pl-5">
+                {prerequisites.map((p) => (
+                  <li key={p.task_key} data-testid="task-prerequisite" data-status={p.status}>
+                    <span className={p.status === "completed" ? "text-muted line-through" : ""}>{p.title}</span>
+                    <span className="text-muted"> ({p.status === "completed" ? "done" : `step ${p.position}`})</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {task.task_type === "study_material" && task.study_state && (
               <StudyStateControl spanIds={task.targets.map((t) => t.source_span_id)} state={task.study_state} label={task.title} />
