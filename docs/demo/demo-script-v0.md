@@ -1,69 +1,81 @@
-# CourseFlow demo script (v0, about 3 minutes)
+# CourseFlow demo script (about 3 minutes)
 
-The demo runs fully offline on the synthetic Northbridge University data: every value on screen comes from the CourseFlow API, rebuilt from committed recordings. No network, no model spend.
+Everything on screen comes from the CourseFlow API, rebuilt offline from committed recordings of real Nemotron runs over the synthetic Northbridge University courses. No network, no spend, the same every time.
 
-## Before you start
+**Before recording:** start the demo ([README: Run the demo](../../README.md#run-the-demo)), open http://localhost:3000, click **Reset demo** in the Demo strip and wait for "Demo reset to the initial course state." Dismiss the green banner. Browser at about 1440 × 900, zoom 100%.
 
-```bash
-sh scripts/demo-api.sh               # API on http://127.0.0.1:8000 (its own demo database)
-cd frontend && npm run dev           # UI on http://localhost:3000
-```
+---
 
-Open http://localhost:3000 and click **Reset demo** (about 10 seconds). The header shows "Demo reset to the initial course state."
-
-Optional rehearsal check: `cd frontend && npx playwright test` drives this exact path.
-
-## 1. Fragmented course information (0:00–0:30)
+## 0:00–0:25 · The problem
 
 **Screen:** Home.
 
-> "A student's course lives in many places: assessment briefs, handbooks, lecture slides, announcements. CourseFlow reads them and keeps every claim tied to the exact source it came from. Here is one student's week across two courses."
+> "A university course lives in a dozen places: the assignment brief, the module handbook, lecture slides, announcements. The things a student needs are scattered across them, and sometimes they disagree.
+>
+> CourseFlow reads all of it and turns it into next steps, and every one of them can show you the exact sentence it came from. This is one student's week across two courses."
 
-Point at **Next actions** (from the study plan) and **Needs your attention**: a deadline conflict and an obligation marked *Found by CourseFlow*.
+Point at **Upcoming assessment** (Coursework 1, two stated deadlines) and **Needs your attention**: a deadline conflict, and an obligation marked *Found by CourseFlow*.
 
-## 2. CourseFlow finds a hidden obligation (0:30–1:05)
+## 0:25–1:05 · Requirement to the exact learning material
 
-**Click:** the *Found by CourseFlow* item (MSc Dissertation).
+**Click:** **See what it requires and where it is taught**.
 
-> "The Project Specification brief never mentions it, but the dissertation handbook says the supervisor must review a complete draft before you submit. CourseFlow found it, verified the wording against the source, and linked it to the assessment it blocks."
+> "This is Coursework 1 in Applied Machine Learning. Each requirement is quoted straight from the brief, and under each one CourseFlow shows where the course's own teaching material covers it."
 
-Show the **Required for: Project Specification** line, then **Show where the handbook says this**: the evidence drawer opens with the handbook, version, page and the exact sentence.
+Scroll to **"Discuss the class imbalance in the data and explain how it affects both model training and the way the models should be evaluated."** Click **Slide 2** under *Week 7: Learning from Imbalanced Data*.
 
-Scroll to **What has to happen first**: *Supervisor review, required for, Project Specification* and *Ethics approval, required for, Data collection*.
+> "Not a summary: the original slide. 'With 7% positives, always predicting the majority class gives 93% accuracy.' Retrieval found the candidates, the Nemotron verifier could only choose among them, and what you see is the stored text of the slide, its version and its location."
 
-## 3. A requirement maps to the exact learning material (1:05–1:40)
+Close the drawer.
 
-**Click:** Courses, Applied Machine Learning, Coursework 1.
+## 1:05–1:35 · A hidden obligation, found
 
-> "Each requirement is quoted from the brief. Under it, CourseFlow shows where in the course's own teaching material it is taught."
+**Click:** **Home**, then the *Found by CourseFlow* item.
 
-At requirement 2 (*Discuss the class imbalance…*), click **Slide 2** under *Week 7: Learning from Imbalanced Data*.
+> "Here is something the Project Specification brief never mentions. The dissertation handbook says your supervisor must review a complete draft before you submit. CourseFlow found it, marked it mandatory, and linked it to the assessment it blocks."
 
-> "Not a summary: the original slide. Retrieval found it, a verifier chose it from the retrieved candidates only, and this is the exact slide text."
+Point at **Required for: Project Specification**. Click **Show where the handbook says this**.
 
-## 4. CourseFlow refuses to hide a deadline conflict (1:40–2:10)
+> "Page 2 of the handbook, the exact sentence, verified against the source."
 
-**Screen:** the conflict card on Coursework 1.
+Close, scroll to **What has to happen first**:
 
-> "The brief says Thursday 12 November, 14:00. The module handbook says Friday 13 November, 23:59. CourseFlow will not silently choose between conflicting university sources. It shows both, each with its source, and tells you to check with the module team."
+> "And the dependencies it reconstructs: supervisor review before the specification, ethics approval before data collection."
 
-**Click:** Study plan. Point at task 1, *Check the Coursework 1 deadline with the module team*, with both dates. Then mark *Week 7* **Studied**: the task moves to the end as done and the rest of the plan stays in order.
+## 1:35–2:05 · The conflict CourseFlow refuses to hide
 
-## 5. LMS sync changes the sources; CourseFlow propagates it (2:10–3:00)
+**Click:** **Home**, then the *Deadline conflict* item.
 
-**Click:** Changes, then **Simulate LMS sync** (about 10 seconds; it simulates the demo LMS, not a live Moodle).
+> "Two university sources disagree. The brief says Thursday the 12th of November at two. The handbook says Friday the 13th, just before midnight."
 
-> "The module posts an announcement: the deadline moves to 19 November, and it says it replaces the date in the brief. The handbook is also updated. CourseFlow brings in only the changed versions and reprocesses what they affect."
+Click **Show what Source A says**, close, then **Show what Source B says**, close.
 
-Point at the change cards: *Deadline added* (19 Nov), *Deadline superseded* (the brief's 12 Nov, replaced because the source says so), *Conflict changed* (12/13 Nov is now 13/19 Nov) and the handbook's reworded obligation (5 working days is now 10).
+> "Each date has its own source. CourseFlow will not silently choose between conflicting university sources. It shows both and tells you to check with the module team. The plan schedules against the earlier date to be safe, and says that this is not a ruling."
 
-> "The handbook still says 13 November, so the conflict stays visible. It is just between the current sources now."
+## 2:05–2:40 · The LMS changes; CourseFlow propagates it
 
-Open **Study plan**: the clock moved to 21 October and the Coursework 1 conflict task now shows 13 Nov or 19 Nov.
+**Click:** **Changes**, then **Simulate LMS sync** (about 10 seconds).
 
-> "Every step you saw is evidence-backed and reproducible."
+> "Now the module posts an announcement and a new handbook version. This simulates the demo LMS changing; it is not a live Moodle connection. CourseFlow brings in only the changed sources and reprocesses what they affect."
+
+When the banner turns green:
+
+> "A new deadline: the 19th. The brief's 12th is replaced, because the announcement says it replaces it. The conflict is still there, but between the current sources now: the 13th against the 19th. And the handbook's supervisor deadline went from five working days to ten. CourseFlow marks the words that changed."
+
+## 2:40–3:00 · The study plan, and why it matters
+
+**Click:** **Study plan**.
+
+> "The plan has already moved: the demo clock is now the 21st of October, and the deadline check shows the 13th or the 19th."
+
+On the *Week 7* study task, click **Studied**.
+
+> "Mark the lecture as studied, and the plan is recomputed. Moodle stores the information. CourseFlow reconstructs the path through it, and shows you the source for every step."
+
+---
 
 ## Recovery
 
-- Something looks stale: click **Reset demo**, wait for the confirmation, start again at step 1.
-- Sync clicked twice: the second sync reports "no new changes" and creates nothing.
+- **Something looks stale:** click **Reset demo**, wait for the confirmation, and start again.
+- **Sync clicked twice:** the second sync reports "LMS sync found no new changes" and changes nothing.
+- **A page shows "CourseFlow could not load this page":** the API is not running. Restart it, then Reset demo.
