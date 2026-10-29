@@ -38,6 +38,15 @@ DOCUMENT_EMBEDDINGS = SNAPSHOT_PATH
 MAPPING_QUERY_EMBEDDINGS = (
     SNAPSHOT_PATH.parent / "mapping-queries-nebius-qwen3-embedding-8b-d4096-sv1.jsonl"
 )
+# The supplementary courses' vectors, pinned to the supplement's own hash.
+# Their extraction and mapping answers are authored, not recorded (supplement).
+SUPPLEMENT_DOCUMENT_EMBEDDINGS = (
+    SNAPSHOT_PATH.parent.parent / "supplement-v1" / "nebius-qwen3-embedding-8b-d4096-sv1.jsonl"
+)
+SUPPLEMENT_QUERY_EMBEDDINGS = (
+    SUPPLEMENT_DOCUMENT_EMBEDDINGS.parent
+    / "mapping-queries-nebius-qwen3-embedding-8b-d4096-sv1.jsonl"
+)
 
 ALL = (
     ASSESSMENT_OUTPUTS,
@@ -45,4 +54,6 @@ ALL = (
     MAPPING_OUTPUTS,
     DOCUMENT_EMBEDDINGS,
     MAPPING_QUERY_EMBEDDINGS,
+    SUPPLEMENT_DOCUMENT_EMBEDDINGS,
+    SUPPLEMENT_QUERY_EMBEDDINGS,
 )

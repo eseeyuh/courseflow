@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from app.ai.embeddings import EmbeddingInput, EmbeddingSpace, document_input
-from app.connectors.demo import DemoManifest
+from app.connectors.demo import DemoManifest, DemoSupplement
 from app.evaluation.northbridge.labels import (
     CORPUS_DIR,
     REPO_ROOT,
@@ -77,7 +77,7 @@ def snapshot_subject(golden: GoldenDataset) -> SnapshotSubject:
     )
 
 
-def corpus_inputs(corpus: DemoManifest) -> ExpectedInputs:
+def corpus_inputs(corpus: DemoManifest | DemoSupplement) -> ExpectedInputs:
     """Every distinct document input of every version, in manifest order."""
     documents: dict[tuple[str, str], EmbeddingInput] = {}
     for course in corpus.courses:

@@ -85,6 +85,10 @@ class ReplayEmbeddingProvider:
     def snapshot_sha256(self) -> str:
         return self._snapshot.sha256
 
+    def covers(self, item: EmbeddingInput) -> bool:
+        """Whether the snapshot holds a vector for ``item``."""
+        return input_key(item) in self._snapshot.vectors
+
     async def embed(self, inputs: Sequence[EmbeddingInput]) -> EmbeddingResult:
         check_batch(inputs, self._max_batch_items)
         vectors = self._snapshot.vectors

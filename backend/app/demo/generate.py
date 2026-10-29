@@ -7,9 +7,10 @@
     uv run python -m app.demo.generate            # write demo_data/northbridge/courses
     uv run python -m app.demo.generate --check    # verify the committed files, byte for byte
 
-Writes exactly the files in ``northbridge_content.DOCUMENTS``. ``--check``
-fails if any committed file differs from a fresh render, or if an unlisted
-file sits under ``courses/``.
+Writes exactly the files in ``northbridge_content.DOCUMENTS`` and
+``supplement_content.SUPPLEMENT_DOCUMENTS``. ``--check`` fails if any
+committed file differs from a fresh render, or if an unlisted file sits under
+``courses/``.
 """
 
 from __future__ import annotations
@@ -21,12 +22,13 @@ from pathlib import Path
 
 from app.demo.northbridge_content import DOCUMENTS
 from app.demo.render import render
+from app.demo.supplement_content import SUPPLEMENT_DOCUMENTS
 
 DATA_ROOT = Path(__file__).resolve().parents[3] / "demo_data" / "northbridge"
 
 
 def build_all() -> dict[str, bytes]:
-    return {path: render(doc) for path, doc in sorted(DOCUMENTS.items())}
+    return {path: render(doc) for path, doc in sorted((DOCUMENTS | SUPPLEMENT_DOCUMENTS).items())}
 
 
 def differences(root: Path, built: dict[str, bytes]) -> list[str]:

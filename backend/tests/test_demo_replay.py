@@ -116,13 +116,14 @@ async def test_a_clean_clone_rebuilds_the_demo_intelligence_offline(
     synced = await CourseIntelligenceWorkflow(sessions, replay).run(steps=SYNC_STEPS)
     assert synced.succeeded and sum(len(v) for v in synced.changed.values()) == 2
 
-    assert sorted(build.courses) == ["aml7001", "msd7000"]
+    # The two main demo courses and the two supplementary ones.
+    assert sorted(build.courses) == ["aif7002", "aml7001", "dvs7003", "msd7000"]
     async with sessions() as session:
         runs = (await session.scalars(select(WorkflowRun))).all()
     assert {r.status for r in runs} == {
         WorkflowRunStatus.SUCCEEDED
     }  # the workflow and its children
-    assert sorted(build.runs) == ["aml7001", "msd7000"]
+    assert sorted(build.runs) == ["aif7002", "aml7001", "dvs7003", "msd7000"]
     # Every recording was read, and nothing that is not committed.
     tracked = _tracked()
     assert {p.resolve() for p in recordings.ALL} <= set(reads)

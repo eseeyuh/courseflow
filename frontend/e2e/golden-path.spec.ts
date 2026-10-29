@@ -101,7 +101,7 @@ test("the CourseFlow golden path, from reset to a propagated LMS change", async 
   await expect(lecture).toHaveAttribute("data-status", "completed");
   await expect(lecture.getByTestId("why-now")).toHaveText("Done: you have studied this material.");
   await expect(page.getByTestId("plan-saved")).toContainText("Saved as Studied");
-  await expect(page.getByTestId("plan-saved")).toContainText("now step 10 of 10, marked done");
+  await expect(page.getByTestId("plan-saved")).toContainText("now step 22 of 22, marked done");
   await expect(page.getByTestId("plan-task").last().getByTestId("task-title")).toContainText("Learning from Imbalanced Data");
   const submit = planTask(page, "Submit Coursework 1");
   await expect(submit.getByTestId("task-prerequisite").filter({ hasText: "Learning from Imbalanced Data" }))

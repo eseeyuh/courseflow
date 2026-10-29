@@ -2,13 +2,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-"""The study plan on the replayed Northbridge demo, through the API: both
-courses, prerequisites first, the Coursework 1 conflict exposed and not
+"""The study plan on the replayed Northbridge demo, through the API: every
+course, spread over the stated deadlines, prerequisites first, the Coursework 1 conflict exposed and not
 resolved, and a study-state change that recomputes the plan."""
 
 from __future__ import annotations
 
 import uuid
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -60,8 +61,17 @@ async def test_the_demo_study_plan_end_to_end(
     assert len(tasks) == saved
     assert [t["position"] for t in tasks] == list(range(1, len(tasks) + 1))
 
-    # 3: both courses.
-    assert {t["course"]["code"] for t in tasks} == {"aml7001", "msd7000"}
+    # 3: every course, the supplementary ones with their mapped material.
+    assert {t["course"]["code"] for t in tasks} == {"aif7002", "aml7001", "dvs7003", "msd7000"}
+    for code in ("aif7002", "dvs7003"):
+        ours = [t for t in tasks if t["course"]["code"] == code]
+        assert [t["task_type"] for t in ours].count("submit_assessment") == 2
+        assert [t["task_type"] for t in ours].count("study_material") == 4
+        assert all(t["targets"] for t in ours if t["task_type"] == "study_material")
+    # The demo's deadlines spread the work: no day carries most of it.
+    days = Counter(t["anchor_at"][:10] for t in tasks if t["anchor_at"])
+    assert len(days) >= 6 and max(days.values()) <= 4
+    assert days["2026-11-12"] == 3  # Coursework 1, against its earliest stated deadline
     # 1: the supervisor review before the Project Specification submission.
     review = _index(tasks, lambda t: t["task_type"] == "obligation"
                     and t["assessment"] and t["assessment"]["title"] == "Project Specification")  # fmt: skip
