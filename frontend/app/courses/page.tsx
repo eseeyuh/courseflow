@@ -17,12 +17,15 @@ async function loadCourses() {
 export default function CoursesPage() {
   const result = useApi(loadCourses, "courses");
   return (
-    <div className="space-y-6">
-      <h1 className="page-title">Courses</h1>
+    <div className="space-y-8">
+      <header className="animate-fade-up">
+        <h1 className="page-title">My Courses</h1>
+        <p className="page-lede">Every course CourseFlow has read, with its next deadline and what it found.</p>
+      </header>
       <LoadState result={result}>
         {(bundles) =>
           bundles.length === 0 ? (
-            <p className="text-muted">No courses yet. Use Reset demo to load the demo courses.</p>
+            <p className="panel max-w-xl border-dashed px-5 py-4 text-muted">No courses yet. Use Reset demo to load the demo courses.</p>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               {bundles.map((b) => <CourseCard key={b.course.id} bundle={b} />)}

@@ -13,9 +13,10 @@ import { useEffect } from "react";
 export default function PageError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => console.error(error), [error]);
   return (
-    <section role="alert" className="panel max-w-xl border-conflict/40 p-6">
-      <h1 className="section-title text-conflict">This page could not be shown</h1>
-      <p className="mt-2 text-sm text-muted">
+    <section role="alert" className="panel max-w-xl border-conflict-line p-7">
+      <p className="label text-conflict">Something went wrong</p>
+      <h1 className="page-title mt-2 text-[1.9rem]">This page could not be shown</h1>
+      <p className="mt-3 text-[13.5px] text-muted">
         Something in the course data could not be displayed. Try again; if it persists, use Reset demo to
         rebuild the demo state.
       </p>

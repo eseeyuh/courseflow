@@ -10,6 +10,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { Icon } from "@/components/Icon";
 import { locator, RESOURCE_LABELS } from "@/lib/format";
 import type { Evidence, MaterialMapping, SourceQuote, StudyTarget, Verification } from "@/lib/types";
 
@@ -119,55 +120,58 @@ export function EvidenceProvider({ children }: { children: ReactNode }) {
     <Context.Provider value={setRequest}>
       {children}
       {request && (
-        <div className="fixed inset-0 z-40 flex justify-end bg-ink/30" onClick={close}>
+        <div className="fixed inset-0 z-40 flex justify-end bg-black/55 backdrop-blur-[2px]" onClick={close}>
           <aside
             role="dialog"
             aria-modal="true"
             aria-label="Evidence"
             onClick={(event) => event.stopPropagation()}
-            className="flex h-full w-full max-w-xl flex-col overflow-y-auto bg-white shadow-2xl"
+            className="flex h-full w-full max-w-[600px] flex-col overflow-y-auto border-l border-line bg-surface shadow-lift"
           >
-            <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-line bg-white px-6 py-3">
-              <p className="text-sm font-medium text-muted">{request.kind}</p>
-              <button ref={closeButton} type="button" onClick={close}
-                className="rounded-md border border-line px-3 py-1 text-sm hover:bg-paper">
+            <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-line bg-surface/95 px-7 py-3.5 backdrop-blur">
+              <p className="eyebrow text-muted"><Icon name="quote" size={14} className="text-link" />{request.kind}</p>
+              <button ref={closeButton} type="button" onClick={close} className="btn btn-quiet btn-sm">
                 Close
               </button>
             </header>
-            <section className="border-b border-line px-6 py-4" aria-label="Derived claim">
-              <p className="text-xs font-medium text-muted">What CourseFlow states</p>
-              <p className="mt-1 text-lg font-semibold leading-snug" data-testid="evidence-claim">{request.claim}</p>
+            <section className="border-b border-line px-7 pt-6 pb-6" aria-label="Derived claim">
+              <p className="label">What CourseFlow states</p>
+              <p className="mt-2 text-[18px] leading-snug font-semibold tracking-tight" data-testid="evidence-claim">{request.claim}</p>
             </section>
-            <section className="px-6 py-5" aria-label="Source evidence">
-              <p className="text-xs font-medium text-muted">
-                {request.items.length === 1 ? "Where it comes from" : `Where it comes from (${request.items.length} excerpts)`}
+            <section className="px-7 py-6" aria-label="Source evidence">
+              <p className="label">
+                {request.items.length === 1 ? "Exact source excerpt" : `Exact source excerpts (${request.items.length})`}
               </p>
               <ol className="mt-3 space-y-5">
                 {request.items.map((item) => (
-                  <li key={item.key} data-testid="evidence-item" className="rounded-lg border border-line">
-                    <blockquote className="source-quote border-l-4 border-mark-strong bg-mark/30 px-4 py-3" data-testid="evidence-quote">
+                  <li key={item.key} data-testid="evidence-item" className="overflow-hidden rounded-xl border border-line bg-canvas/40">
+                    <blockquote className="source-quote border-l-[3px] border-mark-strong bg-mark/40 px-5 py-4 text-[16px] text-ink" data-testid="evidence-quote">
                       {item.quote}
                     </blockquote>
-                    <dl className="grid grid-cols-[7rem_1fr] gap-x-4 gap-y-1 px-4 py-3 text-sm">
-                      <dt className="text-muted">Source</dt>
-                      <dd className="font-medium">{item.resourceTitle}</dd>
-                      {item.resourceType && (<><dt className="text-muted">Type</dt><dd>{RESOURCE_LABELS[item.resourceType] ?? item.resourceType}</dd></>)}
-                      <dt className="text-muted">Version</dt>
-                      <dd>
-                        {item.versionNumber}
-                        {item.currentVersion === false && <span className="text-muted"> (a newer version exists)</span>}
-                      </dd>
-                      <dt className="text-muted">Location</dt>
-                      <dd data-testid="evidence-locator">{locator(item)}</dd>
-                      {item.section_path && item.slide_number === null && item.page_number !== null && (
-                        <><dt className="text-muted">Section</dt><dd>{item.section_path}</dd></>
-                      )}
-                      <dt className="text-muted">Status</dt>
-                      <dd>
-                        {item.status ? <StatusBadge status={item.status} /> : <span className="badge badge-neutral">{item.origin ?? "Source text"}</span>}
-                      </dd>
-                    </dl>
-                    {item.note && <p className="border-t border-line px-4 py-2 text-xs text-muted">{item.note}</p>}
+                    <div className="px-5 py-4">
+                      <p className="flex items-start gap-2 text-[14px] font-medium">
+                        <Icon name="file" size={15} className="mt-0.5 text-faint" />
+                        {item.resourceTitle}
+                      </p>
+                      <dl className="mt-3 grid grid-cols-[6.5rem_1fr] gap-x-4 gap-y-1.5 text-[13px]">
+                        {item.resourceType && (<><dt className="text-faint">Type</dt><dd className="text-ink-soft">{RESOURCE_LABELS[item.resourceType] ?? item.resourceType}</dd></>)}
+                        <dt className="text-faint">Version</dt>
+                        <dd className="text-ink-soft">
+                          {item.versionNumber}
+                          {item.currentVersion === false && <span className="text-review"> (a newer version exists)</span>}
+                        </dd>
+                        <dt className="text-faint">Location</dt>
+                        <dd className="font-medium text-ink" data-testid="evidence-locator">{locator(item)}</dd>
+                        {item.section_path && item.slide_number === null && item.page_number !== null && (
+                          <><dt className="text-faint">Section</dt><dd className="text-ink-soft">{item.section_path}</dd></>
+                        )}
+                        <dt className="text-faint">Status</dt>
+                        <dd>
+                          {item.status ? <StatusBadge status={item.status} /> : <span className="badge badge-neutral">{item.origin ?? "Source text"}</span>}
+                        </dd>
+                      </dl>
+                    </div>
+                    {item.note && <p className="border-t border-line px-5 py-2.5 text-[12px] text-faint">{item.note}</p>}
                   </li>
                 ))}
               </ol>
@@ -181,7 +185,7 @@ export function EvidenceProvider({ children }: { children: ReactNode }) {
 
 export function StatusBadge({ status }: { status: Verification }) {
   return status === "verified" ? (
-    <span className="badge badge-verified">Verified</span>
+    <span className="badge badge-verified"><Icon name="check" size={11} strokeWidth={2.6} />Verified</span>
   ) : (
     <span className="badge badge-review">Needs review</span>
   );
@@ -197,6 +201,7 @@ export function EvidenceButton({ request, label = "View evidence", primary = fal
   if (request.items.length === 0) return null;
   return (
     <button type="button" onClick={() => open(request)} className={primary ? "btn btn-primary" : "evidence-button"}>
+      <Icon name="quote" size={primary ? 14 : 12} className={primary ? "" : "text-link/80"} />
       {label}
     </button>
   );

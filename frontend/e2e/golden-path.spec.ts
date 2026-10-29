@@ -94,7 +94,7 @@ test("the CourseFlow golden path, from reset to a propagated LMS change", async 
   await expect(deps.filter({ hasText: "Ethics approval" })).toContainText("Data collection");
 
   // Study plan: mark Lecture 07 studied -> the plan updates
-  await page.getByRole("link", { name: "Study plan", exact: true }).click();
+  await page.getByRole("link", { name: "Study Plan", exact: true }).click();
   const lecture = planTask(page, "Learning from Imbalanced Data");
   await expect(lecture).toHaveAttribute("data-status", "ready");
   await lecture.getByTestId("state-studied").click();
@@ -127,7 +127,7 @@ test("the CourseFlow golden path, from reset to a propagated LMS change", async 
   await expect(page.getByTestId("plan-diff")).toContainText("Check the Coursework 1");
 
   // The conflict is now 13 Nov vs 19 Nov; the brief's date is history
-  await page.getByRole("link", { name: "Courses", exact: true }).click();
+  await page.getByRole("link", { name: "My Courses", exact: true }).click();
   await page.getByTestId("course-card").filter({ hasText: "Applied Machine Learning" }).click();
   await page.getByTestId("assessment-link").filter({ hasText: "Coursework 1" }).click();
   await expect(page.getByTestId("conflict-card").getByTestId("conflict-value")).toHaveText([
@@ -137,7 +137,7 @@ test("the CourseFlow golden path, from reset to a propagated LMS change", async 
   await expect(page.getByTestId("superseded-deadline")).toContainText("Thu, 12 Nov 2026, 14:00");
 
   // The study plan refreshed: new clock, new conflict sides
-  await page.getByRole("link", { name: "Study plan", exact: true }).click();
+  await page.getByRole("link", { name: "Study Plan", exact: true }).click();
   await expect(page.getByTestId("plan-as-of")).toContainText("21 Oct 2026");
   await expect(page.locator('[data-task-type="check_conflict"]').getByTestId("task-anchor")).toContainText(
     "Fri, 13 Nov 2026, 23:59 or Thu, 19 Nov 2026, 14:00",
