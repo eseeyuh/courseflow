@@ -55,7 +55,7 @@ from app.ingestion.schemas import RawSource
 from app.ingestion.service import build_span_rows
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-DATASET_DIR = REPO_ROOT / "evals" / "datasets" / "northbridge" / "v1"
+DATASET_DIR = REPO_ROOT / "evals" / "datasets" / "northbridge" / "v2"
 CORPUS_DIR = REPO_ROOT / "demo_data" / "northbridge"
 LABELS_FILE = "golden.jsonl"
 MANIFEST_JSON = "manifest.json"
@@ -231,7 +231,7 @@ class _LabelLine(BaseModel):
 class LabelManifest(_Strict):
     schema_version: Literal["northbridge-dataset/v1"]
     dataset: Literal["northbridge-golden"]
-    dataset_version: Literal["v1"]
+    dataset_version: Literal["v2"]
     label_schema_version: Literal["northbridge-label/v1"]
     synthetic: Literal[True]
     institution: Literal["Northbridge University (fictional)"]

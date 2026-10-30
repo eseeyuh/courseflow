@@ -6,6 +6,8 @@
 # (APP_ENV=demo) -> seed (resets to the initial Northbridge state once) ->
 # web (Next.js). The demo replays committed recordings: no model key, no
 # network calls, no spend. It is NOT a live university LMS connection.
+# Optional: `--env-file .env` (repository root) passes the Nebius settings
+# to the api, enabling only the click-triggered "Analyze live with Nemotron".
 #
 # Addresses are explicit. On a server, set the public URLs (see .env.example
 # in this folder): the browser loads WEB_ORIGIN and calls API_PUBLIC_URL,
@@ -58,7 +60,15 @@ services:
 
   api:
     <<: *api-image
-    environment: *api-environment
+    environment:
+      <<: *api-environment
+      # Optional, runtime only: the one live action ("Analyze live with
+      # Nemotron") uses them when clicked. Empty means unset: that action
+      # answers 503 and everything else replays as before.
+      NEBIUS_API_KEY: ${NEBIUS_API_KEY:-}
+      NEBIUS_BASE_URL: ${NEBIUS_BASE_URL:-}
+      MODEL_FAST: ${MODEL_FAST:-}
+      MODEL_STRONG: ${MODEL_STRONG:-}
     volumes:
       - rawdata:/var/lib/courseflow/raw
     ports:

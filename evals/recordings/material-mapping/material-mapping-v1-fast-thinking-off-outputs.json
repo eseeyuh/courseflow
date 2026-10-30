@@ -1,6 +1,56 @@
 [
   {
-    "material_sha256": "a52161770fcc9d507d38ba2db3612d601b71bb947580c74610da428ab62a34f2",
+    "material_sha256": "6f709762878c0c044f4f6ced221e11eea58fbac48b5be7d7d8a844c8c92a34aa",
+    "output": {
+      "candidate_ids": [
+        "C3",
+        "C4",
+        "C5",
+        "C8",
+        "C9",
+        "C10",
+        "C11",
+        "C12",
+        "C13",
+        "C14"
+      ],
+      "decision": "selected"
+    }
+  },
+  {
+    "material_sha256": "ff3130286b6c8db36808559ed925c84154a3214d2dc3d469324b1e62cb25c3ce",
+    "output": {
+      "candidate_ids": [
+        "C4",
+        "C5",
+        "C8",
+        "C9",
+        "C11",
+        "C19"
+      ],
+      "decision": "selected"
+    }
+  },
+  {
+    "material_sha256": "b056637843920909ebd99e0e581ae29764f6b0857618a989db75f8a4faa2b7b6",
+    "output": {
+      "candidate_ids": [
+        "C14",
+        "C15",
+        "C16",
+        "C17",
+        "C18",
+        "C19",
+        "C20",
+        "C21",
+        "C22",
+        "C23"
+      ],
+      "decision": "selected"
+    }
+  },
+  {
+    "material_sha256": "96fccd53497b516f126a0143e47159bc7b9c75a935dc4df3fbd3ae966c105637",
     "output": {
       "candidate_ids": [
         "C1",
@@ -18,65 +68,15 @@
     }
   },
   {
-    "material_sha256": "087179b5bf57bf471b9c820aacc15ddc62cef11304fd48747236ad8dcb560739",
+    "material_sha256": "df7d0faac3a0f5fd9b5691e402dffec5b47b9fa61b15c731cace43011f79f2c5",
     "output": {
       "candidate_ids": [
         "C4",
         "C5",
-        "C6",
-        "C7",
         "C8",
         "C9",
         "C10",
         "C11",
-        "C12",
-        "C13"
-      ],
-      "decision": "selected"
-    }
-  },
-  {
-    "material_sha256": "b0a0f215c43fc0cb48e7b1c7da613aaf5e7d21c38dfb3958bc1037a7a4b554a2",
-    "output": {
-      "candidate_ids": [
-        "C4",
-        "C5",
-        "C6",
-        "C7",
-        "C8",
-        "C9",
-        "C10",
-        "C11",
-        "C12",
-        "C13"
-      ],
-      "decision": "selected"
-    }
-  },
-  {
-    "material_sha256": "9ecd6d6ee048094407e606319a256011f3efa121b9cc5e691b147f100c0dea0e",
-    "output": {
-      "candidate_ids": [
-        "C3",
-        "C4",
-        "C8",
-        "C9",
-        "C11",
-        "C19"
-      ],
-      "decision": "selected"
-    }
-  },
-  {
-    "material_sha256": "152e064230898552a9c82f24247ba784f49c3a11d2a18def29751f7132b6e791",
-    "output": {
-      "candidate_ids": [
-        "C4",
-        "C5",
-        "C8",
-        "C9",
-        "C11",
-        "C17",
         "C19"
       ],
       "decision": "selected"

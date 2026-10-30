@@ -289,3 +289,32 @@ export type DemoSyncResult = {
   affected_course_ids: Uuid[];
   runs: WorkflowRun[];
 };
+
+/** One live, unpersisted model answer over an assessment's current brief.
+ * `quote_found`: the quote occurs in the brief; not a verified claim. */
+export type LiveRequirements = {
+  assessment_id: Uuid;
+  resource_id: Uuid;
+  resource_title: string;
+  resource_version_id: Uuid;
+  version_number: number;
+  requirements: { requirement: string; quote: string; quote_found: boolean }[];
+  live: true;
+  provider: string;
+  model: string;
+  prompt_version: string;
+  model_call_id: Uuid;
+  latency_ms: number;
+  usage: { prompt_tokens: number | null; completion_tokens: number | null; reasoning_tokens: number | null };
+};
+
+/** The current version of an assessment's brief as stored: one entry per
+ * source span (a PDF page), in document order. */
+export type BriefText = {
+  assessment_id: Uuid;
+  resource_id: Uuid;
+  resource_title: string;
+  resource_version_id: Uuid;
+  version_number: number;
+  pages: { page_number: number | null; text: string }[];
+};

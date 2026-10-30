@@ -21,6 +21,11 @@ like a real LMS seen through time:
 The manifest is parsed with a YAML safe loader that also refuses duplicate
 keys, then validated strictly. Files are relative POSIX paths inside the
 manifest's directory; nothing outside it is ever read.
+
+An optional ``supplement.yaml`` (``demo-supplement/v1``) beside it adds
+further courses of the same institution, and the users who see them. It is
+read only on request (``supplement=True``): ``manifest.yaml`` alone is the
+frozen evaluation corpus, and the supplement never changes it.
 """
 
 from __future__ import annotations
@@ -56,6 +61,7 @@ from app.domain.enums import ResourceType
 from app.ingestion.schemas import RawSource
 
 MANIFEST_FILE = "manifest.yaml"
+SUPPLEMENT_FILE = "supplement.yaml"
 MANIFEST_SCHEMA_VERSION = "demo-manifest/v1"
 MAX_MANIFEST_BYTES = 1_000_000
 
@@ -186,27 +192,60 @@ class DemoManifest(_Model):
         raise ConnectorError(f"unknown course {ref!r}")
 
 
-def load_manifest(root: Path) -> DemoManifest:
-    """Parse and validate ``root/manifest.yaml``, checking that every listed
-    file exists inside ``root``; ManifestError lists every problem."""
-    path = root / MANIFEST_FILE
+class DemoSupplement(_Model):
+    """Further courses of the manifest's institution (``supplement.yaml``)."""
+
+    schema_version: Literal["demo-supplement/v1"]
+    users: tuple[ManifestUser, ...] = Field(min_length=1)
+    courses: tuple[ManifestCourse, ...] = Field(min_length=1)
+
+
+def _read_yaml(path: Path) -> Any:
     try:
         data = path.read_bytes()
     except OSError:
-        raise ManifestError([f"{MANIFEST_FILE}: missing or unreadable"]) from None
+        raise ManifestError([f"{path.name}: missing or unreadable"]) from None
     if len(data) > MAX_MANIFEST_BYTES:
-        raise ManifestError([f"{MANIFEST_FILE}: larger than {MAX_MANIFEST_BYTES} bytes"])
+        raise ManifestError([f"{path.name}: larger than {MAX_MANIFEST_BYTES} bytes"])
     try:
         # _StrictLoader is a SafeLoader: only basic YAML types, never Python objects.
-        raw = yaml.load(data.decode("utf-8"), Loader=_StrictLoader)
+        return yaml.load(data.decode("utf-8"), Loader=_StrictLoader)
     except (UnicodeDecodeError, yaml.YAMLError) as exc:
-        raise ManifestError([f"{MANIFEST_FILE}: not valid UTF-8 YAML ({exc})"]) from None
+        raise ManifestError([f"{path.name}: not valid UTF-8 YAML ({exc})"]) from None
+
+
+def _validate[M: BaseModel](model: type[M], raw: Any) -> M:
     try:
-        manifest = DemoManifest.model_validate(raw)
+        return model.model_validate(raw)
     except ValidationError as exc:
         raise ManifestError(
             [f"{'.'.join(map(str, e['loc'])) or '(root)'}: {e['msg']}" for e in exc.errors()]
         ) from None
+
+
+def load_supplement(root: Path) -> DemoSupplement:
+    """Parse and validate ``root/supplement.yaml`` on its own."""
+    return _validate(DemoSupplement, _read_yaml(root / SUPPLEMENT_FILE))
+
+
+def load_manifest(root: Path, *, supplement: bool = False) -> DemoManifest:
+    """Parse and validate ``root/manifest.yaml`` (and, with ``supplement``,
+    merge ``root/supplement.yaml`` into it), checking that every listed file
+    exists inside ``root``; ManifestError lists every problem."""
+    manifest = _validate(DemoManifest, _read_yaml(root / MANIFEST_FILE))
+    if supplement:
+        extra = load_supplement(root)
+        users = {u.user_ref: list(u.courses) for u in manifest.users}
+        for user in extra.users:
+            users.setdefault(user.user_ref, []).extend(user.courses)
+        manifest = _validate(
+            DemoManifest,
+            manifest.model_dump(mode="json")
+            | {
+                "users": [{"user_ref": u, "courses": c} for u, c in users.items()],
+                "courses": [c.model_dump(mode="json") for c in manifest.courses + extra.courses],
+            },
+        )
     problems = []
     resolved_root = root.resolve()
     for course in manifest.courses:
@@ -224,11 +263,12 @@ def load_manifest(root: Path) -> DemoManifest:
 
 
 class DemoConnector:
-    """A synthetic institution, read from ``root`` (which holds manifest.yaml)."""
+    """A synthetic institution, read from ``root`` (which holds manifest.yaml,
+    and with ``supplement`` also supplement.yaml)."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, supplement: bool = False) -> None:
         self._root = root
-        self.manifest = load_manifest(root)
+        self.manifest = load_manifest(root, supplement=supplement)
 
     def source_uri(self, course: ManifestCourse, resource: ManifestResource) -> str:
         return f"demo://{self.manifest.institution.key}/{course.ref}/{resource.key}"

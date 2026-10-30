@@ -21,6 +21,22 @@ export function formatLocalDate(date: string, time?: string | null): string {
   return time ? `${day}, ${time}` : day;
 }
 
+/** A stored local date ("2026-11-12") in parts, for a date heading. */
+export function dateParts(date: string): { weekday: string; day: string; month: string; year: string } {
+  const [y, m, d] = date.split("-").map(Number);
+  const at = new Date(Date.UTC(y, m - 1, d));
+  const part = (options: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat("en-GB", { ...options, timeZone: "UTC" }).format(at);
+  return { weekday: part({ weekday: "short" }), day: String(d), month: part({ month: "short" }), year: String(y) };
+}
+
+/** Whole days from the demo clock's date (an instant, read in UTC) to a stored local date. */
+export function daysUntil(asOf: string, date: string): number {
+  const [y, m, d] = date.split("-").map(Number);
+  const from = new Date(asOf);
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate())) / 86_400_000);
+}
+
 export function shortDate(date: string): string {
   const [y, m, d] = date.split("-").map(Number);
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(

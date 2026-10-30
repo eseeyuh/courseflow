@@ -1,62 +1,180 @@
 @import "tailwindcss";
 
-/* CourseFlow tokens: cool paper, ink text, one accent. Status colours carry
-   meaning only: verified, needs review, conflict. Source excerpts are set in
-   a serif with a highlighter mark: the original material, quoted exactly. */
+/* CourseFlow tokens: a warm charcoal workspace. Surfaces are separated by
+   quiet borders, not bright cards. One restrained blue-violet accent; amber
+   for attention; rose only for genuine conflicts and errors. Display
+   headings are set in a serif, the interface in a clean sans. Source
+   excerpts keep a readable text serif and a highlighter mark: the original
+   material, quoted exactly. */
 @theme {
-  --color-paper: #f6f7f9;
-  --color-ink: #14213d;
-  --color-muted: #5b6475;
-  --color-line: #dde1e8;
-  --color-accent: #1f4f8f;
-  --color-accent-soft: #e8eef8;
-  --color-verified: #23704a;
-  --color-verified-soft: #e5f3eb;
-  --color-review: #8a5a00;
-  --color-review-soft: #fdf3dc;
-  --color-conflict: #b4441a;
-  --color-conflict-soft: #fcebe3;
-  --color-mark: #fff1a8;
-  --color-mark-strong: #e3c94a;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* surfaces, darkest to lightest */
+  --color-canvas: #141311;
+  --color-sidebar: #171614;
+  --color-surface: #1d1c1a;
+  --color-paper: #262422;
+  --color-line: #34312e;
+  --color-line-strong: #4a4642;
+
+  /* text */
+  --color-ink: #f3f2f1;
+  --color-ink-soft: #d6d3d1;
+  --color-muted: #a39c96;
+  --color-faint: #7a736d;
+
+  /* accent: fills use accent, text on charcoal uses link */
+  --color-accent: #5468e4;
+  --color-accent-strong: #4d63e2;
+  --color-link: #9daef8;
+  --color-accent-soft: #1b1e32;
+  --color-accent-line: #2c357a;
+
+  /* status: meaning only */
+  --color-verified: #34d399;
+  --color-verified-soft: #0e251e;
+  --color-verified-line: #0d4b39;
+  --color-review: #fbbf24;
+  --color-review-soft: #2a1a0c;
+  --color-review-line: #6f3512;
+  --color-attention: #fb923c;
+  --color-attention-soft: #2d170e;
+  --color-attention-line: #742d14;
+  --color-conflict: #fb7185;
+  --color-conflict-soft: #2e0d16;
+  --color-conflict-line: #781530;
+
+  /* the highlighter on source text */
+  --color-mark: rgb(251 191 36 / 0.2);
+  --color-mark-strong: #b45309;
+
+  /* small course identity dots */
+  --color-course-1: #6e84ee;
+  --color-course-2: #2dd4bf;
+  --color-course-3: #f59e0b;
+  --color-course-4: #a78bfa;
+  --color-course-5: #fb7185;
+
+  --font-sans: "Geist", "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --font-serif: Georgia, "Iowan Old Style", "Times New Roman", serif;
+
+  --shadow-lift: 0 4px 24px -6px rgb(0 0 0 / 0.45), 0 2px 6px -2px rgb(0 0 0 / 0.3);
+
+  --animate-fade-up: fade-up 0.35s ease-out both;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+
+  @keyframes fade-up {
+    0% { opacity: 0; transform: translateY(6px); }
+    100% { opacity: 1; transform: none; }
+  }
+  @keyframes shimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+  }
+}
+
+html {
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  background: var(--color-paper);
+  font-size: 15px;
+  background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
 }
 
+::selection {
+  background: var(--color-accent-line);
+  color: var(--color-ink);
+}
+
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-link);
   outline-offset: 2px;
 }
 
 @layer components {
+  /* surfaces */
   .panel {
-    @apply rounded-xl border border-line bg-white;
+    @apply rounded-xl border border-line bg-surface;
   }
+  .panel-link {
+    @apply transition-colors hover:border-line-strong hover:bg-[#21201d];
+  }
+
+  /* type */
+  .display-title {
+    @apply font-display text-[3.4rem] leading-[1.04] font-normal tracking-[-0.012em] text-ink;
+  }
+  .page-title {
+    @apply font-display text-[2.9rem] leading-[1.06] font-normal tracking-[-0.012em] text-ink;
+  }
+  /* Emphasis in the serif headings is colour, never italic. */
+  .display-title em,
+  .page-title em {
+    font-style: normal;
+  }
+  .page-lede {
+    @apply mt-2.5 max-w-[68ch] text-[16.5px] leading-relaxed text-muted;
+  }
+  .section-title {
+    @apply text-[17px] font-semibold tracking-tight text-ink;
+  }
+  .label {
+    @apply text-[11.5px] font-semibold tracking-[0.09em] text-faint uppercase;
+  }
+  .eyebrow {
+    @apply inline-flex items-center gap-1.5 text-[13px] font-semibold;
+  }
+
+  /* badges */
   .badge {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[12px] font-medium whitespace-nowrap ring-1 ring-inset;
   }
   .badge-verified {
-    @apply bg-verified-soft text-verified;
+    @apply bg-verified-soft text-verified ring-verified-line;
   }
   .badge-review {
-    @apply bg-review-soft text-review;
+    @apply bg-review-soft text-review ring-review-line;
   }
   .badge-conflict {
-    @apply bg-conflict-soft text-conflict;
+    @apply bg-conflict-soft text-conflict ring-conflict-line;
   }
   .badge-neutral {
-    @apply bg-paper text-muted;
+    @apply bg-paper text-muted ring-line;
   }
   .badge-found {
-    @apply bg-accent text-white;
+    @apply bg-accent-soft text-link ring-accent-line;
+  }
+
+  /* buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-[14px] font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply bg-accent text-white hover:bg-accent-strong hover:brightness-110;
+  }
+  .btn-quiet {
+    @apply border border-line bg-surface text-ink-soft hover:border-line-strong hover:bg-paper hover:text-ink;
+  }
+  .btn-ghost {
+    @apply px-2.5 py-1.5 text-muted hover:bg-paper hover:text-ink;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-[13.5px];
+  }
+  .text-link {
+    @apply text-link underline-offset-4 hover:underline;
+  }
+
+  /* evidence */
+  .evidence-button {
+    @apply inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-[13.5px] font-medium text-link transition-colors hover:border-accent-line hover:bg-accent-soft;
   }
   .source-quote {
-    @apply font-serif text-[0.97rem] leading-relaxed whitespace-pre-line;
+    @apply font-serif text-[1.04rem] leading-relaxed whitespace-pre-line;
   }
   .source-quote::before {
     content: "“";
@@ -69,23 +187,23 @@ body {
     box-decoration-break: clone;
     -webkit-box-decoration-break: clone;
   }
-  .evidence-button {
-    @apply rounded-md border border-line bg-white px-2.5 py-1 text-sm text-accent hover:border-accent hover:bg-accent-soft;
+
+  /* loading */
+  .skeleton {
+    background: linear-gradient(90deg, var(--color-paper) 0%, var(--color-surface) 40%, var(--color-paper) 80%);
+    background-size: 800px 100%;
+    @apply animate-shimmer rounded;
   }
-  .btn {
-    @apply inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60;
+  .spinner {
+    @apply inline-block shrink-0 rounded-full border-2 border-accent/25 border-t-link motion-safe:animate-spin;
   }
-  .btn-primary {
-    @apply bg-accent text-white hover:bg-ink;
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
   }
-  .btn-quiet {
-    @apply border border-line bg-white text-ink hover:bg-paper;
-  }
-  .page-title {
-    @apply text-[1.75rem] font-semibold leading-tight tracking-tight;
-  }
-  .section-title {
-    @apply text-lg font-semibold;
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: var(--color-line);
+    border-radius: 8px;
   }
 }
 

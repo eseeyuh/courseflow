@@ -4,6 +4,7 @@
 
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -87,3 +88,53 @@ class AssessmentRead(BaseModel):
     review_reason: ReviewReason | None  # e.g. no_verified_assessment_fact
     evidence: list[EvidenceRead]
     deadlines: list[DeadlineRead]
+
+
+class LiveRequirementRead(BaseModel):
+    """A requirement as the model phrased it. ``quote_found``: its quote
+    occurs in the brief; not a verified claim."""
+
+    requirement: str
+    quote: str
+    quote_found: bool
+
+
+class LiveTokenUsage(BaseModel):
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    reasoning_tokens: int | None
+
+
+class LiveRequirementsRead(BaseModel):
+    """One live, unpersisted model answer over an assessment's current brief."""
+
+    assessment_id: uuid.UUID
+    resource_id: uuid.UUID
+    resource_title: str
+    resource_version_id: uuid.UUID
+    version_number: int
+    requirements: list[LiveRequirementRead]
+    live: Literal[True] = True
+    provider: str
+    model: str  # as served by the provider
+    prompt_version: str
+    model_call_id: uuid.UUID
+    latency_ms: int
+    usage: LiveTokenUsage
+
+
+class BriefPageRead(BaseModel):
+    page_number: int | None
+    text: str  # the stored span text, exactly as parsed
+
+
+class BriefRead(BaseModel):
+    """The current version of an assessment's brief, as stored: one entry per
+    source span, in document order."""
+
+    assessment_id: uuid.UUID
+    resource_id: uuid.UUID
+    resource_title: str
+    resource_version_id: uuid.UUID
+    version_number: int
+    pages: list[BriefPageRead]

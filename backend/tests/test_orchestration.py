@@ -102,7 +102,7 @@ async def test_the_full_offline_workflow_through_the_api_twice(
     assert refused.status_code == 422
 
     first = (await client.post("/api/v1/demo/workflow-runs", json={"reset": True})).json()
-    assert first["succeeded"] is True and len(first["runs"]) == 2
+    assert first["succeeded"] is True and len(first["runs"]) == 4  # one per demo course
     for run in first["runs"]:
         assert run["status"] == "succeeded" and run["finished_at"] is not None
         trace = run["summary"]
@@ -151,10 +151,10 @@ async def test_a_failing_step_fails_the_run_and_writes_nothing(
     result = await CourseIntelligenceWorkflow(sessions, replay).run(reset=True)
 
     assert not result.succeeded
-    first, other = sorted(result.courses)  # aml7001 runs each step first
+    first, *others = sorted(result.courses)  # aif7002 runs each step first
     assert result.traces[first].failed_step == "dependencies"
     assert result.traces[first].error_category == "integrity_error"
-    assert result.traces[other].error_category == "aborted"
+    assert others and all(result.traces[o].error_category == "aborted" for o in others)
     names = [step.name for step in result.traces[first].steps]
     assert names == ["ingest", "assessments", "claims", "mapping", "dependencies"]
     assert result.traces[first].steps[-1].status == "failed"

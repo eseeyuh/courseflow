@@ -1,0 +1,316 @@
+{
+  "acceptance": {
+    "class_imbalance_maps_to_lecture_07": true,
+    "irrelevant_lecture_rejected": true,
+    "mappings_subset_of_retrieved_candidates": true,
+    "no_material_case_has_no_mapping": true
+  },
+  "by_split": {
+    "dev": [
+      {
+        "candidates": 43,
+        "category": "unlabelled_for_review",
+        "expect": "unlabelled",
+        "failure": null,
+        "irrelevant_retrieved": [
+          "lecture-03-clustering"
+        ],
+        "irrelevant_selected": false,
+        "label_id": "aml-cw1-r1-framing",
+        "mapping_hit": null,
+        "outside_target_resources": [
+          "lecture-07-class-imbalance"
+        ],
+        "retrieval_hit": null,
+        "selected": [
+          "lecture-07-class-imbalance v1 slide 2",
+          "lecture-07-class-imbalance v1 slide 2",
+          "lecture-07-class-imbalance v1 slide 4",
+          "lecture-07-class-imbalance v1 slide 4",
+          "lecture-07-class-imbalance v1 slide 5",
+          "lecture-07-class-imbalance v1 slide 5",
+          "lecture-07-class-imbalance v1 slide 9"
+        ],
+        "split": "dev"
+      },
+      {
+        "candidates": 43,
+        "category": "ground_truth_ambiguity",
+        "expect": "materials",
+        "failure": null,
+        "irrelevant_retrieved": [
+          "lecture-03-clustering"
+        ],
+        "irrelevant_selected": false,
+        "label_id": "aml-cw1-r2-class-imbalance",
+        "mapping_hit": true,
+        "outside_target_resources": [],
+        "retrieval_hit": true,
+        "selected": [
+          "lecture-07-class-imbalance v1 slide 2",
+          "lecture-07-class-imbalance v1 slide 2",
+          "lecture-07-class-imbalance v1 slide 2",
+          "lecture-07-class-imbalance v1 slide 4",
+          "lecture-07-class-imbalance v1 slide 4",
+          "lecture-07-class-imbalance v1 slide 5",
+          "lecture-07-class-imbalance v1 slide 5",
+          "lecture-07-class-imbalance v1 slide 6",
+          "lecture-07-class-imbalance v1 slide 6",
+          "lecture-07-class-imbalance v1 slide 7"
+        ],
+        "split": "dev"
+      },
+      {
+        "candidates": 30,
+        "category": "ground_truth_ambiguity",
+        "expect": "materials",
+        "failure": null,
+        "irrelevant_retrieved": [],
+        "irrelevant_selected": false,
+        "label_id": "msd-spec-s1-research-question",
+        "mapping_hit": true,
+        "outside_target_resources": [],
+        "retrieval_hit": true,
+        "selected": [
+          "research-methods-lecture v1 slide 1",
+          "research-methods-lecture v1 slide 2",
+          "research-methods-lecture v1 slide 2",
+          "research-methods-lecture v1 slide 3",
+          "research-methods-lecture v1 slide 3",
+          "research-methods-lecture v1 slide 4",
+          "research-methods-lecture v1 slide 4",
+          "research-methods-lecture v1 slide 4",
+          "research-methods-lecture v1 slide 5",
+          "research-methods-lecture v1 slide 5"
+        ],
+        "split": "dev"
+      },
+      {
+        "candidates": 30,
+        "category": "correct",
+        "expect": "no_material",
+        "failure": null,
+        "irrelevant_retrieved": [],
+        "irrelevant_selected": false,
+        "label_id": "msd-spec-s6-timeline",
+        "mapping_hit": null,
+        "outside_target_resources": [],
+        "retrieval_hit": null,
+        "selected": [],
+        "split": "dev"
+      }
+    ],
+    "held_out": [
+      {
+        "candidates": 43,
+        "category": "ground_truth_ambiguity",
+        "expect": "materials",
+        "failure": null,
+        "irrelevant_retrieved": [
+          "lecture-03-clustering"
+        ],
+        "irrelevant_selected": false,
+        "label_id": "aml-cw1-r3-metric-justification",
+        "mapping_hit": true,
+        "outside_target_resources": [],
+        "retrieval_hit": true,
+        "selected": [
+          "lecture-07-class-imbalance v1 slide 2",
+          "lecture-07-class-imbalance v1 slide 2",
+          "lecture-07-class-imbalance v1 slide 4",
+          "lecture-07-class-imbalance v1 slide 4",
+          "lecture-07-class-imbalance v1 slide 5",
+          "lecture-07-class-imbalance v1 slide 9"
+        ],
+        "split": "held_out"
+      },
+      {
+        "candidates": 43,
+        "category": "unlabelled_for_review",
+        "expect": "unlabelled",
+        "failure": null,
+        "irrelevant_retrieved": [
+          "lecture-03-clustering"
+        ],
+        "irrelevant_selected": false,
+        "label_id": "aml-cw1-r4-model-comparison",
+        "mapping_hit": null,
+        "outside_target_resources": [
+          "lecture-07-class-imbalance"
+        ],
+        "retrieval_hit": null,
+        "selected": [
+          "lecture-07-class-imbalance v1 slide 1",
+          "lecture-07-class-imbalance v1 slide 1",
+          "lecture-07-class-imbalance v1 slide 2",
+          "lecture-07-class-imbalance v1 slide 2",
+          "lecture-07-class-imbalance v1 slide 2",
+          "lecture-07-class-imbalance v1 slide 3",
+          "lecture-07-class-imbalance v1 slide 3",
+          "lecture-07-class-imbalance v1 slide 4",
+          "lecture-07-class-imbalance v1 slide 4",
+          "lecture-07-class-imbalance v1 slide 5"
+        ],
+        "split": "held_out"
+      },
+      {
+        "candidates": 43,
+        "category": "unlabelled_for_review",
+        "expect": "unlabelled",
+        "failure": null,
+        "irrelevant_retrieved": [
+          "lecture-03-clustering"
+        ],
+        "irrelevant_selected": false,
+        "label_id": "aml-cw1-r5-limitations",
+        "mapping_hit": null,
+        "outside_target_resources": [
+          "lecture-07-class-imbalance"
+        ],
+        "retrieval_hit": null,
+        "selected": [
+          "lecture-07-class-imbalance v1 slide 2",
+          "lecture-07-class-imbalance v1 slide 2",
+          "lecture-07-class-imbalance v1 slide 2",
+          "lecture-07-class-imbalance v1 slide 3",
+          "lecture-07-class-imbalance v1 slide 3",
+          "lecture-07-class-imbalance v1 slide 4",
+          "lecture-07-class-imbalance v1 slide 4",
+          "lecture-07-class-imbalance v1 slide 5",
+          "lecture-07-class-imbalance v1 slide 5",
+          "lecture-07-class-imbalance v1 slide 6"
+        ],
+        "split": "held_out"
+      },
+      {
+        "candidates": 30,
+        "category": "ground_truth_ambiguity",
+        "expect": "materials",
+        "failure": null,
+        "irrelevant_retrieved": [],
+        "irrelevant_selected": false,
+        "label_id": "msd-spec-s2-aims",
+        "mapping_hit": true,
+        "outside_target_resources": [],
+        "retrieval_hit": true,
+        "selected": [
+          "research-methods-lecture v1 slide 5",
+          "research-methods-lecture v1 slide 5"
+        ],
+        "split": "held_out"
+      },
+      {
+        "candidates": 30,
+        "category": "correct",
+        "expect": "no_material",
+        "failure": null,
+        "irrelevant_retrieved": [],
+        "irrelevant_selected": false,
+        "label_id": "msd-spec-s3-related-work",
+        "mapping_hit": null,
+        "outside_target_resources": [],
+        "retrieval_hit": null,
+        "selected": [],
+        "split": "held_out"
+      },
+      {
+        "candidates": 30,
+        "category": "correct",
+        "expect": "materials",
+        "failure": null,
+        "irrelevant_retrieved": [],
+        "irrelevant_selected": false,
+        "label_id": "msd-spec-s4-methodology",
+        "mapping_hit": true,
+        "outside_target_resources": [],
+        "retrieval_hit": true,
+        "selected": [
+          "research-methods-lecture v1 slide 7"
+        ],
+        "split": "held_out"
+      },
+      {
+        "candidates": 30,
+        "category": "ground_truth_ambiguity",
+        "expect": "materials",
+        "failure": null,
+        "irrelevant_retrieved": [],
+        "irrelevant_selected": false,
+        "label_id": "msd-spec-s5-ethics",
+        "mapping_hit": true,
+        "outside_target_resources": [],
+        "retrieval_hit": true,
+        "selected": [
+          "ethics-guidance v1 Research Ethics Guidance for MSc Projects",
+          "ethics-guidance v1 Research Ethics Guidance for MSc Projects > Before data collection",
+          "ethics-guidance v1 Research Ethics Guidance for MSc Projects > Before data collection",
+          "ethics-guidance v1 Research Ethics Guidance for MSc Projects > When you need ethics review",
+          "ethics-guidance v1 Research Ethics Guidance for MSc Projects > When you need ethics review"
+        ],
+        "split": "held_out"
+      }
+    ]
+  },
+  "dataset_sha256": "6a4ab2a9080ecc48085252ab5118d030d0fdcc04ea3e5502f0aed5fbbe3c96a2",
+  "mode": "live",
+  "name": "material-mapping-v1-fast-thinking-off",
+  "passed": true,
+  "queries": 11,
+  "rejected": {},
+  "runs": [
+    {
+      "candidates": 215,
+      "candidates_version": "mapping-candidates/v1",
+      "completion_tokens": 263,
+      "failures": {},
+      "k": 5,
+      "mapped_requirements": 5,
+      "mappings_created": 43,
+      "mappings_kept": 0,
+      "mappings_removed": 0,
+      "model_role": "fast",
+      "no_candidates": 0,
+      "prompt_tokens": 10842,
+      "prompt_version": "material-mapping/v1",
+      "query_format": "mapping-query/v1",
+      "rejected": {},
+      "requirements": 5,
+      "requirements_failed": 0,
+      "retrieval_mode": "hybrid",
+      "selected": 43,
+      "status": "succeeded",
+      "thinking": false,
+      "verified_none": 0,
+      "workflow_version": "material-mapping/v1"
+    },
+    {
+      "candidates": 180,
+      "candidates_version": "mapping-candidates/v1",
+      "completion_tokens": 163,
+      "failures": {},
+      "k": 5,
+      "mapped_requirements": 4,
+      "mappings_created": 18,
+      "mappings_kept": 0,
+      "mappings_removed": 0,
+      "model_role": "fast",
+      "no_candidates": 0,
+      "prompt_tokens": 9053,
+      "prompt_version": "material-mapping/v1",
+      "query_format": "mapping-query/v1",
+      "rejected": {},
+      "requirements": 6,
+      "requirements_failed": 0,
+      "retrieval_mode": "hybrid",
+      "selected": 18,
+      "status": "succeeded",
+      "thinking": false,
+      "verified_none": 2,
+      "workflow_version": "material-mapping/v1"
+    }
+  ],
+  "spent_usd": "0.00130358",
+  "started_at": "2026-10-30T15:21:43.969133+00:00",
+  "stored_mappings": 61,
+  "verifier_calls": 11
+}

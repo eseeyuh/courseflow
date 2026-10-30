@@ -3,12 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Metadata } from "next";
-import Link from "next/link";
 
-import { DemoBar, DemoProgress } from "@/components/DemoControls";
+import { DemoProgress, TopBar } from "@/components/DemoControls";
 import { DemoStateProvider } from "@/components/DemoState";
 import { EvidenceProvider } from "@/components/Evidence";
-import { Nav } from "@/components/Nav";
+import { Sidebar } from "@/components/Nav";
 
 import "./globals.css";
 
@@ -17,28 +16,32 @@ export const metadata: Metadata = {
   description: "Evidence-backed academic navigation.",
 };
 
+// Geist and Instrument Serif (both SIL Open Font Licence) load from Google
+// Fonts at view time; the build never needs the network, and an offline
+// viewer gets the close system fallbacks named in globals.css.
+const FONTS = "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Instrument+Serif&display=swap";
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="flex min-h-full flex-col">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link rel="stylesheet" href={FONTS} />
+      </head>
+      <body className="min-h-full">
         <DemoStateProvider>
           <EvidenceProvider>
-            <header className="border-b border-line bg-white">
-              <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-3 px-5 py-3">
-                <Link href="/" className="text-lg font-semibold tracking-tight">
-                  CourseFlow
-                </Link>
-                <Nav />
+            <div className="flex min-h-screen">
+              <Sidebar />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <TopBar />
+                <main className="mx-auto w-full max-w-[1520px] flex-1 px-8 pt-10 pb-16 xl:px-12">
+                  <DemoProgress />
+                  {children}
+                </main>
               </div>
-              <DemoBar />
-            </header>
-            <main className="mx-auto w-full max-w-6xl flex-1 px-5 py-8">
-              <DemoProgress />
-              {children}
-            </main>
-            <footer className="border-t border-line py-4 text-center text-xs text-muted">
-              Demo data: Northbridge University (fictional). Every value shown comes from the CourseFlow API.
-            </footer>
+            </div>
           </EvidenceProvider>
         </DemoStateProvider>
       </body>

@@ -20,7 +20,7 @@ from app.evaluation.northbridge.labels import (
     version_texts,
 )
 
-FROZEN_SHA = "da106bd3b731e7bee5d763d59ec9cac55c80b3fa694ae9b3c1ebe25f3b14812e"
+FROZEN_SHA = "6a4ab2a9080ecc48085252ab5118d030d0fdcc04ea3e5502f0aed5fbbe3c96a2"
 
 
 @pytest.fixture(scope="module")

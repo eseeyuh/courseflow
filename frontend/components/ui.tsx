@@ -9,25 +9,87 @@ import { useState, type ReactNode } from "react";
 
 import { useDemoState, type Loaded } from "@/components/DemoState";
 import { EvidenceButton, fromEvidence } from "@/components/Evidence";
+import { Icon } from "@/components/Icon";
 import { api, ApiError } from "@/lib/api";
 import { formatInstant, formatLocalDate, RESOURCE_LABELS } from "@/lib/format";
-import type { Conflict, Deadline, DependencyEdge, StudyState, WorkflowRun } from "@/lib/types";
+import type { Conflict, Course, Deadline, DependencyEdge, StudyState, WorkflowRun } from "@/lib/types";
 
-/** The course's latest course-intelligence run, as its trace records it. The
- * run ID is a small reference for debugging, not something to act on. */
-export function RunStatus({ run }: { run: WorkflowRun | null }) {
+export type CourseTone = { dot: string; bar: string; text: string; edge: string };
+
+// Full class names, so Tailwind sees every one of them.
+const TONES: CourseTone[] = [
+  { dot: "bg-course-1", bar: "bg-course-1/80", text: "text-course-1", edge: "border-l-course-1/70" },
+  { dot: "bg-course-2", bar: "bg-course-2/80", text: "text-course-2", edge: "border-l-course-2/70" },
+  { dot: "bg-course-3", bar: "bg-course-3/80", text: "text-course-3", edge: "border-l-course-3/70" },
+  { dot: "bg-course-4", bar: "bg-course-4/80", text: "text-course-4", edge: "border-l-course-4/70" },
+  { dot: "bg-course-5", bar: "bg-course-5/80", text: "text-course-5", edge: "border-l-course-5/70" },
+];
+// Presentation only: a fixed colour for each demo course code, so the four
+// demo courses read as distinct. Any other course gets one from its title.
+const BY_CODE: Record<string, number> = { AML7001: 0, DVS7003: 1, AIF7002: 2, MSD7000: 3 };
+
+/** A course's identity colour. Keyed on its title (whose code prefix names
+ * the course), not its row ID, so a demo reset keeps every course's colour. */
+export function courseTone(course: Pick<Course, "title">): CourseTone {
+  const fixed = BY_CODE[course.title.split(" ")[0]];
+  if (fixed !== undefined) return TONES[fixed];
+  let hash = 0;
+  for (const ch of course.title) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return TONES[hash % TONES.length];
+}
+
+export function CourseDot({ course, size = "h-2 w-2" }: { course: Pick<Course, "title">; size?: string }) {
+  return <span aria-hidden className={`${size} shrink-0 rounded-[3px] ${courseTone(course).dot}`} />;
+}
+
+/** Whether the course's latest run is worth showing: only when it did not
+ * succeed (not processed, queued, running or failed). */
+export function runNeedsNotice(run: WorkflowRun | null): boolean {
+  return run?.status !== "succeeded";
+}
+
+/** The course's latest course-intelligence run, as its trace records it. */
+export function RunStatus({ run, testId = "run-status" }: { run: WorkflowRun | null; testId?: string }) {
   if (!run) return <span className="text-muted">Not processed yet</span>;
   const when = run.finished_at ?? run.started_at;
   const label = { succeeded: "Processed", failed: "Processing failed", running: "Processing", pending: "Queued" }[run.status];
+  const dot = { succeeded: "bg-verified", failed: "bg-conflict", running: "bg-link", pending: "bg-faint" }[run.status];
   return (
-    <span className={run.status === "failed" ? "text-conflict" : undefined} data-testid="run-status">
+    <span className={`inline-flex flex-wrap items-center gap-x-1.5 ${run.status === "failed" ? "text-conflict" : ""}`} data-testid={testId}>
+      <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${dot}`} />
       {label}{when ? ` ${formatInstant(when)}` : ""}
-      <span className="text-muted"> (run {run.id.slice(0, 8)})</span>
     </span>
   );
 }
 
-/** Renders loaded data, a loading line, or an error with what to do. */
+/** A quiet placeholder in the shape of a page: title, then cards. */
+function PageSkeleton() {
+  return (
+    <div aria-hidden className="space-y-6">
+      <div className="space-y-3">
+        <span className="skeleton block h-9 w-80 max-w-full" />
+        <span className="skeleton block h-3 w-56" />
+      </div>
+      <div className="grid gap-5 lg:grid-cols-3">
+        <div className="panel space-y-3 p-6 lg:col-span-2">
+          <span className="skeleton block h-3 w-28" />
+          <span className="skeleton block h-5 w-72 max-w-full" />
+          <span className="skeleton block h-3 w-96 max-w-full" />
+        </div>
+        <div className="panel space-y-3 p-6">
+          <span className="skeleton block h-3 w-24" />
+          <span className="skeleton block h-3 w-40" />
+        </div>
+      </div>
+      <div className="panel space-y-3 p-6">
+        <span className="skeleton block h-3 w-full" />
+        <span className="skeleton block h-3 w-4/5" />
+      </div>
+    </div>
+  );
+}
+
+/** Renders loaded data, a loading placeholder, or an error with what to do. */
 export function LoadState<T>({ result, children }: { result: Loaded<T>; children: (data: T) => ReactNode }) {
   if (result.data !== undefined) {
     return (
@@ -39,21 +101,27 @@ export function LoadState<T>({ result, children }: { result: Loaded<T>; children
   }
   if (result.state === "error") return <ErrorNote message={result.message} />;
   return (
-    <p className="flex items-center gap-3 text-sm text-muted" role="status">
-      <span aria-hidden className="h-3.5 w-3.5 rounded-full border-2 border-accent/25 border-t-accent motion-safe:animate-spin" />
-      Loading from the CourseFlow API…
-    </p>
+    <div role="status" className="space-y-5">
+      <p className="flex items-center gap-2.5 text-[14px] text-muted">
+        <span aria-hidden className="spinner h-3.5 w-3.5" />
+        Loading from the CourseFlow API…
+      </p>
+      <PageSkeleton />
+    </div>
   );
 }
 
 export function ErrorNote({ message }: { message: string }) {
   return (
-    <div role="alert" className="panel max-w-2xl border-conflict/40 bg-conflict-soft px-5 py-4 text-sm" data-testid="load-error">
-      <p className="font-medium text-conflict">CourseFlow could not load this page.</p>
-      <p className="mt-1 text-ink/80">{message}</p>
-      <p className="mt-2 text-muted">
-        Check that the CourseFlow API is running (scripts/demo-api.sh), then use Reset demo or reload the page.
-      </p>
+    <div role="alert" className="panel mb-6 flex max-w-2xl gap-3.5 border-conflict-line bg-conflict-soft px-5 py-4 text-[14.5px]" data-testid="load-error">
+      <Icon name="alert" size={18} className="mt-0.5 text-conflict" />
+      <div>
+        <p className="font-medium text-conflict">CourseFlow could not load this page.</p>
+        <p className="mt-1 text-ink-soft">{message}</p>
+        <p className="mt-2 text-muted">
+          Check that the CourseFlow API is running (scripts/demo-api.sh), then use Reset demo or reload the page.
+        </p>
+      </div>
     </div>
   );
 }
@@ -81,33 +149,41 @@ export function DeadlineEvidence({ deadline, claim, label = "Deadline source" }:
  * date: the order is the API's. */
 export function ConflictCard({ conflict, link = false }: { conflict: Conflict; link?: boolean }) {
   return (
-    <section className="panel overflow-hidden border-conflict/50" data-testid="conflict-card" aria-label={`${conflict.assessment_title} deadline conflict`}>
-      <div className="border-b border-conflict/20 bg-conflict-soft px-5 py-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-semibold text-conflict">
+    <section className="panel overflow-hidden border-conflict-line" data-testid="conflict-card" aria-label={`${conflict.assessment_title} deadline conflict`}>
+      <div className="h-1 bg-conflict/60" aria-hidden />
+      <div className="flex items-start gap-3.5 px-6 pt-5">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-conflict-soft text-conflict ring-1 ring-conflict-line">
+          <Icon name="alert" size={17} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="eyebrow text-conflict">Conflicting deadline detected</p>
+            {link && (
+              <Link href={`/assessments/${conflict.assessment_id}`} className="inline-flex items-center gap-1 text-[14px] font-medium text-link">
+                Open assessment <Icon name="arrowRight" size={13} />
+              </Link>
+            )}
+          </div>
+          <h3 className="mt-1 text-[19px] font-semibold tracking-tight">
             The sources give different deadlines for {conflict.assessment_title}
           </h3>
-          {link && (
-            <Link href={`/assessments/${conflict.assessment_id}`} className="text-sm text-accent hover:underline">
-              Open assessment
-            </Link>
-          )}
+          <p className="mt-1 text-[15px] font-medium text-ink-soft" data-testid="conflict-trust">
+            CourseFlow will not silently choose between conflicting university sources.
+          </p>
         </div>
-        <p className="mt-1 font-medium" data-testid="conflict-trust">
-          CourseFlow will not silently choose between conflicting university sources.
-        </p>
       </div>
-      <div className="grid gap-px bg-line sm:grid-cols-2">
+      <div className="grid gap-3 px-6 pt-5 sm:grid-cols-2">
         {conflict.sides.map((side, i) => {
           const name = `Source ${String.fromCharCode(65 + i)}`;
           return (
-            <div key={side.id} className="flex flex-col bg-white px-5 py-4" data-testid="conflict-side">
-              <p className="text-sm text-muted">{name}: {sourcesOf(side)}</p>
-              <p className="mt-1 text-2xl font-semibold tracking-tight" data-testid="conflict-value">{deadlineText(side)}</p>
-              <p className="mt-1 text-sm text-muted">
+            <div key={side.id} className="flex flex-col rounded-lg border border-line bg-canvas/50 px-5 py-4" data-testid="conflict-side">
+              <p className="label">{name}</p>
+              <p className="mt-1 text-[14px] text-muted">{sourcesOf(side)}</p>
+              <p className="mt-2 text-[26px] font-semibold tracking-tight tabular-nums" data-testid="conflict-value">{deadlineText(side)}</p>
+              <p className="mt-1 text-[13px] text-faint">
                 {side.evidence[0]?.resource_title}, version {side.evidence[0]?.version_number}
               </p>
-              <div className="mt-3">
+              <div className="mt-4">
                 <EvidenceButton
                   label={`Show what ${name} says`}
                   request={{ kind: "Deadline evidence", claim: `${name} states the ${conflict.assessment_title} deadline as ${deadlineText(side)}`,
@@ -118,9 +194,9 @@ export function ConflictCard({ conflict, link = false }: { conflict: Conflict; l
           );
         })}
       </div>
-      <p className="border-t border-conflict/20 px-5 py-3 text-sm text-muted">
-        Check the deadline with the module team. The study plan schedules work against the earlier date
-        only to be safe; that is not a ruling on which source is right.
+      <p className="px-6 pt-4 pb-5 text-[14px] text-muted">
+        <span className="font-medium text-ink-soft">Check the deadline with the module team.</span> The study plan schedules
+        work against the earlier date only to be safe; that is not a ruling on which source is right.
       </p>
     </section>
   );
@@ -134,27 +210,27 @@ const END_KIND: Record<DependencyEdge["prerequisite"]["kind"], string> = {
 
 /** Prerequisite, relation, dependent: one row per stored edge. */
 export function DependencyChain({ edges }: { edges: DependencyEdge[] }) {
-  if (edges.length === 0) return <p className="text-sm text-muted">No dependencies are stated in the sources.</p>;
+  if (edges.length === 0) return <p className="text-[14.5px] text-muted">No dependencies are stated in the sources.</p>;
   return (
-    <ul className="space-y-3">
+    <ul className="space-y-2.5">
       {edges.map((edge) => {
         const relation = edge.relation === "required_for" ? "required for" : "before";
         return (
           <li key={edge.id} data-testid="dependency"
-            className="panel grid items-center gap-x-4 gap-y-2 px-5 py-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]">
-            <div className="min-w-0">
-              <p className="text-xs text-muted">{END_KIND[edge.prerequisite.kind]}</p>
-              <p className="font-medium">{edge.prerequisite.label}</p>
+            className="panel grid items-center gap-x-3 gap-y-2 p-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]">
+            <div className="min-w-0 rounded-lg border border-line bg-canvas/50 px-3.5 py-2.5">
+              <p className="label text-[10.5px]">{END_KIND[edge.prerequisite.kind]}</p>
+              <p className="mt-0.5 text-[14.5px] font-medium">{edge.prerequisite.label}</p>
             </div>
-            <span className="badge badge-neutral justify-self-start">
+            <span className="inline-flex items-center gap-1 justify-self-start px-1 text-[12.5px] font-medium text-muted md:justify-self-center">
               {relation}
-              <svg aria-hidden viewBox="0 0 16 16" className="ml-1 h-3 w-3"><path d="M3 8h9m-3-3 3 3-3 3" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
+              <Icon name="arrowRight" size={14} className="text-faint" />
             </span>
-            <div className="min-w-0">
-              <p className="text-xs text-muted">{END_KIND[edge.dependent.kind]}</p>
-              <p className="font-medium">{edge.dependent.label}</p>
+            <div className="min-w-0 rounded-lg border border-line bg-canvas/50 px-3.5 py-2.5">
+              <p className="label text-[10.5px]">{END_KIND[edge.dependent.kind]}</p>
+              <p className="mt-0.5 text-[14.5px] font-medium">{edge.dependent.label}</p>
             </div>
-            <span className="justify-self-start md:justify-self-end">
+            <span className="justify-self-start px-1 md:justify-self-end">
               <EvidenceButton
                 label="Source"
                 request={{
@@ -205,16 +281,21 @@ export function StudyStateControl({ spanIds, state, label, onSaved }: {
   }
   return (
     <div>
-      <div role="group" aria-label={`Study state: ${label}`} className="inline-flex overflow-hidden rounded-md border border-line">
-        {STATES.map((s) => (
-          <button key={s.value} type="button" aria-pressed={state === s.value} disabled={pending !== null}
-            onClick={() => choose(s.value)} data-testid={`state-${s.value}`}
-            className={`px-2.5 py-1 text-xs ${state === s.value ? "bg-accent text-white" : "bg-white text-muted hover:bg-paper"} border-l border-line first:border-l-0`}>
-            {pending === s.value ? "Saving…" : s.label}
-          </button>
-        ))}
+      <div role="group" aria-label={`Study state: ${label}`} className="inline-flex rounded-lg border border-line bg-canvas/60 p-0.5">
+        {STATES.map((s) => {
+          const on = state === s.value;
+          const tone = on ? (s.value === "studied" ? "bg-verified-soft text-verified ring-1 ring-verified-line"
+            : s.value === "studying" ? "bg-review-soft text-review ring-1 ring-review-line" : "bg-paper text-ink ring-1 ring-line") : "text-muted hover:text-ink";
+          return (
+            <button key={s.value} type="button" aria-pressed={on} disabled={pending !== null}
+              onClick={() => choose(s.value)} data-testid={`state-${s.value}`}
+              className={`rounded-md px-2.5 py-1 text-[12.5px] font-medium transition-colors disabled:cursor-wait ${tone}`}>
+              {pending === s.value ? "Saving…" : s.label}
+            </button>
+          );
+        })}
       </div>
-      {error && <p className="mt-1 text-xs text-conflict">{error}</p>}
+      {error && <p className="mt-1 text-[12.5px] text-conflict">{error}</p>}
     </div>
   );
 }

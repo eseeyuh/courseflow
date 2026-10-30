@@ -87,10 +87,13 @@ async def seed(
     root: Path = DATA_ROOT,
     reset: bool = False,
     state: str = "initial",
+    supplement: bool = False,
 ) -> dict[str, Any]:
+    """``supplement``: also the courses of ``supplement.yaml`` (the demo's,
+    which ``indexer`` must be able to embed)."""
     if state not in {"initial", "final"}:
         raise ValueError("state must be initial or final")
-    connector = DemoConnector(root)
+    connector = DemoConnector(root, supplement=supplement)
     institution = connector.manifest.institution.name
     summary: dict[str, Any] = {"institution": institution, "state": state}
     if reset:

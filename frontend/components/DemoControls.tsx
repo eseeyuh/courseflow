@@ -12,32 +12,43 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { useDemoState } from "@/components/DemoState";
+import { useApi, useDemoState } from "@/components/DemoState";
+import { Icon } from "@/components/Icon";
+import { CompactNav } from "@/components/Nav";
+import { api } from "@/lib/api";
+import { formatInstant } from "@/lib/format";
 
-export const EXPLANATION = "This simulates the provided demo LMS changing; it is not a live university Moodle connection.";
+// Display label only, for this demo: the demo data (institution, sources,
+// evidence) is unchanged.
+const INSTITUTION_LABEL = "University of Portsmouth";
 
+// What each action does on the backend, in order. A description, not a
+// progress report: the API answers once the whole action has finished.
 const WORKING = {
   sync: {
     title: "CourseFlow is processing the changed LMS sources",
-    body: "Bringing in the new versions, rechecking the claims they affect, then refreshing conflicts and the study plan. This takes about 10 seconds.",
+    steps: ["Bring in the new source versions", "Recheck the claims they affect", "Refresh conflicts and the study plan"],
+    duration: "This takes about 10 seconds.",
   },
   reset: {
     title: "Rebuilding the initial demo state",
-    body: "Replaying the recorded course processing offline. This takes about 10 seconds.",
+    steps: ["Restore every course to its first version", "Replay the recorded course processing offline", "Rebuild conflicts and the study plan"],
+    duration: "This takes about 10 seconds.",
   },
 };
 
 function Buttons({ small = false }: { small?: boolean }) {
   const { busy, run } = useDemoState();
-  const size = small ? "px-2.5 py-1 text-xs" : "";
+  const size = small ? "btn-sm" : "";
   return (
     <>
-      <button type="button" className={`btn btn-quiet ${size}`} disabled={busy !== null} onClick={() => run("reset")}
+      <button type="button" className={`btn btn-ghost ${size}`} disabled={busy !== null} onClick={() => run("reset")}
         data-testid="reset-demo">
         {busy === "reset" ? "Resetting…" : "Reset demo"}
       </button>
-      <button type="button" className={`btn btn-primary ${size}`} disabled={busy !== null} onClick={() => run("sync")}
+      <button type="button" className={`btn btn-quiet ${size}`} disabled={busy !== null} onClick={() => run("sync")}
         data-testid="simulate-sync">
+        <Icon name="refresh" size={14} className={`text-link ${busy === "sync" ? "motion-safe:animate-spin" : ""}`} />
         {busy === "sync" ? "Syncing…" : "Simulate LMS sync"}
       </button>
     </>
@@ -48,42 +59,56 @@ function Buttons({ small = false }: { small?: boolean }) {
 function Status() {
   const { busy, message } = useDemoState();
   return (
-    <span role="status" aria-live="polite" data-testid="demo-status">
-      {busy === "sync" && "Syncing the demo LMS…"}
-      {busy === "reset" && "Resetting the demo…"}
+    <span role="status" aria-live="polite" data-testid="demo-status" className="flex items-center gap-1.5 text-[12.5px]">
+      {busy && <span aria-hidden className="spinner h-3 w-3" />}
+      {busy === "sync" && <span className="text-muted">Syncing the demo LMS…</span>}
+      {busy === "reset" && <span className="text-muted">Resetting the demo…</span>}
       {!busy && message && (
         <>
-          <span className={message.tone === "error" ? "text-conflict" : "text-verified"}>{message.text}</span>
+          <Icon name={message.tone === "error" ? "alert" : "checkCircle"} size={13}
+            className={message.tone === "error" ? "text-conflict" : "text-verified"} />
+          <span className={message.tone === "error" ? "text-conflict" : "text-ink-soft"}>{message.text}</span>
         </>
       )}
     </span>
   );
 }
 
-/** The slim demo strip under the header: clearly a demo control, not the product. */
-export function DemoBar() {
+/** When the demo LMS was last synced, from the stored changes. */
+function LastSync() {
+  const changes = useApi(api.changes, "topbar-changes");
+  const latest = changes.data?.at(-1);
+  if (changes.data === undefined) return <span className="skeleton inline-block h-2 w-40 align-middle" aria-hidden />;
+  if (!latest) return null;
+  return <>Last LMS sync {formatInstant(latest.observed_at)}</>;
+}
+
+/** The workspace top bar: context on the left, the demo actions on the
+ * right, and under them the plain statement of what the demo is. */
+export function TopBar() {
   return (
-    <div className="border-t border-line bg-paper/70">
-      <div role="group" aria-label="Demo controls"
-        className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-5 py-2 text-xs">
-        <span className="badge border border-line bg-white text-muted">Demo</span>
-        <span className="text-muted" data-testid="demo-explanation">{EXPLANATION}</span>
-        <span className="ml-auto flex flex-wrap items-center gap-3">
+    <header className="sticky top-0 z-30 border-b border-line bg-canvas/85 backdrop-blur">
+      <div className="flex min-h-16 flex-wrap items-center gap-x-6 gap-y-2 px-8 py-2.5 xl:px-12">
+        <div className="mr-auto min-w-0">
+          <p className="font-display text-[28px] leading-[1.1] tracking-tight text-ink sm:whitespace-nowrap xl:text-[32px]">{INSTITUTION_LABEL}</p>
+          <p className="mt-0.5 text-[12px] leading-tight text-muted">
+            <LastSync />
+          </p>
+        </div>
+        <CompactNav />
+        <div role="group" aria-label="Demo controls" className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <Status />
-          <span className="flex gap-2"><Buttons small /></span>
-        </span>
+          <span className="flex gap-1.5"><Buttons small /></span>
+        </div>
       </div>
-    </div>
+    </header>
   );
 }
 
 /** The controls in a page body (the Changes page). */
 export function DemoControls() {
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2"><Buttons /></div>
-      <p className="text-xs text-muted">{EXPLANATION}</p>
-    </div>
+    <div className="flex flex-wrap items-center gap-2"><Buttons /></div>
   );
 }
 
@@ -93,13 +118,25 @@ export function DemoProgress() {
   const { busy, message, dismiss } = useDemoState();
   const path = usePathname();
   if (busy) {
-    const { title, body } = WORKING[busy];
+    const { title, steps, duration } = WORKING[busy];
     return (
-      <div className="panel mb-8 flex items-start gap-4 border-accent/40 bg-accent-soft/50 px-5 py-4" data-testid="demo-progress">
-        <span aria-hidden className="mt-1 h-4 w-4 shrink-0 rounded-full border-2 border-accent/30 border-t-accent motion-safe:animate-spin" />
-        <div>
-          <p className="font-medium">{title}</p>
-          <p className="mt-0.5 text-sm text-muted">{body}</p>
+      <div className="panel mb-9 overflow-hidden shadow-lift animate-fade-up" data-testid="demo-progress">
+        <div className="h-0.5 skeleton rounded-none" aria-hidden />
+        <div className="flex items-start gap-4 px-6 py-5">
+          <span aria-hidden className="spinner mt-1 h-4 w-4" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-semibold tracking-tight">{title}</p>
+            <ol className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[13px] text-muted">
+              {steps.map((step, i) => (
+                <li key={step} className="flex items-center gap-2">
+                  <span className="grid h-5 w-5 place-items-center rounded-full text-[11px] font-semibold text-faint ring-1 ring-line">{i + 1}</span>
+                  {step}
+                  {i < steps.length - 1 && <Icon name="arrowRight" size={13} className="text-line-strong" />}
+                </li>
+              ))}
+            </ol>
+            <p className="mt-3 text-[12px] text-faint">{duration}</p>
+          </div>
         </div>
       </div>
     );
@@ -107,16 +144,20 @@ export function DemoProgress() {
   if (!message) return null;
   const error = message.tone === "error";
   return (
-    <div className={`panel mb-8 flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 text-sm ${error ? "border-conflict/40 bg-conflict-soft" : "border-verified/30 bg-verified-soft/60"}`}
+    <div className={`panel mb-9 flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3.5 text-[13.5px] animate-fade-up ${
+      error ? "border-conflict-line bg-conflict-soft" : "border-verified-line/70"}`}
       data-testid="demo-outcome">
-      <p className={error ? "text-conflict" : "text-verified"}>
-        <span className="font-medium">{message.text}</span>
-        {!error && message.action === "sync" && " Conflicts, deadlines and the study plan now reflect the new sources."}
-        {!error && message.action === "reset" && " Every course is back at its first version, with no changes yet."}
-        {message.ref && <span className="text-xs text-muted">{message.ref}</span>}
+      <Icon name={error ? "alert" : "checkCircle"} size={17} className={error ? "text-conflict" : "text-verified"} />
+      <p className="min-w-0 flex-1">
+        <span className={`font-medium ${error ? "text-conflict" : "text-ink"}`}>{message.text}</span>
+        <span className="text-muted">
+          {!error && message.action === "sync" && " Conflicts, deadlines and the study plan now reflect the new sources."}
+          {!error && message.action === "reset" && " Every course is back at its first version, with no changes yet."}
+        </span>
+        {message.ref && <span className="text-[12px] text-faint">{message.ref}</span>}
       </p>
-      <span className="ml-auto flex items-center gap-4">
-        {!error && message.action === "sync" && path !== "/changes" && <Link href="/changes" className="text-accent hover:underline">See what changed</Link>}
+      <span className="flex items-center gap-4">
+        {!error && message.action === "sync" && path !== "/changes" && <Link href="/changes" className="text-link">See what changed</Link>}
         <button type="button" onClick={dismiss} className="text-muted hover:text-ink">Dismiss</button>
       </span>
     </div>

@@ -242,7 +242,7 @@ def test_a_split_that_disagrees_with_the_labels_is_refused(tmp_path: Path) -> No
     raw = json.loads(
         (
             Path(__file__).resolve().parents[2]
-            / "evals/datasets/northbridge/splits/material-mapping-v1.json"
+            / "evals/datasets/northbridge/splits/material-mapping-v2.json"
         ).read_text(encoding="utf-8")
     )
     raw["dev"][2]["expect"] = "unlabelled"  # s6 states materials: []

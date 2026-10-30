@@ -5,10 +5,12 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { DemoControls } from "@/components/DemoControls";
 import { useApi } from "@/components/DemoState";
 import { EvidenceButton, fromSource } from "@/components/Evidence";
+import { Icon, type IconName } from "@/components/Icon";
 import { LoadState } from "@/components/ui";
 import { api } from "@/lib/api";
 import { courseName, formatInstant, formatLocalDate, RESOURCE_LABELS, shortDate } from "@/lib/format";
@@ -17,12 +19,17 @@ import type { Affected, Change, PlanDiff } from "@/lib/types";
 export default function ChangesPage() {
   const result = useApi(api.changes, "changes");
   return (
-    <div className="space-y-8">
-      <header className="space-y-4">
-        <h1 className="page-title">Changes</h1>
-        <div className="panel max-w-2xl p-5">
-          <h2 className="font-semibold">Demo LMS sync</h2>
-          <p className="mt-1 text-sm text-muted">
+    <div className="space-y-10">
+      <header className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="animate-fade-up">
+          <h1 className="page-title">Changes</h1>
+          <p className="page-lede">
+            When a source changes, CourseFlow rechecks only what that change affects, then updates the study plan.
+          </p>
+        </div>
+        <div className="panel p-5">
+          <h2 className="section-title">Demo LMS sync</h2>
+          <p className="mt-1 text-[14px] text-muted">
             The demo LMS publishes two later updates: a module announcement and a new handbook version.
             Syncing brings them in, and CourseFlow reprocesses only what they change.
           </p>
@@ -32,17 +39,30 @@ export default function ChangesPage() {
       <LoadState result={result}>
         {(syncs) =>
           syncs.length === 0 ? (
-            <p className="panel max-w-2xl border-dashed px-5 py-4 text-muted" data-testid="no-changes">
-              No changes yet: every source is at the version CourseFlow first processed. Simulate LMS sync to
-              bring in the demo LMS&apos;s later updates.
-            </p>
+            <div className="panel flex max-w-2xl gap-3.5 border-dashed px-5 py-4 text-[15px] text-muted" data-testid="no-changes">
+              <Icon name="history" size={18} className="mt-0.5 text-faint" />
+              <p>
+                No changes yet: every source is at the version CourseFlow first processed. Simulate LMS sync to
+                bring in the demo LMS&apos;s later updates.
+              </p>
+            </div>
           ) : (
-            <div className="space-y-12">
+            <div className="space-y-14">
               {syncs.map((sync) => (
-                <section key={sync.observed_at} className="space-y-5" data-testid="sync">
-                  <h2 className="section-title">LMS sync of {formatInstant(sync.observed_at)} (demo clock)</h2>
-                  {sync.changes.map((change) => <ChangeCard key={change.id} change={change} />)}
-                  {sync.plan_diff && <PlanDiffCard diff={sync.plan_diff} />}
+                <section key={sync.observed_at} data-testid="sync">
+                  <h2 className="label mb-5">LMS sync of {formatInstant(sync.observed_at)} (demo clock)</h2>
+                  <ol className="relative space-y-6 border-l border-line pl-8">
+                    {sync.changes.map((change) => (
+                      <TimelineStep key={change.id} icon="file" tone="neutral">
+                        <ChangeCard change={change} />
+                      </TimelineStep>
+                    ))}
+                    {sync.plan_diff && (
+                      <TimelineStep icon="calendar" tone="accent">
+                        <PlanDiffCard diff={sync.plan_diff} />
+                      </TimelineStep>
+                    )}
+                  </ol>
                 </section>
               ))}
             </div>
@@ -159,12 +179,25 @@ function AffectedBody({ item }: { item: Affected }) {
   }
 }
 
+/** One step on a sync's timeline: a node on the rail, then its card. */
+function TimelineStep({ icon, tone, children }: { icon: IconName; tone: "neutral" | "accent"; children: ReactNode }) {
+  return (
+    <li className="relative">
+      <span aria-hidden className={`absolute top-4 -left-[45px] grid h-[26px] w-[26px] place-items-center rounded-full ring-4 ring-canvas ${
+        tone === "accent" ? "bg-accent text-white" : "bg-paper text-muted"}`}>
+        <Icon name={icon} size={13} />
+      </span>
+      {children}
+    </li>
+  );
+}
+
 function AffectedRow({ item }: { item: Affected }) {
   const label = LABELS[item.kind];
   return (
-    <li className="grid gap-x-4 gap-y-2 py-4 text-sm sm:grid-cols-[10rem_1fr_auto]" data-testid={`affected-${item.kind}`}>
+    <li className="grid gap-x-4 gap-y-2 py-4 text-[14.5px] sm:grid-cols-[10rem_1fr_auto]" data-testid={`affected-${item.kind}`}>
       <span><span className={`badge ${item.kind === "conflict_changed" ? "badge-conflict" : "badge-neutral"}`}>{label}</span></span>
-      <div className="min-w-0"><AffectedBody item={item} /></div>
+      <div className="min-w-0 text-ink-soft"><AffectedBody item={item} /></div>
       <span>
         <EvidenceButton label="Source text"
           request={{ kind: label, claim: `${label}: ${item.assessment_title ?? "an obligation"}`, items: item.sources.map(fromSource) }} />
@@ -176,21 +209,23 @@ function AffectedRow({ item }: { item: Affected }) {
 function ChangeCard({ change }: { change: Change }) {
   return (
     <article className="panel overflow-hidden" data-testid="change">
-      <header className="flex flex-wrap items-center gap-x-4 gap-y-1 bg-paper/60 px-5 py-3">
-        <span className="badge border border-line bg-white text-ink">Source changed</span>
-        <h3 className="font-semibold">{change.resource_title}</h3>
-        <span className="text-sm text-muted">
-          {RESOURCE_LABELS[change.resource_type] ?? change.resource_type} in {courseName(change.course_title)}
-        </span>
-        <span className="ml-auto text-sm" data-testid="change-versions">
-          {change.old_version ? `version ${change.old_version.version_number} to ${change.new_version.version_number}` : `new, version ${change.new_version.version_number}`}
-        </span>
+      <header className="px-6 pt-4 pb-4">
+        <p className="label">Source changed</p>
+        <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h3 className="text-[17.5px] font-semibold tracking-tight">{change.resource_title}</h3>
+          <span className="text-[14px] text-muted">
+            {RESOURCE_LABELS[change.resource_type] ?? change.resource_type} in {courseName(change.course_title)}
+          </span>
+          <span className="ml-auto rounded-md bg-paper px-2 py-0.5 text-[12.5px] text-ink-soft ring-1 ring-line" data-testid="change-versions">
+            {change.old_version ? `version ${change.old_version.version_number} to ${change.new_version.version_number}` : `new, version ${change.new_version.version_number}`}
+          </span>
+        </div>
       </header>
-      <div className="border-t border-line px-5 pt-3">
-        <p className="text-xs font-medium text-muted">What CourseFlow updated as a result</p>
+      <div className="border-t border-line bg-canvas/40 px-6 pt-3.5">
+        <p className="eyebrow text-[12.5px] text-link"><Icon name="arrowRight" size={13} />CourseFlow updated what this affects</p>
         <ul className="divide-y divide-line">
           {change.affected.map((item, i) => <AffectedRow key={`${item.kind}-${i}`} item={item} />)}
-          {change.affected.length === 0 && <li className="py-3 text-sm text-muted">No stored claim was affected.</li>}
+          {change.affected.length === 0 && <li className="py-3 text-[14.5px] text-muted">No stored claim was affected.</li>}
         </ul>
       </div>
     </article>
@@ -199,20 +234,25 @@ function ChangeCard({ change }: { change: Change }) {
 
 function PlanDiffCard({ diff }: { diff: PlanDiff }) {
   return (
-    <article className="panel px-5 py-4" data-testid="plan-diff">
+    <article className="panel border-accent-line px-6 py-5" data-testid="plan-diff">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-semibold">Your study plan, recomputed</h3>
-        <Link href="/study-plan" className="text-sm text-accent hover:underline">Open study plan</Link>
+        <div>
+          <p className="label">Study plan changed</p>
+          <h3 className="mt-1.5 text-[17.5px] font-semibold tracking-tight">Your study plan, recomputed</h3>
+        </div>
+        <Link href="/study-plan" className="inline-flex items-center gap-1 text-[14px] font-medium text-link">
+          Open study plan <Icon name="arrowRight" size={13} />
+        </Link>
       </div>
-      <p className="mt-1 text-sm text-muted">
+      <p className="mt-1 text-[14px] text-muted">
         {diff.changed.length} {diff.changed.length === 1 ? "task" : "tasks"} changed, {diff.added.length} added,{" "}
         {diff.removed.length} removed, {diff.unchanged_count} unchanged.
       </p>
-      <ul className="mt-3 space-y-3 text-sm">
+      <ul className="mt-4 space-y-3 text-[14.5px]">
         {diff.changed.map((c) => (
-          <li key={c.task_key} data-testid="plan-diff-change">
+          <li key={c.task_key} className="rounded-lg border border-line bg-canvas/50 px-4 py-3" data-testid="plan-diff-change">
             <p className="font-medium">{c.title}</p>
-            <ul className="mt-0.5 text-muted">
+            <ul className="mt-1 space-y-0.5 text-muted">
               {Object.entries(c.fields).map(([field, [before, after]]) => <li key={field}>{describe(field, before, after)}</li>)}
             </ul>
           </li>

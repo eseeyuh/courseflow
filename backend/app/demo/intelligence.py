@@ -13,6 +13,10 @@ requirements and obligations (recorded FAST outputs through the current
 gates), and material mapping (recorded query vectors and verifier
 outputs). Dependencies, conflicts and validation need no model; the
 workflow (``app.orchestration.workflow``) runs them directly.
+
+With ``supplement`` (the demo's default) it also runs the supplementary
+courses (``supplement``): their own committed vectors, and authored answers
+in place of recorded model outputs. The evaluation builds leave them out.
 """
 
 from __future__ import annotations
@@ -70,21 +74,30 @@ async def query_inputs(
 
 
 def mapping_search(
-    sessions: async_sessionmaker[AsyncSession], space: EmbeddingSpace, inputs: Any
+    sessions: async_sessionmaker[AsyncSession],
+    space: EmbeddingSpace,
+    inputs: Any,
+    supplement_inputs: Sequence[EmbeddingInput] = (),
 ) -> SearchService:
-    """The production search over the recorded mapping query vectors."""
+    """The production search over the recorded mapping query vectors: the
+    golden courses' (``inputs``) and, if any, the supplementary courses'."""
     from app.demo.snapshot import snapshot_subject
+    from app.demo.supplement import CombinedReplay, load_query_replay
     from app.evaluation.northbridge.labels import load_golden
     from app.evaluation.retrieval.replay import load_replay_provider
     from app.evaluation.retrieval.snapshot import ExpectedInputs
 
-    replay = load_replay_provider(
+    replay: Any = load_replay_provider(
         recordings.MAPPING_QUERY_EMBEDDINGS,
         dataset=snapshot_subject(load_golden()),
         active_space=space,
         max_batch_items=64,
         inputs=ExpectedInputs((), inputs),
     )
+    if supplement_inputs:
+        replay = CombinedReplay(
+            replay, load_query_replay(space, supplement_inputs, max_batch_items=64)
+        )
     return SearchService(sessions, space, replay)
 
 
@@ -98,11 +111,16 @@ class DemoReplay:
         sessions: async_sessionmaker[AsyncSession],
         store: RawObjectStore,
         space: EmbeddingSpace,
+        *,
+        supplement: bool = True,
     ) -> None:
+        from app.demo.supplement import AuthoredProvider
         from app.evaluation.claims.run import ClaimReplayProvider, recorded_by_material
         from app.mapping.replay import MappingReplayProvider
 
         self.sessions, self._store, self._space = sessions, store, space
+        self._supplement = supplement
+        self._authored = AuthoredProvider()
         self._claims = ClaimReplayProvider(recorded_by_material(_load(recordings.CLAIM_OUTPUTS)))
         self._verifier = MappingReplayProvider.from_recorded(_load(recordings.MAPPING_OUTPUTS))
         self._search: SearchService | None = None
@@ -114,6 +132,23 @@ class DemoReplay:
         from app.demo.generate import DATA_ROOT
 
         return DemoConnector(DATA_ROOT)
+
+    def _institution(self) -> Any:
+        """The demo institution as the LMS shows it, with the supplement if on."""
+        from app.connectors.demo import DemoConnector
+        from app.demo.generate import DATA_ROOT
+
+        return DemoConnector(DATA_ROOT, supplement=self._supplement)
+
+    async def _is_authored(self, course_id: uuid.UUID) -> bool:
+        """Whether a course is supplementary: answered by the authored provider."""
+        from app.demo.supplement import supplement_refs
+
+        if not self._supplement:
+            return False
+        async with self.sessions() as session:
+            course = await session.get(Course, course_id)
+        return course is not None and course.external_id in supplement_refs()
 
     @classmethod
     def initial_sync_at(cls) -> datetime:
@@ -140,11 +175,19 @@ class DemoReplay:
 
     def _indexer(self) -> Any:
         from app.demo.snapshot import load_demo_replay
+        from app.demo.supplement import CombinedReplay, load_document_replay
         from app.retrieval.indexing import IndexingService
 
+        provider: Any = load_demo_replay(
+            self._space, max_batch_items=64, path=recordings.DOCUMENT_EMBEDDINGS
+        )
+        if self._supplement:
+            provider = CombinedReplay(
+                provider, load_document_replay(self._space, max_batch_items=64)
+            )
         return IndexingService(
             self.sessions,
-            load_demo_replay(self._space, max_batch_items=64, path=recordings.DOCUMENT_EMBEDDINGS),
+            provider,
             batch_max_items=64,
             batch_max_estimated_tokens=32_000,
         )
@@ -162,7 +205,7 @@ class DemoReplay:
         from app.domain.enums import ChangeType, LmsType
         from app.evaluation.retrieval.resolve import production_limits
 
-        connector = self._connector()
+        connector = self._institution()
         initial, observed = self.initial_sync_at(), self.final_sync_at()
         async with self.sessions() as session:
             demo = dict(
@@ -246,7 +289,7 @@ class DemoReplay:
 
         summary = await seed(
             self.sessions, self._store, limits=production_limits(), indexer=self._indexer(),
-            reset=reset,
+            reset=reset, supplement=self._supplement,
         )  # fmt: skip
         courses, outcomes = {}, {}
         for entry in summary["courses"]:
@@ -270,10 +313,14 @@ class DemoReplay:
         from app.evaluation.northbridge.labels import load_golden
         from app.extraction.service import AssessmentExtractionService
 
-        plan = assessments_run.plan_units(load_golden(), EvalConfig(recordings.ASSESSMENT_PROMPT))
-        provider = ReplayProvider(
-            assign_outputs(_load(recordings.ASSESSMENT_OUTPUTS), plan), "replay:recorded-fast"
-        )
+        provider: Any = self._authored
+        if not await self._is_authored(course_id):
+            plan = assessments_run.plan_units(
+                load_golden(), EvalConfig(recordings.ASSESSMENT_PROMPT)
+            )
+            provider = ReplayProvider(
+                assign_outputs(_load(recordings.ASSESSMENT_OUTPUTS), plan), "replay:recorded-fast"
+            )
         service = AssessmentExtractionService(
             self.sessions, provider, thinking=False, prompt_version=recordings.ASSESSMENT_PROMPT
         )
@@ -290,8 +337,9 @@ class DemoReplay:
         from app.extraction.claims_service import ClaimExtractionService
 
         runs, counts, statuses = [], {}, []
+        provider = self._authored if await self._is_authored(course_id) else self._claims
         for task in ("requirements", "obligations"):
-            service = ClaimExtractionService(self.sessions, self._claims, task, thinking=False)
+            service = ClaimExtractionService(self.sessions, provider, task, thinking=False)
             result = await service.extract_course(course_id, version_ids)
             runs.append(result.run_id)
             statuses.append(result.status)
@@ -306,14 +354,21 @@ class DemoReplay:
     async def mapping(self, course_id: uuid.UUID, courses: dict[str, uuid.UUID]) -> StepOutcome:
         """Map one course; the recorded query vectors are checked against
         every course's queries, so all requirements must exist first."""
+        from app.demo.supplement import supplement_refs
         from app.mapping.service import MaterialMappingService
 
         if self._search is None:
-            inputs = await query_inputs(self.sessions, courses)
-            self._search = mapping_search(self.sessions, self._space, inputs)
-        service = MaterialMappingService(
-            self.sessions, self._search, self._verifier, thinking=False
-        )
+            extra = supplement_refs() if self._supplement else frozenset()
+            golden = {ref: c for ref, c in courses.items() if ref not in extra}
+            ours = {ref: c for ref, c in courses.items() if ref in extra}
+            self._search = mapping_search(
+                self.sessions,
+                self._space,
+                await query_inputs(self.sessions, golden),
+                await query_inputs(self.sessions, ours) if ours else (),
+            )
+        verifier = self._authored if await self._is_authored(course_id) else self._verifier
+        service = MaterialMappingService(self.sessions, self._search, verifier, thinking=False)
         result = await service.map_course(course_id)
         self.mapping_results.append(result)
         s = result.summary
@@ -334,8 +389,9 @@ class DemoBuild:
 async def build_extractions(
     sessions: async_sessionmaker[AsyncSession], store: RawObjectStore, space: EmbeddingSpace
 ) -> DemoBuild:
-    """Seed, index, and extract assessments, requirements and obligations."""
-    replay = DemoReplay(sessions, store, space)
+    """Seed, index, and extract assessments, requirements and obligations of
+    the golden courses (the evaluation corpus: no supplement)."""
+    replay = DemoReplay(sessions, store, space, supplement=False)
     courses, _ = await replay.ingest(reset=False)
     for ref in sorted(courses):
         await replay.assessments(courses[ref])
