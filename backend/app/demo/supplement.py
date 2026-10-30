@@ -74,7 +74,7 @@ def supplement_subject() -> SnapshotSubject:
     ]
     return SnapshotSubject(
         name="northbridge-supplement",
-        version="v1",
+        version="v2",
         sha256=dataset_sha256(REPO_ROOT, paths),
         hash_scheme=DATASET_HASH_SCHEME,
         chunker=SPAN_PACK_V1.version,

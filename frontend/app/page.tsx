@@ -11,8 +11,9 @@ import { DemoControls } from "@/components/DemoControls";
 import { useApi } from "@/components/DemoState";
 import { Icon } from "@/components/Icon";
 import { CourseDot, courseTone, LoadState, deadlineText } from "@/components/ui";
-import { courseName, dateParts, daysUntil, formatInstant, TASK_LABELS } from "@/lib/format";
+import { courseName, dateParts, daysUntil, formatInstant, shortDate, TASK_LABELS } from "@/lib/format";
 import { activeDeadlines, loadOverview, nextAssessment, openConflicts, type CourseBundle } from "@/lib/load";
+import type { StudyTask } from "@/lib/types";
 
 export default function HomePage() {
   const result = useApi(loadOverview, "overview");
@@ -22,12 +23,8 @@ export default function HomePage() {
         if (courses.length === 0) return <NoCourses />;
         const openTasks = (plan?.tasks ?? []).filter((t) => t.status !== "completed");
         const next = openTasks.slice(0, 5);
-        const conflicts = courses.flatMap((b) => openConflicts(b).map((c) => ({ b, c })));
-        const hidden = courses.flatMap((b) =>
-          b.obligations.filter((o) => o.hidden).map((o) => ({
-            b, o, assessment: b.assessments.find((a) => a.id === o.assessment_id),
-          })),
-        );
+        const conflicts = courses.flatMap((b) => openConflicts(b));
+        const hidden = courses.flatMap((b) => b.obligations.filter((o) => o.hidden).map((o) => ({ b, o })));
         const latest = changes.at(-1);
         const upcoming = nextAssessment(courses);
         const upcomingConflict = upcoming && openConflicts(upcoming.bundle).some((c) => c.assessment_id === upcoming.assessment.id);
@@ -40,9 +37,10 @@ export default function HomePage() {
               <h1 className="display-title mt-3">Your courses <em className="text-link">this week</em></h1>
               <p className="page-lede">
                 {attention > 0
-                  ? `${attention} ${attention === 1 ? "thing needs" : "things need"} your attention across ${courses.length} ${courses.length === 1 ? "course" : "courses"}.`
-                  : `Nothing needs your attention across ${courses.length} ${courses.length === 1 ? "course" : "courses"}.`}
-                {openTasks.length > 0 && ` ${openTasks.length} open ${openTasks.length === 1 ? "task" : "tasks"} in your study plan.`}
+                  ? <><Count n={attention} /> {attention === 1 ? "thing needs" : "things need"} your attention across </>
+                  : "Nothing needs your attention across "}
+                <Count n={courses.length} /> {courses.length === 1 ? "course" : "courses"}.
+                {openTasks.length > 0 && <> <Count n={openTasks.length} /> open {openTasks.length === 1 ? "task" : "tasks"} in your study plan.</>}
               </p>
             </section>
 
@@ -106,16 +104,14 @@ export default function HomePage() {
                           {task.position}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="flex items-center gap-2 text-[13px] text-muted">
+                          <p className="text-[16px] leading-snug font-medium">{task.title}</p>
+                          <p className="mt-1.5 flex items-center gap-2 text-[13px] text-muted">
+                            <span className="badge badge-neutral">{TASK_LABELS[task.task_type]}</span>
                             <CourseDot course={task.course} />
-                            {TASK_LABELS[task.task_type]} in {courseName(task.course.title)}
-                          </p>
-                          <p className="mt-1 text-[16px] leading-snug font-medium">{task.title}</p>
-                          <p className="mt-1 line-clamp-2 text-[14px] text-muted">
-                            <span className="font-medium text-ink-soft">Why now? </span>{task.why_now}
+                            {courseName(task.course.title)}
                           </p>
                         </div>
-                        <span className="shrink-0 text-[13px] text-faint tabular-nums">{task.estimated_minutes} min</span>
+                        {taskDates(task) && <span className="shrink-0 text-[13.5px] font-medium text-ink-soft tabular-nums">{taskDates(task)}</span>}
                       </li>
                     ))}
                     {next.length === 0 && <li className="px-7 py-5 text-[14px] text-muted">Nothing open in the plan.</li>}
@@ -126,35 +122,25 @@ export default function HomePage() {
               <div className="min-w-0 space-y-9 lg:col-span-4">
                 <section aria-labelledby="attention-heading" className="space-y-3">
                   <h2 id="attention-heading" className="label">Needs your attention</h2>
-                  {conflicts.map(({ b, c }) => (
+                  {conflicts.map((c) => (
                     <Link key={c.id} href={`/assessments/${c.assessment_id}`} data-testid="attention-conflict"
                       className="panel panel-link group flex gap-4 p-5 hover:border-conflict-line">
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-conflict-soft text-conflict ring-1 ring-conflict-line">
                         <Icon name="alert" size={17} />
                       </span>
                       <span className="min-w-0">
-                        <span className="block text-[12.5px] font-semibold text-conflict">Deadline conflict</span>
-                        <span className="mt-0.5 block text-[15px] font-medium">{c.assessment_title}</span>
-                        <span className="mt-1 block text-[13px] text-muted">
-                          {courseName(b.course.title)}: {c.sides.map(deadlineText).join(" or ")}
-                        </span>
+                        <ActionLine verb="Check" rest={`the deadline for ${c.assessment_title}`} />
+                        <span className="mt-1 block text-[13px] text-muted tabular-nums">{c.sides.map(deadlineText).join(" or ")}</span>
                       </span>
                     </Link>
                   ))}
-                  {hidden.map(({ b, o, assessment }) => (
+                  {hidden.map(({ b, o }) => (
                     <Link key={o.id} href={`/courses/${b.course.id}#obligation-${o.id}`} data-testid="attention-hidden"
                       className="panel panel-link group flex gap-4 border-accent-line p-5 hover:border-accent">
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-accent text-white">
                         <Icon name="sparkles" size={17} />
                       </span>
-                      <span className="min-w-0">
-                        <span className="block text-[12.5px] font-semibold text-link">Found by CourseFlow</span>
-                        <span className="mt-0.5 block text-[15px] font-medium">{o.canonical_action}</span>
-                        <span className="mt-1 block text-[13px] text-muted">
-                          {courseName(b.course.title)}: stated in the {o.evidence[0]?.resource_title ?? "course sources"}
-                          {assessment ? `, not in the ${assessment.title} brief` : ""}
-                        </span>
-                      </span>
+                      <ActionLine {...splitVerb(o.canonical_action)} />
                     </Link>
                   ))}
                   {latest && (
@@ -162,13 +148,7 @@ export default function HomePage() {
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-paper text-muted ring-1 ring-line">
                         <Icon name="history" size={17} />
                       </span>
-                      <span className="min-w-0">
-                        <span className="block text-[12.5px] font-semibold text-muted">Recent change</span>
-                        <span className="mt-0.5 block text-[15px] font-medium">
-                          {latest.changes.map((c) => c.resource_title).join(" and ")} updated
-                        </span>
-                        <span className="mt-1 block text-[13px] text-muted">Synced {formatInstant(latest.observed_at)}</span>
-                      </span>
+                      <ActionLine verb="Review" rest={`changes to ${latest.changes.map((c) => c.resource_title).join(" and ")}`} />
                     </Link>
                   )}
                   {attention === 0 && (
@@ -224,6 +204,31 @@ export default function HomePage() {
   );
 }
 
+/** A count in the summary line: inline, but the first thing the eye finds. */
+function Count({ n }: { n: number }) {
+  return <span className="text-[1.3em] leading-none font-semibold text-link tabular-nums">{n}</span>;
+}
+
+/** An attention item as one line, its leading action verb emphasised. */
+function ActionLine({ verb, rest }: { verb: string; rest: string }) {
+  return (
+    <span className="block min-w-0 text-[15px] leading-snug font-medium">
+      <span className="font-semibold text-link">{verb}</span> {rest}
+    </span>
+  );
+}
+
+function splitVerb(action: string): { verb: string; rest: string } {
+  const [verb, ...rest] = action.split(" ");
+  return { verb, rest: rest.join(" ") };
+}
+
+/** A task's stated date(s), short; every side when sources disagree. */
+function taskDates(task: StudyTask): string | null {
+  const dates = task.conflict_values.length ? task.conflict_values : task.deadlines.slice(0, 1);
+  return dates.length ? dates.map((d) => shortDate(d.due_date)).join(" or ") : null;
+}
+
 function relative(days: number): string {
   return days === 0 ? "today" : days === 1 ? "tomorrow" : days > 1 ? `in ${days} days` : `${-days} days ago`;
 }
@@ -263,7 +268,7 @@ function DateTile({ date, tone }: { date: string; tone: string }) {
 function NoCourses() {
   return (
     <section className="mx-auto max-w-2xl py-16 text-center animate-fade-up">
-      <p className="label">Northbridge University · demo</p>
+      <p className="label">University of Portsmouth · demo</p>
       <h1 className="display-title mt-4 text-[3.6rem]">
         Your courses, <em className="text-link">read from their own sources</em>
       </h1>

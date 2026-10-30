@@ -43,12 +43,11 @@ test("the CourseFlow golden path, from reset to a propagated LMS change", async 
   const upcoming = page.getByTestId("upcoming-assessment");
   await expect(upcoming).toContainText("Coursework 1");
   await expect(upcoming).toContainText("Thu, 12 Nov 2026, 14:00 or Fri, 13 Nov 2026, 23:59"); // both, no winner
-  await expect(page.getByRole("banner")).toContainText("it is not a live university Moodle connection");
 
   // Applied Machine Learning -> Coursework 1
   await page.getByTestId("course-card").filter({ hasText: "Applied Machine Learning" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Applied Machine Learning");
-  await expect(page.getByTestId("run-status")).toContainText("Processed");
+  await expect(page.getByTestId("run-status")).toHaveCount(0); // processed: no failed or pending run to report
   await expect(page.getByTestId("course-next")).toBeVisible();
   await page.getByTestId("assessment-link").filter({ hasText: "Coursework 1" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Coursework 1");

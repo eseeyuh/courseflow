@@ -22,7 +22,7 @@ from pathlib import Path
 from app.evaluation.northbridge.labels import REPO_ROOT, GoldenDataset, LabelError, RequirementLabel
 
 SPLIT_FILE = (
-    REPO_ROOT / "evals" / "datasets" / "northbridge" / "splits" / "material-mapping-v1.json"
+    REPO_ROOT / "evals" / "datasets" / "northbridge" / "splits" / "material-mapping-v2.json"
 )
 
 

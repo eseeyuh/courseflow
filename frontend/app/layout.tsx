@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 // Geist and Instrument Serif (both SIL Open Font Licence) load from Google
 // Fonts at view time; the build never needs the network, and an offline
 // viewer gets the close system fallbacks named in globals.css.
-const FONTS = "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap";
+const FONTS = "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Instrument+Serif&display=swap";
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -40,9 +40,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                   <DemoProgress />
                   {children}
                 </main>
-                <footer className="border-t border-line px-8 py-4 text-[12.5px] text-faint xl:px-12">
-                  Demo data: Northbridge University (fictional). Every value shown comes from the CourseFlow API.
-                </footer>
               </div>
             </div>
           </EvidenceProvider>

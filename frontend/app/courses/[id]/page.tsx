@@ -11,7 +11,7 @@ import { useEffect } from "react";
 import { useApi } from "@/components/DemoState";
 import { EvidenceButton, fromEvidence, StatusBadge } from "@/components/Evidence";
 import { Icon } from "@/components/Icon";
-import { ConflictCard, CourseDot, DeadlineEvidence, DependencyChain, LoadState, RunStatus, deadlineText } from "@/components/ui";
+import { ConflictCard, CourseDot, DeadlineEvidence, DependencyChain, LoadState, RunStatus, deadlineText, runNeedsNotice } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { courseCode, courseName, locator, RESOURCE_LABELS, TASK_LABELS } from "@/lib/format";
 import { activeDeadlines, loadCourseById, openConflicts, type CourseBundle } from "@/lib/load";
@@ -62,7 +62,9 @@ function Course({ bundle, next }: { bundle: CourseBundle; next: StudyTask | null
           {courseCode(course.title, course.external_id)}
         </p>
         <h1 className="page-title mt-2">{courseName(course.title)}</h1>
-        <p className="mt-2 text-[14px] text-muted">Course sources: <RunStatus run={bundle.latestRun} /></p>
+        {runNeedsNotice(bundle.latestRun) && (
+          <p className="mt-2 text-[14px] text-muted">Course sources: <RunStatus run={bundle.latestRun} /></p>
+        )}
       </header>
 
       {next && (

@@ -1,0 +1,30 @@
+{
+  "schema_version": "northbridge-split/v1",
+  "task": "material-mapping",
+  "dataset": {
+    "name": "northbridge-golden",
+    "version": "v2",
+    "sha256": "6a4ab2a9080ecc48085252ab5118d030d0fdcc04ea3e5502f0aed5fbbe3c96a2"
+  },
+  "rule": "Declared before any mapping result. Retrieval k, the query format, candidate rendering and the verifier prompt may be tuned on dev only. held_out is scored and reported separately and is never used to choose anything; it is kept for the later benchmark. For dataset v2 the membership is unchanged from material-mapping-v1 (same labels, same splits, same expectations), re-declared before any v2 mapping result.",
+  "expectations": {
+    "materials": "The label lists supporting teaching material: retrieval and mapping targets.",
+    "no_material": "The label states that no teaching material supports it (materials: []): the correct mapping is none.",
+    "unlabelled": "The label does not say (no materials field): only irrelevant-resource constraints are scored; other mappings are reported for review."
+  },
+  "dev": [
+    {"label_id": "aml-cw1-r2-class-imbalance", "expect": "materials"},
+    {"label_id": "msd-spec-s1-research-question", "expect": "materials"},
+    {"label_id": "msd-spec-s6-timeline", "expect": "no_material"},
+    {"label_id": "aml-cw1-r1-framing", "expect": "unlabelled"}
+  ],
+  "held_out": [
+    {"label_id": "aml-cw1-r3-metric-justification", "expect": "materials"},
+    {"label_id": "msd-spec-s2-aims", "expect": "materials"},
+    {"label_id": "msd-spec-s4-methodology", "expect": "materials"},
+    {"label_id": "msd-spec-s5-ethics", "expect": "materials"},
+    {"label_id": "msd-spec-s3-related-work", "expect": "no_material"},
+    {"label_id": "aml-cw1-r4-model-comparison", "expect": "unlabelled"},
+    {"label_id": "aml-cw1-r5-limitations", "expect": "unlabelled"}
+  ]
+}

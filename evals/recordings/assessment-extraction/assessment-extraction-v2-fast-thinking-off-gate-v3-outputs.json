@@ -1,90 +1,5 @@
 [
   {
-    "nonce_free_material_sha256": "7592468a30c5c02e644dd47ab6875e0158af1f8b0941357b89e071efc106d9d8",
-    "output": {
-      "assessments": [
-        {
-          "deadline": {
-            "due_date": "2026-11-13",
-            "due_time": "23:59",
-            "evidence": {
-              "quote": "due Friday 13 November 2026 at 23:59.",
-              "span": "S2"
-            },
-            "status": "stated"
-          },
-          "title": "Coursework 1 (Model Evaluation Report)",
-          "title_evidence": {
-            "quote": "Coursework 1 (Model Evaluation Report), 40%:",
-            "span": "S2"
-          },
-          "weighting": null
-        },
-        {
-          "deadline": {
-            "due_date": null,
-            "due_time": null,
-            "evidence": {
-              "quote": "January 2027 examination period.",
-              "span": "S2"
-            },
-            "status": "ambiguous"
-          },
-          "title": "Written examination",
-          "title_evidence": {
-            "quote": "Written examination, 60%:",
-            "span": "S2"
-          },
-          "weighting": null
-        }
-      ]
-    }
-  },
-  {
-    "nonce_free_material_sha256": "862db56f4a45b4e91566a4f63011c1279a6e837840fffd2c20f8088da8e00ad8",
-    "output": {
-      "assessments": [
-        {
-          "deadline": {
-            "due_date": "2026-11-12",
-            "due_time": "14:00",
-            "evidence": {
-              "quote": "Submission deadline: Thursday 12 November 2026, 14:00 (UK time).",
-              "span": "S1"
-            },
-            "status": "stated"
-          },
-          "title": "Coursework 1: Model Evaluation Report",
-          "title_evidence": {
-            "quote": "Coursework 1: Model Evaluation Report",
-            "span": "S1"
-          },
-          "weighting": {
-            "evidence": {
-              "quote": "Weighting: 40% of the module mark.",
-              "span": "S1"
-            },
-            "percent": 40
-          }
-        },
-        {
-          "deadline": {
-            "due_date": null,
-            "due_time": null,
-            "evidence": null,
-            "status": "not_stated"
-          },
-          "title": "Coursework 1: Model Evaluation Report",
-          "title_evidence": {
-            "quote": "Coursework 1: Model Evaluation Report",
-            "span": "S2"
-          },
-          "weighting": null
-        }
-      ]
-    }
-  },
-  {
     "nonce_free_material_sha256": "edc7b1dd3d26a2353a367a6d86a4be3828df6fcd48d875e7a6ce05ddb8bb9d51",
     "output": {
       "assessments": [
@@ -160,12 +75,6 @@
     }
   },
   {
-    "nonce_free_material_sha256": "1400d3168017c51f6d53fc7239bcefd5859948b65fd71bb041998fa4fee5759c",
-    "output": {
-      "assessments": []
-    }
-  },
-  {
     "nonce_free_material_sha256": "28fbd4270390a3818c671c071bc65129779219da82f69077e3623491baa9de1d",
     "output": {
       "assessments": [
@@ -224,13 +133,84 @@
     }
   },
   {
-    "nonce_free_material_sha256": "6b033b1c3132c244e21d7d0ec5bc32856c3e93a0c5f85f150dbffccd520199f0",
+    "nonce_free_material_sha256": "04f4dfce68a6dbb61530002f7d1330a35c2bd592a30021ebc73cd6a90d661d1d",
+    "output": {
+      "assessments": [
+        {
+          "deadline": {
+            "due_date": "2026-11-12",
+            "due_time": "14:00",
+            "evidence": {
+              "quote": "Submission deadline: Thursday 12 November 2026, 14:00 (UK time).",
+              "span": "S1"
+            },
+            "status": "stated"
+          },
+          "title": "Coursework 1: Model Evaluation Report",
+          "title_evidence": {
+            "quote": "Coursework 1: Model Evaluation Report",
+            "span": "S1"
+          },
+          "weighting": {
+            "evidence": {
+              "quote": "Weighting: 40% of the module mark.",
+              "span": "S1"
+            },
+            "percent": 40
+          }
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "1400d3168017c51f6d53fc7239bcefd5859948b65fd71bb041998fa4fee5759c",
     "output": {
       "assessments": []
     }
   },
   {
-    "nonce_free_material_sha256": "32e8f483e383380999b585985dc0940a630f8cce5fd3beb87fdbe24f7862ce45",
+    "nonce_free_material_sha256": "7592468a30c5c02e644dd47ab6875e0158af1f8b0941357b89e071efc106d9d8",
+    "output": {
+      "assessments": [
+        {
+          "deadline": {
+            "due_date": "2026-11-13",
+            "due_time": "23:59",
+            "evidence": {
+              "quote": "due Friday 13 November 2026 at 23:59.",
+              "span": "S2"
+            },
+            "status": "stated"
+          },
+          "title": "Coursework 1 (Model Evaluation Report)",
+          "title_evidence": {
+            "quote": "Coursework 1 (Model Evaluation Report), 40%:",
+            "span": "S2"
+          },
+          "weighting": null
+        },
+        {
+          "deadline": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": {
+              "quote": "January 2027 examination period.",
+              "span": "S2"
+            },
+            "status": "ambiguous"
+          },
+          "title": "Written examination",
+          "title_evidence": {
+            "quote": "Written examination, 60%:",
+            "span": "S2"
+          },
+          "weighting": null
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "6b033b1c3132c244e21d7d0ec5bc32856c3e93a0c5f85f150dbffccd520199f0",
     "output": {
       "assessments": []
     }
@@ -331,6 +311,12 @@
           "weighting": null
         }
       ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "32e8f483e383380999b585985dc0940a630f8cce5fd3beb87fdbe24f7862ce45",
+    "output": {
+      "assessments": []
     }
   },
   {

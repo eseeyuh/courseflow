@@ -111,6 +111,11 @@ body {
   .page-title {
     @apply font-display text-[2.9rem] leading-[1.06] font-normal tracking-[-0.012em] text-ink;
   }
+  /* Emphasis in the serif headings is colour, never italic. */
+  .display-title em,
+  .page-title em {
+    font-style: normal;
+  }
   .page-lede {
     @apply mt-2.5 max-w-[68ch] text-[16.5px] leading-relaxed text-muted;
   }

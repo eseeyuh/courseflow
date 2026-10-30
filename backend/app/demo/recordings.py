@@ -9,6 +9,11 @@ Every file here is committed (``evals/recordings/`` and
 fresh clone rebuilds the same demo intelligence with no network and no
 spend. They hold validated model outputs keyed by a nonce-free material
 hash, or embedding vectors: no prompts, headers, credentials or logs.
+
+Golden v2 rewrote the Coursework 1 brief. Only the entries whose material
+changed with it were recorded again, live, on 2026-10-30 (reports suffixed
+``-golden-v2``); every other entry is its original recording, kept because
+its material is byte-identical.
 """
 
 from __future__ import annotations
@@ -41,7 +46,7 @@ MAPPING_QUERY_EMBEDDINGS = (
 # The supplementary courses' vectors, pinned to the supplement's own hash.
 # Their extraction and mapping answers are authored, not recorded (supplement).
 SUPPLEMENT_DOCUMENT_EMBEDDINGS = (
-    SNAPSHOT_PATH.parent.parent / "supplement-v1" / "nebius-qwen3-embedding-8b-d4096-sv1.jsonl"
+    SNAPSHOT_PATH.parent.parent / "supplement-v2" / "nebius-qwen3-embedding-8b-d4096-sv1.jsonl"
 )
 SUPPLEMENT_QUERY_EMBEDDINGS = (
     SUPPLEMENT_DOCUMENT_EMBEDDINGS.parent

@@ -42,8 +42,13 @@ export function CourseDot({ course, size = "h-2 w-2" }: { course: Pick<Course, "
   return <span aria-hidden className={`${size} shrink-0 rounded-[3px] ${courseTone(course).dot}`} />;
 }
 
-/** The course's latest course-intelligence run, as its trace records it. The
- * run ID is a small reference for debugging, not something to act on. */
+/** Whether the course's latest run is worth showing: only when it did not
+ * succeed (not processed, queued, running or failed). */
+export function runNeedsNotice(run: WorkflowRun | null): boolean {
+  return run?.status !== "succeeded";
+}
+
+/** The course's latest course-intelligence run, as its trace records it. */
 export function RunStatus({ run, testId = "run-status" }: { run: WorkflowRun | null; testId?: string }) {
   if (!run) return <span className="text-muted">Not processed yet</span>;
   const when = run.finished_at ?? run.started_at;
@@ -53,7 +58,6 @@ export function RunStatus({ run, testId = "run-status" }: { run: WorkflowRun | n
     <span className={`inline-flex flex-wrap items-center gap-x-1.5 ${run.status === "failed" ? "text-conflict" : ""}`} data-testid={testId}>
       <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${dot}`} />
       {label}{when ? ` ${formatInstant(when)}` : ""}
-      <span className="text-faint"> (run {run.id.slice(0, 8)})</span>
     </span>
   );
 }

@@ -26,7 +26,8 @@ def test_inputs_are_every_version_s_document_inputs_and_no_queries() -> None:
     assert inputs.queries == ()
     assert {i.input_format for i in inputs.documents} == {DOCUMENT_INPUT_FORMAT}
     versions = sum(len(r.versions) for c in golden.corpus.courses for r in c.resources)
-    assert len(inputs.documents) == versions == 12  # each short document is one chunk
+    # Each short document is one chunk; the Coursework 1 brief is two.
+    assert versions == 12 and len(inputs.documents) == versions + 1 == 13
 
 
 def test_the_plan_is_pinned_to_the_frozen_labels_and_inside_the_bounds(tmp_path: Path) -> None:
@@ -44,7 +45,7 @@ def test_the_plan_is_pinned_to_the_frozen_labels_and_inside_the_bounds(tmp_path:
     report = plan.describe()
     assert report["dataset"] == {
         "name": "northbridge-golden",
-        "version": "v1",
+        "version": "v2",
         "sha256": golden.sha256,
     }
     assert (plan.logical_requests, plan.max_http_attempts) == (1, 3)

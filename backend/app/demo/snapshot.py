@@ -62,7 +62,7 @@ SNAPSHOT_PATH = (
     / "evals"
     / "snapshots"
     / "northbridge"
-    / "v1"
+    / "v2"
     / "nebius-qwen3-embedding-8b-d4096-sv1.jsonl"
 )
 

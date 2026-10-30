@@ -1,13 +1,21 @@
 [
   {
-    "nonce_free_material_sha256": "cebc10f23793e3257e0457ed9749d8b2651940d64c32a5c4bb86de6f017220b0",
+    "nonce_free_material_sha256": "389d7d0545c09f444871756257d11ad3606a10c2e98cc2da02ec6f01293465f9",
     "output": {
       "requirements": [
         {
           "assessment": "A1",
           "lead_in": null,
           "statement": {
-            "quote": "1. Describe the dataset and frame the prediction task in your own words.",
+            "quote": "This coursework assesses your ability to evaluate supervised learning models in a setting where the most obvious measure of success is misleading. It contributes to learning outcomes 2 (evaluate and compare predictive models using an appropriate methodology) and 4 (communicate technical findings to a non-specialist audience) in the module descriptor. The emphasis is on the quality of your about...",
+            "span": "S1"
+          }
+        },
+        {
+          "assessment": "A1",
+          "lead_in": null,
+          "statement": {
+            "quote": "Your report should open by framing the prediction problem in your own terms and describing the supplied data in enough detail for a reader to follow the decisions that come later. Write this opening for a reader from the operations team rather than for a machine learning specialist.",
             "span": "S2"
           }
         },
@@ -15,7 +23,7 @@
           "assessment": "A1",
           "lead_in": null,
           "statement": {
-            "quote": "2. Discuss the class imbalance in the data and explain how it affects both model training and the way the models should be evaluated.",
+            "quote": "Particular attention should be paid to the class imbalance in the outcome: because missed appointments are comparatively rare, the report should consider how this affects the way the models are trained as well as the way their performance is judged.",
             "span": "S2"
           }
         },
@@ -23,7 +31,7 @@
           "assessment": "A1",
           "lead_in": null,
           "statement": {
-            "quote": "3. Justify the evaluation metrics you report. Accuracy on its own is not an acceptable justification for a model on this dataset.",
+            "quote": "The evaluation measures you report should be chosen deliberately and justified by the practical cost of each kind of error in this setting; a model defended on its accuracy alone will not be regarded as adequately evaluated. Marks in this part of the report reward explanation more than the number of measures reported.",
             "span": "S2"
           }
         },
@@ -31,7 +39,7 @@
           "assessment": "A1",
           "lead_in": null,
           "statement": {
-            "quote": "4. Compare at least two different models on a held-out test set that you do not use for model selection.",
+            "quote": "Your discussion should compare at least two different modelling approaches, with final performance reported on a held-out test set that played no part in model selection or tuning. Cross-validation on the training data is a sensible way to choose between settings, but its results are not a substitute for the final held-out comparison.",
             "span": "S2"
           }
         },
@@ -39,7 +47,7 @@
           "assessment": "A1",
           "lead_in": null,
           "statement": {
-            "quote": "5. Reflect on the limitations of your evaluation and what you would do next. Any resampling or class weighting must be applied to the training data only. Include your code as an appendix or as a link to a private repository.",
+            "quote": "The report should close with a critical reflection on the limitations of your evaluation and on the further work you would recommend before any model was used to select patients for reminder calls. In that reflection, consider whether any choice made during training could have leaked information into the test results. Any resampling or class weighting must be applied to the training data only.",
             "span": "S2"
           }
         }
@@ -70,31 +78,13 @@
     }
   },
   {
-    "nonce_free_material_sha256": "f7bd778c18d8e67bf881b36be624508e3bc4be4117ef332965817fc939841787",
-    "output": {
-      "obligations": []
-    }
-  },
-  {
-    "nonce_free_material_sha256": "fc8a1f71239a05a7f443fb903dd479cefc8606d3e0e7d8b1d88284f06246411a",
-    "output": {
-      "obligations": []
-    }
-  },
-  {
-    "nonce_free_material_sha256": "cebc10f23793e3257e0457ed9749d8b2651940d64c32a5c4bb86de6f017220b0",
-    "output": {
-      "obligations": []
-    }
-  },
-  {
     "nonce_free_material_sha256": "7209011e7fbe4064b404822e89c0b8e81270bd3664b0164ae924376de77c96e6",
     "output": {
       "obligations": []
     }
   },
   {
-    "nonce_free_material_sha256": "495fdebfdbfdd31fed1a8b58a07bb23e4f8fd8d653a30aa8349bbcf82ebf6299",
+    "nonce_free_material_sha256": "f7bd778c18d8e67bf881b36be624508e3bc4be4117ef332965817fc939841787",
     "output": {
       "obligations": []
     }
@@ -106,95 +96,21 @@
     }
   },
   {
-    "nonce_free_material_sha256": "d2deb7a36c0e6f074c73ae551c1fc2588aa3c121d6d89178271a55f5eba7a5c9",
+    "nonce_free_material_sha256": "fc8a1f71239a05a7f443fb903dd479cefc8606d3e0e7d8b1d88284f06246411a",
     "output": {
-      "obligations": [
-        {
-          "action": "Submit the application form, participant information sheet and consent form through the ethics portal.",
-          "assessment": "A1",
-          "category": "ethics_admin_form",
-          "due": {
-            "due_date": null,
-            "due_time": null,
-            "evidence": null,
-            "status": "not_stated"
-          },
-          "evidence": [
-            {
-              "quote": "Submit the application form, participant information sheet and consent form through the ethics portal. Your supervisor must approve the application first.",
-              "span": "S12"
-            }
-          ]
-        },
-        {
-          "action": "Your supervisor must approve the application first.",
-          "assessment": "A1",
-          "category": "supervisor_review",
-          "due": {
-            "due_date": null,
-            "due_time": null,
-            "evidence": null,
-            "status": "not_stated"
-          },
-          "evidence": [
-            {
-              "quote": "Your supervisor must approve the application first.",
-              "span": "S12"
-            }
-          ]
-        },
-        {
-          "action": "You must not recruit participants or collect any data until your ethics application has been approved.",
-          "assessment": "A1",
-          "category": "submission_prerequisite",
-          "due": {
-            "due_date": null,
-            "due_time": null,
-            "evidence": null,
-            "status": "not_stated"
-          },
-          "evidence": [
-            {
-              "quote": "You must not recruit participants or collect any data until your ethics application has been approved.",
-              "span": "S7"
-            }
-          ]
-        },
-        {
-          "action": "Data collected before approval cannot be used in your dissertation, even if approval is granted later.",
-          "assessment": "A1",
-          "category": "submission_prerequisite",
-          "due": {
-            "due_date": null,
-            "due_time": null,
-            "evidence": null,
-            "status": "not_stated"
-          },
-          "evidence": [
-            {
-              "quote": "Data collected before approval cannot be used in your dissertation, even if approval is granted later.",
-              "span": "S8"
-            }
-          ]
-        },
-        {
-          "action": "Projects that use only publicly available, fully anonymised datasets may qualify for the low-risk route; check with your supervisor.",
-          "assessment": null,
-          "category": "other",
-          "due": {
-            "due_date": null,
-            "due_time": null,
-            "evidence": null,
-            "status": "not_stated"
-          },
-          "evidence": [
-            {
-              "quote": "Projects that use only publicly available, fully anonymised datasets may qualify for the low-risk route; check with your supervisor.",
-              "span": "S5"
-            }
-          ]
-        }
-      ]
+      "obligations": []
+    }
+  },
+  {
+    "nonce_free_material_sha256": "389d7d0545c09f444871756257d11ad3606a10c2e98cc2da02ec6f01293465f9",
+    "output": {
+      "obligations": []
+    }
+  },
+  {
+    "nonce_free_material_sha256": "495fdebfdbfdd31fed1a8b58a07bb23e4f8fd8d653a30aa8349bbcf82ebf6299",
+    "output": {
+      "obligations": []
     }
   },
   {
@@ -283,30 +199,6 @@
             {
               "quote": "Your supervisor may also ask for a short progress note before the interim review; agree the format and timing with them.",
               "span": "S3"
-            }
-          ]
-        }
-      ]
-    }
-  },
-  {
-    "nonce_free_material_sha256": "a499e597257b66647475df62915113cd7c97188d428afac6d664a47032f91d29",
-    "output": {
-      "obligations": [
-        {
-          "action": "Plan the ethics application early",
-          "assessment": "A1",
-          "category": "ethics_admin_form",
-          "due": {
-            "due_date": null,
-            "due_time": null,
-            "evidence": null,
-            "status": "ambiguous"
-          },
-          "evidence": [
-            {
-              "quote": "Plan the ethics application early: approval takes weeks",
-              "span": "S15"
             }
           ]
         }
@@ -436,6 +328,122 @@
             {
               "quote": "Your specification must include 6. A timeline to the final submission, for example as a Gantt chart.",
               "span": "S2"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "d2deb7a36c0e6f074c73ae551c1fc2588aa3c121d6d89178271a55f5eba7a5c9",
+    "output": {
+      "obligations": [
+        {
+          "action": "Submit the application form, participant information sheet and consent form through the ethics portal.",
+          "assessment": "A1",
+          "category": "ethics_admin_form",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Submit the application form, participant information sheet and consent form through the ethics portal. Your supervisor must approve the application first.",
+              "span": "S12"
+            }
+          ]
+        },
+        {
+          "action": "Your supervisor must approve the application first.",
+          "assessment": "A1",
+          "category": "supervisor_review",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Your supervisor must approve the application first.",
+              "span": "S12"
+            }
+          ]
+        },
+        {
+          "action": "You must not recruit participants or collect any data until your ethics application has been approved.",
+          "assessment": "A1",
+          "category": "submission_prerequisite",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "You must not recruit participants or collect any data until your ethics application has been approved.",
+              "span": "S7"
+            }
+          ]
+        },
+        {
+          "action": "Data collected before approval cannot be used in your dissertation, even if approval is granted later.",
+          "assessment": "A1",
+          "category": "submission_prerequisite",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Data collected before approval cannot be used in your dissertation, even if approval is granted later.",
+              "span": "S8"
+            }
+          ]
+        },
+        {
+          "action": "Projects that use only publicly available, fully anonymised datasets may qualify for the low-risk route; check with your supervisor.",
+          "assessment": null,
+          "category": "other",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "not_stated"
+          },
+          "evidence": [
+            {
+              "quote": "Projects that use only publicly available, fully anonymised datasets may qualify for the low-risk route; check with your supervisor.",
+              "span": "S5"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "nonce_free_material_sha256": "a499e597257b66647475df62915113cd7c97188d428afac6d664a47032f91d29",
+    "output": {
+      "obligations": [
+        {
+          "action": "Plan the ethics application early",
+          "assessment": "A1",
+          "category": "ethics_admin_form",
+          "due": {
+            "due_date": null,
+            "due_time": null,
+            "evidence": null,
+            "status": "ambiguous"
+          },
+          "evidence": [
+            {
+              "quote": "Plan the ethics application early: approval takes weeks",
+              "span": "S15"
             }
           ]
         }

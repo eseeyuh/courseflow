@@ -124,6 +124,8 @@ docker compose -f infra/demo/compose.yml up -d --build --wait
 
 Open http://localhost:3000. The stack migrates its database and resets to the initial Northbridge state on start. Stop it with `docker compose -f infra/demo/compose.yml down` (add `-v` to delete its data).
 
+Everything replays deterministically by default. One optional, click-triggered action, *Analyze live with Nemotron* on Applied Machine Learning's Coursework 1, makes a real Nebius Token Factory call. It needs Nebius credentials (`NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, `MODEL_FAST`, `MODEL_STRONG`) in your root `.env`; start the stack with `docker compose --env-file .env -f infra/demo/compose.yml up -d --build --wait` to pass them to the API container at runtime.
+
 **For development** (hot reload; needs Docker, [uv](https://docs.astral.sh/uv/) and Node.js ≥ 20.9):
 
 ```bash

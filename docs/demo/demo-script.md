@@ -22,7 +22,7 @@ Point at **Upcoming assessment** (Coursework 1, two stated deadlines) and **Need
 
 > "This is Coursework 1 in Applied Machine Learning. Each requirement is quoted straight from the brief, and under each one CourseFlow shows where the course's own teaching material covers it."
 
-Scroll to **"Discuss the class imbalance in the data and explain how it affects both model training and the way the models should be evaluated."** Click **Slide 2** under *Week 7: Learning from Imbalanced Data*.
+Scroll to **"Particular attention should be paid to the class imbalance in the outcome: …"** Click **Slide 2** under *Week 7: Learning from Imbalanced Data*.
 
 > "Not a summary: the original slide. 'With 7% positives, always predicting the majority class gives 93% accuracy.' Retrieval found the candidates, the Nemotron verifier could only choose among them, and what you see is the stored text of the slide, its version and its location."
 

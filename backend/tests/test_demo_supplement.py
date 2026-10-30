@@ -109,7 +109,7 @@ async def test_authored_answers_claim_only_what_the_material_shows() -> None:
 async def test_authored_mapping_selects_only_the_teaching_spans_it_names() -> None:
     requirement = BRIEFS[0].requirements[0]
     title, phrase = requirement.taught_in[0]
-    text = requirement.statement.split(". ", 1)[1]
+    text = requirement.statement
     user = (
         "Select.\n<<<MAPPING_MATERIAL n0>>>\nCourse: C\nAssessment: A\n"
         f"Requirement: {text}\n\nCandidates:\n"

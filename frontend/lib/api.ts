@@ -5,11 +5,13 @@
 import { apiBaseUrl } from "@/lib/config";
 import type {
   Assessment,
+  BriefText,
   Conflict,
   Course,
   DemoSyncResult,
   DemoWorkflowStarted,
   DependencyEdge,
+  LiveRequirements,
   Obligation,
   Requirement,
   StudyPlan,
@@ -35,6 +37,8 @@ export class ApiError extends Error {
 const READ_TIMEOUT_MS = 20_000;
 // The demo workflow and sync run the offline pipeline: about ten seconds.
 const DEMO_TIMEOUT_MS = 180_000;
+// One live model call, with the backend's own bounded retries behind it.
+const LIVE_TIMEOUT_MS = 180_000;
 
 async function request<T>(path: string, init: RequestInit = {}, timeoutMs = READ_TIMEOUT_MS): Promise<T> {
   if (apiBaseUrl === null) {
@@ -70,6 +74,7 @@ export const api = {
   assessments: (courseId: string) => request<Assessment[]>(`/courses/${courseId}/assessments`),
   assessment: (id: string) => request<Assessment>(`/assessments/${id}`),
   assessmentRequirements: (id: string) => request<Requirement[]>(`/assessments/${id}/requirements`),
+  assessmentBrief: (id: string) => request<BriefText>(`/assessments/${id}/brief`),
   assessmentConflicts: (id: string) => request<Conflict[]>(`/assessments/${id}/conflicts`),
   obligations: (courseId: string) => request<Obligation[]>(`/courses/${courseId}/obligations`),
   dependencies: (courseId: string) => request<DependencyEdge[]>(`/courses/${courseId}/dependencies`),
@@ -87,4 +92,6 @@ export const api = {
     request<DemoWorkflowStarted>("/demo/workflow-runs", { method: "POST", body: JSON.stringify({ reset: true }) },
       DEMO_TIMEOUT_MS),
   syncDemo: () => request<DemoSyncResult>("/demo/sync", { method: "POST" }, DEMO_TIMEOUT_MS),
+  liveRequirements: (assessmentId: string) =>
+    request<LiveRequirements>(`/assessments/${assessmentId}/live-requirements`, { method: "POST" }, LIVE_TIMEOUT_MS),
 };

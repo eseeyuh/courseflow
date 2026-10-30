@@ -122,3 +122,23 @@ async def test_a_current_deadline_is_flagged_current(
     await AssessmentExtractionService(sessions, FakeModel(script)).extract_course(course_id)
     (assessment,) = (await client.get(f"/api/v1/courses/{course_id}/assessments")).json()
     assert [d["supported_by_current_version"] for d in assessment["deadlines"]] == [True]
+
+
+async def test_the_brief_is_returned_whole_for_context(
+    committed_session: AsyncSession, client: httpx.AsyncClient, tmp_path: Path
+) -> None:
+    sessions = async_sessionmaker(committed_session.bind, expire_on_commit=False)
+    course_id, versions = await _course(sessions, tmp_path, {"brief": BRIEF, "handbook": HANDBOOK})
+    await AssessmentExtractionService(sessions, FakeModel(script)).extract_course(course_id)
+    (assessment,) = (await client.get(f"/api/v1/courses/{course_id}/assessments")).json()
+
+    response = await client.get(f"/api/v1/assessments/{assessment['id']}/brief")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["resource_version_id"] == str(versions["brief"]) and body["version_number"] == 1
+    text = "\n".join(page["text"] for page in body["pages"])
+    # The whole page, not only the cited quotes; never the handbook.
+    assert "Coursework 1: Model Evaluation Report" in text and "Weighting: 40%" in text
+    assert "Module handbook" not in text
+    assert (await client.get(f"/api/v1/assessments/{uuid.uuid4()}/brief")).status_code == 404

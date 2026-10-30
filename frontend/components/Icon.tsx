@@ -20,6 +20,8 @@ const PATHS = {
   refresh: "M20 11a8 8 0 0 0-14.3-4.9L4 8M4 3v5h5M4 13a8 8 0 0 0 14.3 4.9L20 16M20 21v-5h-5",
   lock: "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3",
   file: "M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h6",
+  download: "M12 4v11M7 10l5 5 5-5M5 20h14",
+  panel: "M4 5h16v14H4zM9.5 5v14",
   quote: "M5 17c0-4 1.5-7 5-9M14 17c0-4 1.5-7 5-9M5 17h4v-4H5zM14 17h4v-4h-4z",
 } as const;
 
@@ -39,7 +41,8 @@ export function Icon({ name, size = 16, className = "", strokeWidth = 1.8 }: {
   );
 }
 
-export function Logo() {
+/** The mark and wordmark; ``compact`` keeps the mark alone. */
+export function Logo({ compact = false }: { compact?: boolean }) {
   return (
     <span className="flex items-center gap-2.5">
       <svg aria-hidden width={26} height={26} viewBox="0 0 32 32">
@@ -48,7 +51,7 @@ export function Logo() {
         <circle cx="23.5" cy="21" r="2.6" fill="white" />
         <circle cx="8.5" cy="21" r="1.6" fill="white" opacity=".55" />
       </svg>
-      <span className="text-[16.5px] font-semibold tracking-tight text-ink">CourseFlow</span>
+      {!compact && <span className="text-[16.5px] font-semibold tracking-tight text-ink">CourseFlow</span>}
     </span>
   );
 }

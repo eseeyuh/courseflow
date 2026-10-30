@@ -18,7 +18,9 @@ import { CompactNav } from "@/components/Nav";
 import { api } from "@/lib/api";
 import { formatInstant } from "@/lib/format";
 
-export const EXPLANATION = "This simulates the provided demo LMS changing; it is not a live university Moodle connection.";
+// Display label only, for this demo: the demo data (institution, sources,
+// evidence) is unchanged.
+const INSTITUTION_LABEL = "University of Portsmouth";
 
 // What each action does on the backend, in order. A description, not a
 // progress report: the API answers once the whole action has finished.
@@ -77,7 +79,8 @@ function LastSync() {
   const changes = useApi(api.changes, "topbar-changes");
   const latest = changes.data?.at(-1);
   if (changes.data === undefined) return <span className="skeleton inline-block h-2 w-40 align-middle" aria-hidden />;
-  return <>{latest ? `Last LMS sync ${formatInstant(latest.observed_at)}` : "No LMS sync yet: sources at their first version"}</>;
+  if (!latest) return null;
+  return <>Last LMS sync {formatInstant(latest.observed_at)}</>;
 }
 
 /** The workspace top bar: context on the left, the demo actions on the
@@ -87,7 +90,7 @@ export function TopBar() {
     <header className="sticky top-0 z-30 border-b border-line bg-canvas/85 backdrop-blur">
       <div className="flex min-h-16 flex-wrap items-center gap-x-6 gap-y-2 px-8 py-2.5 xl:px-12">
         <div className="mr-auto min-w-0">
-          <p className="text-[14.5px] leading-tight font-semibold tracking-tight text-ink">Northbridge University</p>
+          <p className="font-display text-[28px] leading-[1.1] tracking-tight text-ink sm:whitespace-nowrap xl:text-[32px]">{INSTITUTION_LABEL}</p>
           <p className="mt-0.5 text-[12px] leading-tight text-muted">
             <LastSync />
           </p>
@@ -98,10 +101,6 @@ export function TopBar() {
           <span className="flex gap-1.5"><Buttons small /></span>
         </div>
       </div>
-      <div className="flex items-center gap-2.5 border-t border-line/60 bg-sidebar/70 px-8 py-1.5 text-[12px] xl:px-12">
-        <span className="label text-[10px] text-faint">Prototype</span>
-        <span className="text-faint" data-testid="demo-explanation">{EXPLANATION}</span>
-      </div>
     </header>
   );
 }
@@ -109,10 +108,7 @@ export function TopBar() {
 /** The controls in a page body (the Changes page). */
 export function DemoControls() {
   return (
-    <div className="space-y-2.5">
-      <div className="flex flex-wrap items-center gap-2"><Buttons /></div>
-      <p className="text-[12px] text-faint">{EXPLANATION}</p>
-    </div>
+    <div className="flex flex-wrap items-center gap-2"><Buttons /></div>
   );
 }
 

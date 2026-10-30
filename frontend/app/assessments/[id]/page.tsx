@@ -7,23 +7,30 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
+import { BriefButton, BriefFile, briefDocument, type BriefDocument } from "@/components/BriefPreview";
 import { useApi } from "@/components/DemoState";
 import { EvidenceButton, fromEvidence, fromMapping, StatusBadge, useEvidence } from "@/components/Evidence";
 import { Icon } from "@/components/Icon";
+import { LiveAnalysis } from "@/components/LiveAnalysis";
 import { ConflictCard, CourseDot, DeadlineEvidence, LoadState, deadlineText, sourcesOf } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { courseName, locator, RESOURCE_LABELS } from "@/lib/format";
 import { loadCourseById } from "@/lib/load";
 import type { MaterialMapping, Requirement } from "@/lib/types";
 
 async function loadAssessment(id: string) {
   const assessment = await api.assessment(id);
-  const [requirements, conflicts, bundle] = await Promise.all([
+  const [requirements, conflicts, bundle, briefText] = await Promise.all([
     api.assessmentRequirements(id),
     api.assessmentConflicts(id),
     loadCourseById(assessment.course_id),
+    // No brief stated this assessment: the preview falls back to its excerpts.
+    api.assessmentBrief(id).catch((error: unknown) => {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    }),
   ]);
-  return { assessment, requirements, conflicts, bundle };
+  return { assessment, requirements, conflicts, bundle, briefText };
 }
 
 export default function AssessmentPage() {
@@ -31,11 +38,12 @@ export default function AssessmentPage() {
   const result = useApi(() => loadAssessment(id), `assessment:${id}`);
   return (
     <LoadState result={result}>
-      {({ assessment, requirements, conflicts, bundle }) => {
+      {({ assessment, requirements, conflicts, bundle, briefText }) => {
         const active = assessment.deadlines.filter((d) => d.active);
         const history = assessment.deadlines.filter((d) => !d.active && d.superseded_by_deadline_id);
         const open = conflicts.filter((c) => c.status === "open");
         const obligations = bundle.obligations.filter((o) => o.assessment_id === assessment.id && o.status === "verified");
+        const brief = briefDocument(assessment, requirements, briefText);
         return (
           <div className="space-y-12">
             <header className="animate-fade-up">
@@ -56,7 +64,7 @@ export default function AssessmentPage() {
                   <span className="font-medium">{assessment.weighting_percent !== null ? `${assessment.weighting_percent}%` : "not stated"}</span>
                 </span>
                 <span data-testid="current-deadlines">
-                  <span className="text-faint">{active.length > 1 ? "Stated deadlines " : "Deadline "}</span>
+                  <span className="font-medium text-conflict">{active.length > 1 ? "Stated deadlines " : "Deadline "}</span>
                   <span className="font-medium tabular-nums">{active.map(deadlineText).join(" or ") || "no verified deadline"}</span>
                 </span>
                 <EvidenceButton
@@ -66,10 +74,11 @@ export default function AssessmentPage() {
               </div>
             </header>
 
+            {brief && <BriefFile doc={brief} />}
             {open.map((c) => <ConflictCard key={c.id} conflict={c} />)}
             {open.length === 0 && active.length === 1 && (
               <div className="panel flex flex-wrap items-center gap-x-5 gap-y-2 px-6 py-4">
-                <span className="label">Deadline</span>
+                <span className="label text-conflict">Deadline</span>
                 <span className="text-[19px] font-semibold tabular-nums">{deadlineText(active[0])}</span>
                 <span className="text-[14px] text-muted">{sourcesOf(active[0])}</span>
                 <span className="ml-auto"><DeadlineEvidence deadline={active[0]} claim={assessment.title} /></span>
@@ -95,10 +104,12 @@ export default function AssessmentPage() {
                 </p>
               </div>
               <ol className="space-y-3">
-                {briefOrder(requirements).map(([n, r]) => <RequirementRow key={r.id} r={r} n={n} />)}
+                {briefOrder(requirements).map(([n, r]) => <RequirementRow key={r.id} r={r} n={n} brief={brief} />)}
               </ol>
               {requirements.length === 0 && <p className="text-[14.5px] text-muted">No requirements were found in the brief.</p>}
             </section>
+
+            {offersLiveAnalysis(bundle.course.title, assessment.canonical_key) && <LiveAnalysis assessmentId={assessment.id} />}
 
             {obligations.length > 0 && (
               <section aria-labelledby="assessment-obligations" className="space-y-3">
@@ -127,13 +138,19 @@ export default function AssessmentPage() {
   );
 }
 
+/** The live model call is offered on one assessment only: Applied Machine
+ * Learning's Coursework 1. */
+function offersLiveAnalysis(courseTitle: string, canonicalKey: string) {
+  return /applied machine learning/i.test(courseTitle) && canonicalKey === "coursework 1";
+}
+
 /** The brief's own numbering ("2. Discuss…") when it has one, else list order. */
 function briefOrder(requirements: Requirement[]): [number, Requirement][] {
   const numbered = requirements.map((r, i): [number, Requirement] => [Number(/^(\d+)\./.exec(r.text)?.[1] ?? i + 1), r]);
   return numbered.sort((a, b) => a[0] - b[0]);
 }
 
-function RequirementRow({ r, n }: { r: Requirement; n: number }) {
+function RequirementRow({ r, n, brief }: { r: Requirement; n: number; brief: BriefDocument | null }) {
   const byResource = new Map<string, MaterialMapping[]>();
   for (const m of r.materials) byResource.set(m.resource_id, [...(byResource.get(m.resource_id) ?? []), m]);
   return (
@@ -145,7 +162,9 @@ function RequirementRow({ r, n }: { r: Requirement; n: number }) {
             <p className="max-w-prose text-[16px] leading-relaxed text-ink">{r.text.replace(/^\d+\.\s*/, "")}</p>
             <div className="flex items-center gap-2">
               <StatusBadge status={r.status} />
-              <EvidenceButton label="Brief" request={{ kind: "Requirement evidence", claim: r.text, items: r.evidence.map(fromEvidence) }} />
+              {brief
+                ? <BriefButton doc={brief} quotes={r.evidence.map((e) => e.quote)} />
+                : <EvidenceButton label="Brief" request={{ kind: "Requirement evidence", claim: r.text, items: r.evidence.map(fromEvidence) }} />}
             </div>
           </div>
           {byResource.size === 0 ? (

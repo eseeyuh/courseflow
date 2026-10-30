@@ -7,7 +7,7 @@ and what each assessment brief states, as data.
 
 AIF7002 AI Foundations in Practice and DVS7003 Data Visualisation fill out
 the demo workspace: two assessments each, with weightings, deadlines,
-numbered requirements and the teaching material that covers them. They hold
+requirements stated in prose and the teaching material that covers them. They hold
 no conflict, hidden obligation or change; those stay in the two main demo
 courses. Everything is synthetic, like the rest of Northbridge.
 
@@ -57,22 +57,26 @@ AIF_CASE_STUDY_BRIEF = PdfDoc(
             "it affects.",
         ),
         _p(
-            _h("What your case study must do"),
-            "1. Identify the AI system, the task it performs and its intended users.",
-            "2. Discuss the limitations of the underlying model and when its outputs",
-            "   should not be trusted.",
-            "3. Evaluate the ethical and operational risks the system creates for the",
-            "   people who use it or are affected by it.",
-            "4. Propose practical safeguards that reduce the most serious of those risks.",
+            _h("The task"),
+            "Your case study should open by identifying the AI system, the task it performs and",
+            "the people it is intended to serve. Describe the system as it is actually used",
+            "rather than as it is marketed, drawing only on publicly available information; do",
+            "not contact the organisation.",
             "",
-            "Use publicly available information only; do not contact the organisation.",
+            "The core of the case study is analytical. You should discuss the limitations of the",
+            "underlying model and explain when its outputs should not be trusted, using concrete",
+            "examples where you can find them. Building on that analysis, you must evaluate the",
+            "ethical and operational risks the system creates for the people who use it or are",
+            "affected by it, and weigh how likely and how serious each risk is.",
             "",
-            _h("Marking criteria"),
-            "System description and intended users: 20%",
-            "Model limitations: 25%",
-            "Risk evaluation: 30%",
-            "Safeguards: 20%",
-            "Presentation and referencing: 5%",
+            "Finally, you should propose practical safeguards that would reduce the most serious",
+            "of those risks. Strong answers explain who would carry out each safeguard and what",
+            "it would cost the organisation, rather than listing good intentions.",
+            "",
+            _h("Assessment criteria"),
+            "Marks are allocated to the description of the system and its intended users (20%),",
+            "the analysis of model limitations (25%), the evaluation of risk (30%), the proposed",
+            "safeguards (20%), and presentation and referencing (5%).",
             "",
             _h("Support"),
             "The Week 2 lecture and the risk workshop cover the material for this case study.",
@@ -99,20 +103,23 @@ AIF_REFLECTION_BRIEF = PdfDoc(
             "by hand. Reflect on how it should do so, drawing on the whole module.",
         ),
         _p(
-            _h("What your reflection must do"),
-            "1. Compare two different AI approaches to the same problem, such as a",
-            "   rule-based system and a learned model.",
-            "2. Justify the implementation choice you would recommend to the organisation.",
-            "3. Explain how the chosen system should be evaluated before launch and",
-            "   monitored after deployment.",
-            "4. Reflect on what responsible deployment would require from the organisation.",
+            _h("The task"),
+            "Your reflection should compare two different AI approaches to the same problem, for",
+            "example a rule-based system and a learned model, and consider what each would",
+            "demand of the organisation in data, expertise and maintenance. On the strength of",
+            "that comparison, justify the implementation choice you would recommend to the",
+            "organisation, acknowledging what it gives up.",
             "",
-            _h("Marking criteria"),
-            "Comparison of approaches: 25%",
-            "Justification of the choice: 25%",
-            "Evaluation and monitoring: 25%",
-            "Responsible deployment: 20%",
-            "Presentation and referencing: 5%",
+            "A recommendation is only as good as the evidence behind it, so explain how the",
+            "chosen system should be evaluated before launch and monitored after deployment.",
+            "Your reflection must close by considering what responsible deployment would demand",
+            "of the organisation: who remains accountable for its decisions, and how those",
+            "affected could challenge them.",
+            "",
+            _h("Assessment criteria"),
+            "Marks are allocated to the comparison of approaches (25%), the justification of the",
+            "recommended choice (25%), evaluation and monitoring (25%), responsible deployment",
+            "(20%), and presentation and referencing (5%).",
         ),
     ),
 )
@@ -246,19 +253,21 @@ DVS_CRITIQUE_BRIEF = PdfDoc(
             "and critique it as a piece of communication.",
         ),
         _p(
-            _h("What your critique must do"),
-            "1. Identify the intended audience of the visualisation and the decision it",
-            "   should help them make.",
-            "2. Evaluate the visual encoding choices: marks, channels, scales and layout.",
-            "3. Discuss any misleading or ineffective design, such as a truncated axis or",
-            "   a poor colour scale.",
-            "4. Recommend specific improvements and include a sketch of your redesign.",
+            _h("The task"),
+            "Your critique should first establish the intended audience of the visualisation and",
+            "the decision it is meant to help them make, since every later judgement depends on",
+            "it. With that in mind, you should evaluate the visual encoding choices, including",
+            "the marks, channels, scales and layout, and explain how well each serves the reader.",
             "",
-            _h("Marking criteria"),
-            "Audience and purpose: 15%",
-            "Encoding analysis: 30%",
-            "Misleading or ineffective design: 30%",
-            "Improvements and redesign: 25%",
+            "Many published charts mislead without intending to. You are required to discuss any",
+            "misleading or ineffective design you find, such as a truncated axis or a poor colour",
+            "scale, and to explain what a reader is likely to conclude as a result. Your critique",
+            "should end by recommending specific improvements, accompanied by a sketch of your",
+            "redesign; a photographed hand drawing is acceptable.",
+            "",
+            _h("Assessment criteria"),
+            "Marks are allocated to audience and purpose (15%), the analysis of encoding (30%),",
+            "misleading or ineffective design (30%), and the improvements and redesign (25%).",
         ),
     ),
 )
@@ -281,18 +290,20 @@ DVS_DASHBOARD_BRIEF = PdfDoc(
             "three to five questions about a public dataset of your choice.",
         ),
         _p(
-            _h("What your project must do"),
-            "1. Design an interactive visualisation that lets users explore the dataset.",
-            "2. Justify the chart type you select for each question the dashboard answers.",
-            "3. Create a clear visual hierarchy so that the most important measure is seen",
-            "   first.",
-            "4. Document your design decisions and the alternatives you rejected.",
+            _h("The task"),
+            "The dashboard itself should be an interactive visualisation that lets users explore",
+            "the dataset rather than a set of static charts placed side by side. For each",
+            "question it answers, you must justify the chart type you selected over the obvious",
+            "alternatives.",
             "",
-            _h("Marking criteria"),
-            "Interaction design: 25%",
-            "Chart selection: 25%",
-            "Visual hierarchy: 20%",
-            "Design document: 30%",
+            "Users should never have to search for what matters, so create a clear visual",
+            "hierarchy in which the most important measure is seen first. The accompanying",
+            "design document should record your design decisions and the alternatives you",
+            "rejected, with a sentence on why each was rejected.",
+            "",
+            _h("Assessment criteria"),
+            "Marks are allocated to interaction design (25%), chart selection (25%), visual",
+            "hierarchy (20%) and the design document (30%).",
         ),
     ),
 )
@@ -437,8 +448,9 @@ SUPPLEMENT_DOCUMENTS: dict[str, Document] = {
 
 @dataclass(frozen=True, slots=True)
 class Requirement:
-    """One numbered item of a brief, and where the course teaches it: each
-    (teaching resource title, a phrase of the slide or section) pair."""
+    """One requirement a brief states (the sentence that states it), and where
+    the course teaches it: each (teaching resource title, a phrase of the
+    slide or section) pair."""
 
     statement: str  # as the brief states it, whitespace collapsed
     taught_in: tuple[tuple[str, str], ...]
@@ -479,21 +491,24 @@ BRIEFS: tuple[Brief, ...] = (
         due_quote="Submission deadline: Wednesday 18 November 2026, 12:00 (UK time).",
         requirements=(
             Requirement(
-                "1. Identify the AI system, the task it performs and its intended users.",
+                "Your case study should open by identifying the AI system, the task it performs and "
+                "the people it is intended to serve.",
                 ((_AIF2, "Name the task the system performs and its intended users"),),
             ),
             Requirement(
-                "2. Discuss the limitations of the underlying model and when its outputs "
-                "should not be trusted.",
+                "You should discuss the limitations of the underlying model and explain when its "
+                "outputs should not be trusted, using concrete examples where you can find them.",
                 ((_AIF2, "Know when an output should not be trusted"),),
             ),
             Requirement(
-                "3. Evaluate the ethical and operational risks the system creates for the "
-                "people who use it or are affected by it.",
+                "Building on that analysis, you must evaluate the ethical and operational risks "
+                "the system creates for the people who use it or are affected by it, and weigh "
+                "how likely and how serious each risk is.",
                 ((_AIFW, "List the ethical and operational risks of the system"),),
             ),
             Requirement(
-                "4. Propose practical safeguards that reduce the most serious of those risks.",
+                "Finally, you should propose practical safeguards that would reduce the most "
+                "serious of those risks.",
                 ((_AIFW, "propose a practical safeguard"),),
             ),
         ),
@@ -509,24 +524,28 @@ BRIEFS: tuple[Brief, ...] = (
         due_quote="Submission deadline: Thursday 26 November 2026, 16:00 (UK time).",
         requirements=(
             Requirement(
-                "1. Compare two different AI approaches to the same problem, such as a "
-                "rule-based system and a learned model.",
+                "Your reflection should compare two different AI approaches to the same problem, "
+                "for example a rule-based system and a learned model, and consider what each "
+                "would demand of the organisation in data, expertise and maintenance.",
                 ((_AIF2, "Rule-based systems are transparent but brittle"),),
             ),
             Requirement(
-                "2. Justify the implementation choice you would recommend to the organisation.",
+                "On the strength of that comparison, justify the implementation choice you would "
+                "recommend to the organisation, acknowledging what it gives up.",
                 ((_AIF2, "Prefer the simplest approach that meets the need"),),
             ),
             Requirement(
-                "3. Explain how the chosen system should be evaluated before launch and "
-                "monitored after deployment.",
+                "A recommendation is only as good as the evidence behind it, so explain how the "
+                "chosen system should be evaluated before launch and monitored after deployment.",
                 (
                     (_AIF3, "Test on data that represents the people affected"),
                     (_AIF3, "Track input drift and outcome quality over time"),
                 ),
             ),
             Requirement(
-                "4. Reflect on what responsible deployment would require from the organisation.",
+                "Your reflection must close by considering what responsible deployment would "
+                "demand of the organisation: who remains accountable for its decisions, and how "
+                "those affected could challenge them.",
                 ((_AIF3, "Keep a human able to override its decisions"),),
             ),
         ),
@@ -542,24 +561,28 @@ BRIEFS: tuple[Brief, ...] = (
         due_quote="Submission deadline: Monday 16 November 2026, 16:00 (UK time).",
         requirements=(
             Requirement(
-                "1. Identify the intended audience of the visualisation and the decision it "
-                "should help them make.",
+                "Your critique should first establish the intended audience of the visualisation "
+                "and the decision it is meant to help them make, since every later judgement "
+                "depends on it.",
                 ((_DVS2, "Who reads the chart, and what decision will it support?"),),
             ),
             Requirement(
-                "2. Evaluate the visual encoding choices: marks, channels, scales and layout.",
+                "With that in mind, you should evaluate the visual encoding choices, including the "
+                "marks, channels, scales and layout, and explain how well each serves the reader.",
                 (
                     (_DVS2, "Channels such as position, length and colour encode the values"),
                     (_DVS2, "Position on a common scale is read most accurately"),
                 ),
             ),
             Requirement(
-                "3. Discuss any misleading or ineffective design, such as a truncated axis or "
-                "a poor colour scale.",
+                "You are required to discuss any misleading or ineffective design you find, such as "
+                "a truncated axis or a poor colour scale, and to explain what a reader is likely "
+                "to conclude as a result.",
                 ((_DVS3, "A truncated axis exaggerates small differences"),),
             ),
             Requirement(
-                "4. Recommend specific improvements and include a sketch of your redesign.",
+                "Your critique should end by recommending specific improvements, accompanied by a "
+                "sketch of your redesign; a photographed hand drawing is acceptable.",
                 ((_DVS3, "Sketch the alternative before you build it"),),
             ),
         ),
@@ -575,20 +598,23 @@ BRIEFS: tuple[Brief, ...] = (
         due_quote="Submission deadline: Tuesday 24 November 2026, 23:59 (UK time).",
         requirements=(
             Requirement(
-                "1. Design an interactive visualisation that lets users explore the dataset.",
+                "The dashboard itself should be an interactive visualisation that lets users "
+                "explore the dataset rather than a set of static charts placed side by side.",
                 ((_DVS6, "Overview first, then zoom and filter, then details on demand"),),
             ),
             Requirement(
-                "2. Justify the chart type you select for each question the dashboard answers.",
+                "For each question it answers, you must justify the chart type you selected over "
+                "the obvious alternatives.",
                 ((_DVS5, "Match the chart type to the question"),),
             ),
             Requirement(
-                "3. Create a clear visual hierarchy so that the most important measure is "
-                "seen first.",
+                "Users should never have to search for what matters, so create a clear visual "
+                "hierarchy in which the most important measure is seen first.",
                 ((_DVS5, "Place the most important measure where the eye lands first"),),
             ),
             Requirement(
-                "4. Document your design decisions and the alternatives you rejected.",
+                "The accompanying design document should record your design decisions and the "
+                "alternatives you rejected, with a sentence on why each was rejected.",
                 ((_DVS6, "Record each design decision and the alternative you rejected"),),
             ),
         ),
