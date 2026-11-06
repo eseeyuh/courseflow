@@ -8,8 +8,7 @@ CourseFlow turns assignment briefs, handbooks, slides and announcements into str
 
 [Run the demo](#run-the-demo) · [Architecture](#architecture) · [Evaluation](#evaluation) · [Code walkthrough](#code-walkthrough) · [Limitations](#limitations-and-next-steps)
 
-<!-- Add your recording at this path. Use a caption that accurately describes the recorded mode; never label replay as live inference. -->
-![CourseFlow product walkthrough](docs/assets/courseflow-demo.gif)
+![CourseFlow product walkthrough](docs/assets/screenshots/courseflow-demo.gif)
 
 *The default demo uses synthetic course documents and recorded model outputs. Replay passes through the application’s evidence gates and deterministic rules; it does not demonstrate fresh inference on an arbitrary uploaded PDF.*
 
