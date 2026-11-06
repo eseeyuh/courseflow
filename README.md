@@ -1,185 +1,243 @@
 # CourseFlow
 
-**CourseFlow turns a student's scattered LMS content into evidence-backed next steps: what is due, what it requires, where exactly to study for it, and how the system knows.**
+**Document intelligence for course requirements, deadlines and obligations — with versioned source evidence behind the results.**
 
-Built for the Nebius × NVIDIA Global AI Hackathon (*Best Apps & Agents*). Open source under [MPL-2.0](LICENSE).
+CourseFlow turns assignment briefs, handbooks, slides and announcements into structured requirements and a cross-course study plan. Users can inspect the supporting excerpt, see conflicting deadlines, and track what changes when a source is updated.
 
-![Home: next actions, a deadline conflict and an obligation found by CourseFlow](docs/assets/screenshots/01-home.png)
+**Python · FastAPI · PostgreSQL / pgvector · NVIDIA Nemotron · Next.js · Docker**
 
-## The problem
+[Run the demo](#run-the-demo) · [Architecture](#architecture) · [Evaluation](#evaluation) · [Code walkthrough](#code-walkthrough) · [Limitations](#limitations-and-next-steps)
 
-A course lives in many places: the assignment brief, the module handbook, lecture slides, announcements, workshop sheets. The information a student needs is spread across them, and it does not always agree.
+<!-- Add your recording at this path. Use a caption that accurately describes the recorded mode; never label replay as live inference. -->
+![CourseFlow product walkthrough](docs/assets/courseflow-demo.gif)
 
-- A deadline appears in the brief and again, differently, in the handbook.
-- A requirement says "discuss class imbalance" but not which lecture teaches it.
-- A handbook quietly requires a supervisor to review your draft before you may submit, and the brief never mentions it.
-- An announcement moves a deadline, and nothing tells you which of your plans just changed.
+*The default demo uses synthetic course documents and recorded model outputs. Replay passes through the application’s evidence gates and deterministic rules; it does not demonstrate fresh inference on an arbitrary uploaded PDF.*
 
-Moodle stores the information. Nothing reconstructs the path through it.
+## What it does
 
-## What CourseFlow does
+A deadline can disagree across documents. A handbook can contain a mandatory review that an assignment brief omits. A revised announcement can invalidate a previously correct plan.
 
-```text
-LMS resources (briefs, handbooks, slides, announcements)
-  → versioned sources with exact page / slide / section locations
-  → evidence-backed course intelligence: assessments, deadlines, requirements, obligations
-  → each requirement mapped to the exact teaching material
-  → dependencies, source conflicts and changes detected
-  → one cross-course study plan, with a reason for every step
-```
+CourseFlow makes those relationships inspectable:
 
-Every claim on screen opens the exact sentence it came from.
-
-## Key demo features
-
-| Feature | What you see |
+| Capability | Result |
 |---|---|
-| **Hidden obligation discovery** | "Found by CourseFlow": the dissertation handbook (page 2) requires a supervisor review of your draft before the Project Specification. The brief never says so. |
-| **Assessment requirement extraction** | Coursework 1's five requirements, quoted from the brief, each verified against it. |
-| **Requirement → exact learning material** | The class imbalance requirement maps to *Week 7: Learning from Imbalanced Data*, Slide 2: "With 7% positives, always predicting the majority class gives 93% accuracy". |
-| **Evidence viewer** | What CourseFlow states, then the exact excerpt with source, version, slide/page/section and verification status. |
-| **Dependency reconstruction** | Supervisor review, required for, Project Specification. Ethics approval, required for, Data collection. |
-| **Source conflict detection** | Brief: Thu 12 Nov 14:00. Handbook: Fri 13 Nov 23:59. Both shown, each with its source. |
-| **Cross-course study plan** | Ordered across both courses with a "why now" per task; mark material *Studied* and the plan is recomputed. |
-| **LMS change propagation** | A simulated LMS sync brings in an announcement and a new handbook version: a new deadline, a replaced one, a changed conflict, a reworded obligation, and the study plan updated. |
-| **Offline, reproducible demo** | The demo rebuilds from committed model recordings: no API key, no network, no spend, identical every time. |
+| Structured extraction | Assessments, deadlines, requirements and obligations linked to source evidence |
+| Material discovery | Requirements mapped to retrieved teaching material, with source locations |
+| Evidence inspection | Stored excerpts with document version and page, slide or section |
+| Conflict detection | Disagreeing deadlines shown together rather than silently resolved |
+| Change propagation | A simulated LMS sync updates affected intelligence and the study plan |
+| Study planning | Cross-course next steps with dependencies and a reason for their order |
 
-<table>
-<tr>
-<td><img src="docs/assets/screenshots/03-mapping-evidence.png" alt="Slide 2 of the Week 7 lecture, with its exact text, as the material for the class imbalance requirement"></td>
-<td><img src="docs/assets/screenshots/04-hidden-obligation.png" alt="The supervisor-review obligation found by CourseFlow, with the handbook's exact wording"></td>
-</tr>
-<tr>
-<td><img src="docs/assets/screenshots/05-conflict.png" alt="The deadline conflict: brief and handbook side by side"></td>
-<td><img src="docs/assets/screenshots/07-changes-after-sync.png" alt="Changes after the LMS sync: new deadline, replaced deadline, changed conflict"></td>
-</tr>
-</table>
+## Project status
 
-More screens: [Coursework 1 requirements](docs/assets/screenshots/02-assessment-requirements.png), [study plan](docs/assets/screenshots/06-study-plan.png).
+This is a working prototype, not a production LMS integration.
 
-For reviewers: the [judge summary](docs/demo/judge-summary.md), the [technical facts](docs/demo/technical-facts.md) and the [three-minute demo script](docs/demo/demo-script.md).
-
-## Why it is different
-
-- **Not Moodle plus a chatbot.** There is no chat box. CourseFlow builds structured state (assessments, obligations, dependencies, conflicts, a plan) and shows it.
-- **Not summarisation.** It points to the university's original material (this slide, this page) instead of rewriting it.
-- **Source-grounded claims.** A claim is *verified* only when deterministic code finds its exact quote in a stored source span and the quote supports the value. Model confidence never verifies anything.
-- **No silent conflict resolution.** When sources disagree, CourseFlow shows both and says so. The plan schedules against the earlier date to be safe, and says that is not a ruling.
-- **State that follows the sources.** When a source changes, only what it affects is reprocessed: claims are superseded or reworded, conflicts recomputed, and the plan diffed.
+| Area | Current implementation |
+|---|---|
+| Reproducible demo | Two fictional Northbridge University courses; recorded model outputs and embeddings |
+| Live inference | Evaluation runners and an optional **Analyze live with Nemotron** action for one demo assessment; credentials required |
+| Document ingestion | Backend import path; see the [development guide](docs/development.md#importing-a-document). This is separate from an end-to-end upload UI |
+| LMS connector | Synthetic `DemoConnector`; no live Moodle connection |
+| Access | One demo learner; no authentication or user-level authorization |
+| Deployment | Docker demo stack; no public hosted URL included |
 
 ## Architecture
 
-A modular monolith: Next.js frontend, FastAPI backend, PostgreSQL + pgvector, and a traced multi-step workflow (`course-intelligence/v1`) whose model steps use NVIDIA Nemotron through Nebius Token Factory.
+A modular monolith keeps document provenance, application state, vector search and full-text search in one PostgreSQL-backed system.
 
 ```mermaid
 flowchart TD
-    LMS["Demo LMS<br/>(DemoConnector)"] --> ING["Ingestion and versioning<br/>content hashes, ChangeEvents"]
-    ING --> SPAN["SourceSpans and chunks<br/>exact page, slide, section"]
-    SPAN --> EXT["Structured extraction<br/>NVIDIA Nemotron (Nebius)"]
-    SPAN --> RET["Hybrid retrieval<br/>pgvector + full-text, RRF<br/>Qwen3 embeddings (Nebius)"]
-    RET --> VER["Material verifier<br/>NVIDIA Nemotron, candidate IDs only"]
-    EXT --> GATE["Deterministic evidence gates<br/>exact quote, unique span, value checks"]
-    VER --> GATE
-    GATE --> INT["Course intelligence<br/>verified / needs_review"]
-    INT --> RSN["Deterministic reasoning<br/>dependencies, conflicts, supersession"]
-    RSN --> PLAN["Cross-course study plan<br/>why now"]
-    INT --> UI["Next.js UI<br/>evidence viewer"]
-    PLAN --> UI
-    DB[("PostgreSQL + pgvector<br/>shared state, provenance, run traces")]
-    ING -.- DB
-    INT -.- DB
-    PLAN -.- DB
+    A["Sources and versions"] --> B["Source spans and chunks"]
+    B --> C["LLM structured extraction"]
+    B --> D["Vector and full-text retrieval"]
+    C --> E["Evidence validation"]
+    D --> F["LLM material verification"]
+    F --> E
+    E --> G["Structured course state"]
+    G --> H["Dependency, conflict and planning rules"]
+    H --> I["Next.js interface"]
+    G --> I
 ```
 
-- **Workflow.** `ingest → assessments → claims → mapping → dependencies → conflicts → validation → plan`, one traced `WorkflowRun` per course with per-step status and counts. A failed step stops the run with a recorded error category; a sync reprocesses only changed versions.
-- **Models** (details: [docs/demo/nvidia-nebius.md](docs/demo/nvidia-nebius.md)):
-  - `nvidia/Nemotron-3_5-Lightning`, the `MODEL_FAST` role with thinking off, extracts assessments, deadlines, requirements and obligations, and verifies material mappings.
-  - `Qwen/Qwen3-Embedding-8B` embeds chunks for retrieval.
-  - Both are served through Nebius Token Factory.
-- **Rules, not prompts, for consequences.** Dependencies (`dependency-rules/v1`), conflicts (`conflict-rules/v1`), deadline supersession (`source-supersession/v1`) and the plan (`study-plan/v1`) are deterministic and versioned.
+Retrieval supports **requirement-to-material mapping**. CourseFlow presents structured state and evidence rather than a conversational question-answering interface.
 
-Deeper reading: [system context](docs/architecture/system-context.md), [data contract](docs/architecture/data-contract.md), [ingestion](docs/architecture/ingestion.md), [retrieval](docs/architecture/retrieval.md), and the [architecture decisions](docs/decisions/).
+| Component | Responsibility |
+|---|---|
+| FastAPI, async SQLAlchemy, Pydantic, Alembic | API, validated contracts, persistence and migrations |
+| PostgreSQL + pgvector | Relational state, embeddings and full-text search |
+| NVIDIA Nemotron through Nebius Token Factory | Structured extraction and material verification |
+| Qwen3-Embedding-8B | Document and query embeddings |
+| Next.js, React, TypeScript | Requirements, source evidence, conflicts and study-plan views |
 
-## Trust and safety
+### Model output and application decisions
 
-- **Provenance chain.** Every claim links to an `EvidenceLink`, then a `SourceSpan` with exact character offsets, then a `ResourceVersion`, then a `Resource` and its `Course`. Citations are never generated: the UI shows only stored quotes and locations.
-- **Exact evidence.** A quote must occur exactly and uniquely in the cited span, from the same course and version, or the claim is rejected.
-- **Verified vs needs_review.** Permissive wording, unsupported categories or conflicting facts become `needs_review`, shown apart and never presented as fact.
-- **Prompt injection.** Course text goes to the model only as delimited data in the user turn, with a per-call random nonce; no tools are sent. The Northbridge data contains an injection attempt, and it is never extracted.
-- **Constrained outputs.** Models answer in strict JSON schemas and may cite only local span or candidate IDs issued for that call. Anything else is rejected.
-- **Conflicts keep both values.** Disagreeing sources produce two deadline rows and a `Conflict`. Only a newer source that says it replaces a date retires one.
-- **Read-only.** CourseFlow never submits work or writes to an LMS.
+| LLM responsibilities | Deterministic application responsibilities |
+|---|---|
+| Propose assessments, requirements and obligations | Validate schemas, evidence references and supported values |
+| Select relevant material from retrieved candidates | Reject invented candidate IDs and invalid evidence |
+| Return structured model output | Compute dependencies, conflicts, supersession and the plan |
 
-## Run the demo
+The orchestration is a fixed, traced workflow, not an autonomous tool-using agent loop. Each course has a `WorkflowRun`; failed steps stop processing and record an error category. Source changes scope reprocessing to affected versions.
 
-The demo uses the synthetic **Northbridge University**: two courses, *Applied Machine Learning* and *MSc Dissertation*. It is all invented, with no real course material or student data. It runs offline from committed recordings.
-
-**Deployment status:** the repository contains a one-command Docker demo stack, verified end to end with the golden-path test. A public hosted URL is not currently included; the same command runs it on any Docker host (see *Hosting it* below).
-
-**With Docker only** (one command; the first build takes a few minutes):
-
-```bash
-docker compose -f infra/demo/compose.yml up -d --build --wait
-```
-
-Open http://localhost:3000. The stack migrates its database and resets to the initial Northbridge state on start. Stop it with `docker compose -f infra/demo/compose.yml down` (add `-v` to delete its data).
-
-Everything replays deterministically by default. One optional, click-triggered action, *Analyze live with Nemotron* on Applied Machine Learning's Coursework 1, makes a real Nebius Token Factory call. It needs Nebius credentials (`NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, `MODEL_FAST`, `MODEL_STRONG`) in your root `.env`; start the stack with `docker compose --env-file .env -f infra/demo/compose.yml up -d --build --wait` to pass them to the API container at runtime.
-
-**For development** (hot reload; needs Docker, [uv](https://docs.astral.sh/uv/) and Node.js ≥ 20.9):
-
-```bash
-cp .env.example .env && cp frontend/.env.example frontend/.env.local
-docker compose up -d db                       # PostgreSQL + pgvector
-sh scripts/demo-api.sh                        # API on :8000: creates and migrates its own demo database
-cd frontend && npm ci && npm run dev          # UI on :3000 (second terminal)
-```
-
-Then click **Reset demo** in the Demo strip, and follow the [three-minute demo script](docs/demo/demo-script.md) or the [manual checklist](docs/demo/manual-checklist.md).
-
-**Golden-path test** (with the development setup running; uses your installed Chrome):
-
-```bash
-cd frontend && npx playwright test            # reset, every demo step, sync, reset again
-```
-
-**Hosting it.** On a server, set the public addresses in `infra/demo/.env` (template: [infra/demo/.env.example](infra/demo/.env.example)) and run the same command behind HTTPS. Set `BIND_ADDRESS`, `WEB_ORIGIN` (the URL people open: the API's only CORS origin), `API_PUBLIC_URL` (compiled into the web image) and `DEMO_DB_PASSWORD`. The API runs with `APP_ENV=demo`. The demo endpoints (reset, simulated sync) are refused only under `APP_ENV=production`, and they are unauthenticated: anyone with the URL can reset the demo.
-
-## Local development
-
-The full development stack (Compose API, document import, retrieval CLI, migrations, tests and troubleshooting) is in [docs/development.md](docs/development.md). The essentials:
-
-```bash
-(cd backend && uv sync --locked && uv run pytest)            # needs `docker compose up -d db`
-(cd backend && uv run ruff check . && uv run ruff format --check .)
-(cd frontend && npm run lint && npm run typecheck && npm run build)
-```
+[System context](docs/architecture/system-context.md) · [Data contract](docs/architecture/data-contract.md) · [Workflow implementation](backend/app/orchestration/workflow.py)
 
 ## Evaluation
 
-Measured on the frozen synthetic golden dataset with real Nebius calls under spend caps. Reports are in [evals/reports/](evals/reports/); how to rerun them is in [evals/README.md](evals/README.md).
+Results below come from committed reports on frozen **synthetic** datasets. They measure specific tasks, not overall product accuracy or performance on real university documents.
 
-| What | Result |
+### Retrieval comparison
+
+The retrieval/v1 benchmark contains **12 positive queries and 2 invariant-only probes**, covering keyword, paraphrase and mixed queries, stale versions and cross-course results. It replays recorded embeddings through the application search service; the scored runs make no live provider calls.
+
+| Mode | Recall@1 | Recall@3 | Recall@5 | MRR@10 |
+|---|---:|---:|---:|---:|
+| Vector | 9/12 | 11/12 | 12/12 | 0.8403 |
+| Full-text | 9/12 | 11/12 | 12/12 | 0.8500 |
+| Hybrid / RRF | 9/12 | 12/12 | 12/12 | 0.8611 |
+
+All three modes passed the two invariant probes. A predefined selection rule chose hybrid as the default. Two replay runs returned identical metrics and hit lists.
+
+**Interpretation:** hybrid recovered one additional positive case in the top three on this corpus. This small benchmark was used for default selection; it does not establish statistical significance or independent generalization performance.
+
+[Per-case results](evals/reports/retrieval-v1.md) · [Dataset and reproduction instructions](evals/README.md) · [Selection decision](docs/decisions/ADR-008-hybrid-retrieval-and-evaluation.md)
+
+### Structured extraction
+
+Recorded live Nebius experiments on the frozen Northbridge golden dataset report:
+
+| Task | Reported result | Evidence |
+|---|---|---|
+| Deadline extraction | Exact match 6/6; zero false verified assessments in the reported run | [Assessment report](evals/reports/assessment-extraction-v2-fast-thinking-off-gate-v3-golden-v2.md) |
+| Requirement extraction | Verified labelled recall 11/11 | [Claims report](evals/reports/claim-extraction-v1-fast-thinking-off-gate-v3-golden-v2.md) |
+| Obligation extraction | Verified labelled recall 2/3; one labelled obligation missed | [Claims report](evals/reports/claim-extraction-v1-fast-thinking-off-gate-v3-golden-v2.md) |
+
+Requirement and obligation labels are incomplete, so these reports do **not** establish precision or F1. Extraction experiments use live model calls; offline demo replay and retrieval replay are different execution modes. Reports include the model, prompt/gate versions and usage details.
+
+## Engineering decisions
+
+### Hybrid search with rank fusion
+
+Vector similarity captures semantic matches; PostgreSQL full-text search complements it for exact terminology. Reciprocal Rank Fusion combines their **ranks**, avoiding direct addition of incompatible raw scores. Search scores are ranking signals, not probabilities of correctness.
+
+Search is scoped to current resource versions within a course and a compatible embedding space. The vector path uses **exact cosine search**, with no ANN/HNSW index. Course scoping is a data boundary, not user authorization.
+
+### Structure-aware, provenance-preserving chunks
+
+The `span-pack/v1` chunker preserves source offsets, keeps consecutive slide text and notes together, and attaches headings to following content. Oversized spans are split at preferred text boundaries.
+
+Its target is 800 **estimated** tokens, with a hard maximum of 1,000 and overlap up to 120. The estimate is `ceil(characters / 4)`, not a tokenizer measurement. These are versioned prototype settings, not universal optimal values.
+
+### Evidence checked outside the model
+
+Evidence links resolve through stored source spans and resource versions. The application checks citation location and applicable value constraints rather than treating model confidence as verification.
+
+Quote presence is not a general semantic entailment test: an authentic quote can still be misinterpreted. Model quality, validation coverage and human review remain relevant.
+
+### Conflicts preserved and decisions versioned
+
+Conflicting deadlines remain visible with their sources. The planner uses the earlier date conservatively and does not present that choice as resolution of the conflict. Dependencies, conflict handling, supersession and planning use versioned deterministic rules.
+
+[Retrieval design](docs/architecture/retrieval.md) · [Ingestion design](docs/architecture/ingestion.md) · [Architecture decisions](docs/decisions/)
+
+## Evidence validation and failure handling
+
+| Condition | Handling |
 |---|---|
-| Deadline exact match (course, version, local time, timezone) | 6/6, 0 false verified assessments |
-| Requirement extraction, labelled recall (verified) | 11/11 |
-| Obligation extraction, labelled recall (verified) | 2/3. Supervisor-review case verified, linked and located; the injection attempt never extracted |
-| Retrieval, hybrid (12 cases) | Recall@3 12/12, MRR@10 31/36 |
-| Material mapping demo acceptance | class imbalance → Lecture 07: pass; irrelevant lecture rejected; no-material case unmapped |
+| Unknown evidence reference or missing quote | Reject the unsupported result |
+| Multiple matching quote locations | Treat the evidence as ambiguous rather than choosing silently |
+| Permissive wording or unsupported obligation category | Route affected claims to `needs_review` |
+| Invented material candidate ID | Reject through the candidate subset gate |
+| Inconsistent retrieval index | Refuse search rather than return a partial, inconsistent corpus |
+| Workflow step failure | Stop the workflow and retain the recorded failure category |
 
-The labels are not exhaustive, so only labelled recall is reported, not precision. The datasets are small; no statistical significance is claimed.
+Source text is passed as delimited data, with per-call nonces and no model tools in the extraction flow. The committed injection example and control are useful regression checks, **not proof of general prompt-injection immunity**.
 
-## Current prototype limitations
+The application does not submit coursework or write to an LMS. Demo reset and sync controls do modify local demo state.
 
-- **Simulated LMS.** The demo reads a synthetic LMS through a `DemoConnector`. There is no live Moodle connector, and no links to original LMS pages.
-- **Replayed intelligence in the demo.** The judge demo replays recorded Nemotron outputs through the same gates. New content needs an API key and the evaluation runners.
-- **One demo learner.** There is no authentication, and the demo controls are open to anyone with the URL.
-- **Broad material mapping.** A requirement can list several slides of the right lecture, and stored ranks do not separate them.
-- **Incomplete obligation recall.** One labelled obligation was missed, and the labels are incomplete.
-- **Desktop-first UI.**
+## Run the demo
 
-More in [docs/POST_HACKATHON_ACCURACY.md](docs/POST_HACKATHON_ACCURACY.md) and [docs/SCOPE.md](docs/SCOPE.md).
+Prerequisite: Docker with Compose v2. Run from a fresh clone:
 
-## Contributing, security, licence
+```bash
+git clone https://github.com/eseeyuh/courseflow.git
+cd courseflow
+docker compose -f infra/demo/compose.yml up -d --build --wait
+```
 
-[CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [Mozilla Public License 2.0](LICENSE) ([why](docs/decisions/ADR-003-mpl-2.0-licence.md))
+Open **http://localhost:3000**. Startup migrates the database and initializes the synthetic demo state. The first build requires network access to fetch dependencies; the default model replay needs no API key or live inference calls.
+
+Try the [three-minute walkthrough](docs/demo/demo-script.md): inspect a requirement and its evidence, compare conflicting deadlines, then trigger the simulated sync and inspect the changes.
+
+Stop the stack:
+
+```bash
+docker compose -f infra/demo/compose.yml down
+```
+
+**Optional live analysis:** set `NEBIUS_API_KEY`, `NEBIUS_BASE_URL`, `MODEL_FAST` and `MODEL_STRONG` in your local root `.env`, then start with:
+
+```bash
+docker compose --env-file .env -f infra/demo/compose.yml up -d --build --wait
+```
+
+Use **Analyze live with Nemotron** on Applied Machine Learning’s Coursework 1. This makes a provider call and incurs usage charges; it is not a complete live LMS workflow. Keep credentials out of git.
+
+Demo controls are unauthenticated. Keep the stack local unless you deliberately provide an appropriate deployment boundary. Configuration: [development](docs/development.md) and [demo environment template](infra/demo/.env.example).
+
+## Development and checks
+
+The [development guide](docs/development.md) covers Python/uv and Node prerequisites, document import, migrations, API docs and troubleshooting. With dependencies installed and the test database available:
+
+```bash
+docker compose up -d db
+cd backend
+uv sync --locked
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+```
+
+From `frontend/`:
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm run build
+```
+
+Backend provider tests use scripted responses, not real model calls. With the development app running, `npx playwright test` exercises the demo golden path. Test outcomes are distinct from live-model evaluation; this README does not imply a fresh test run on every checkout.
+
+## Code walkthrough
+
+| Start here | What to inspect |
+|---|---|
+| [Ingestion](backend/app/ingestion/service.py) | Source import and versioning |
+| [Chunking](backend/app/retrieval/chunking.py) | Structural boundaries, size estimates and offsets |
+| [Search](backend/app/retrieval/search.py) | Course/version scope, index verification and search modes |
+| [Rank fusion](backend/app/retrieval/fusion.py) | Deterministic RRF and tie-breaking |
+| [Claim evidence location](backend/app/extraction/claim_gate.py) | Quote matching and original source offsets |
+| [Workflow](backend/app/orchestration/workflow.py) | Fixed steps, traces and failure propagation |
+| [Evaluation](evals/README.md) | Frozen datasets, replay, metrics and reproduction |
+
+## Limitations and next steps
+
+- **Synthetic data and simulated LMS:** no validated real-university deployment or live Moodle connector.
+- **Replay-first demo:** arbitrary new documents do not have a complete live upload-to-result UI.
+- **No authentication:** course-scoped retrieval does not provide multi-user access control.
+- **Small evaluations:** incomplete extraction labels and no broad generalization claim.
+- **Material mapping is broad:** several slides can be selected; stored mapping ranks do not reliably distinguish the best slide.
+- **Incomplete recall:** one of three labelled obligations was missed in the reported extraction run.
+- **Desktop-first interface:** mobile presentation is not tuned.
+
+Next priorities are a complete live document-processing path, independent evaluation on additional documents, and server-enforced access control. These are planned improvements, not current capabilities. Detailed gaps: [post-hackathon accuracy work](docs/POST_HACKATHON_ACCURACY.md).
+
+## Project background and contributing
+
+Developed for the Nebius × NVIDIA Global AI Hackathon, *Best Apps & Agents*. Repository owner: [eseeyuh](https://github.com/eseeyuh). See [contributors](https://github.com/eseeyuh/courseflow/graphs/contributors) and commit history for recorded contributions.
+
+[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Technical facts](docs/demo/technical-facts.md)
+
+## License
+
+[Mozilla Public License 2.0](LICENSE).
